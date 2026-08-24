@@ -1,0 +1,269 @@
+// Package engine applies range operations to an append-only event log and
+// materializes the converged view under a chosen conflict-resolution
+// strategy.
+package engine
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+
+	"gitub.com/d-led/eventfulranges/clock"
+	"gitub.com/d-led/eventfulranges/interval"
+	"gitub.com/d-led/eventfulranges/op"
+	"gitub.com/d-led/eventfulranges/store"
+	"gitub.com/d-led/eventfulranges/strategy"
+)
+
+// Config holds the engine options.
+type Config struct {
+	Clock         clock.Clock
+	SnapshotEvery int
+}
+
+// Option customizes an engine.
+type Option func(*Config)
+
+// WithClock sets the clock used to stamp new operations.
+func WithClock(c clock.Clock) Option {
+	return func(cfg *Config) { cfg.Clock = c }
+}
+
+// WithSnapshotEvery snapshots the view every n new operations; 0 disables
+// automatic snapshots.
+func WithSnapshotEvery(n int) Option {
+	return func(cfg *Config) { cfg.SnapshotEvery = n }
+}
+
+// Engine is a concurrency-safe CRDT over real-valued ranges backed by an
+// append-only event log.
+type Engine struct {
+	mu            sync.RWMutex
+	store         store.EventStore
+	strategy      strategy.Strategy
+	clock         clock.Clock
+	snapshotEvery int
+
+	ops      map[string]op.Op
+	view     []interval.Interval
+	segments []strategy.Segment
+	adds     []interval.Interval
+	removes  []interval.Interval
+	version  int64
+	since    int
+}
+
+// Open loads an existing log (and snapshot, when compatible) and returns a
+// ready engine.
+func Open(ctx context.Context, st store.EventStore, s strategy.Strategy, opts ...Option) (*Engine, error) {
+	if !isDefined(s) {
+		return nil, fmt.Errorf("engine: %w", strategy.ErrUnknownStrategy)
+	}
+	cfg := Config{Clock: &clock.Hybrid{}, SnapshotEvery: 100}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	e := &Engine{
+		store:         st,
+		strategy:      s,
+		clock:         cfg.Clock,
+		snapshotEvery: cfg.SnapshotEvery,
+		ops:           make(map[string]op.Op),
+	}
+	if err := e.reload(ctx); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// Apply applies a single operation, ignoring duplicates by ID.
+func (e *Engine) Apply(ctx context.Context, o op.Op) error {
+	return e.apply(ctx, []op.Op{o})
+}
+
+// ApplyAll applies a batch of operations, ignoring duplicates by ID.
+func (e *Engine) ApplyAll(ctx context.Context, ops []op.Op) error {
+	if len(ops) == 0 {
+		return nil
+	}
+	return e.apply(ctx, ops)
+}
+
+// Materialize returns a copy of the current canonical interval view.
+func (e *Engine) Materialize() []interval.Interval {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return append([]interval.Interval(nil), e.view...)
+}
+
+// Contains reports whether x belongs to the materialized set.
+func (e *Engine) Contains(x float64) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return interval.Contains(e.view, x)
+}
+
+// Overlaps reports whether any materialized interval shares a point with iv.
+func (e *Engine) Overlaps(iv interval.Interval) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return interval.Overlaps(e.view, iv)
+}
+
+// Ops returns the known operations sorted by ID for deterministic exchange.
+func (e *Engine) Ops() []op.Op {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out := make([]op.Op, 0, len(e.ops))
+	for _, o := range e.ops {
+		out = append(out, o)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Snapshot persists the current materialized view and log version.
+func (e *Engine) Snapshot(ctx context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.snapshot(ctx)
+}
+
+func (e *Engine) apply(ctx context.Context, ops []op.Op) error {
+	for i := range ops {
+		if err := ops[i].Validate(); err != nil {
+			return fmt.Errorf("engine: op %q: %w", ops[i].ID, err)
+		}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for attempt := 0; ; attempt++ {
+		fresh := e.unseen(ops)
+		if len(fresh) == 0 {
+			return nil
+		}
+		for i := range fresh {
+			if fresh[i].TS == 0 {
+				fresh[i].TS = e.clock.Tick()
+			}
+		}
+		err := e.store.Append(ctx, e.version, fresh)
+		switch {
+		case errors.Is(err, store.ErrVersionConflict) && attempt < 3:
+			if cerr := e.catchUp(ctx); cerr != nil {
+				return cerr
+			}
+		case err != nil:
+			return err
+		default:
+			for _, o := range fresh {
+				e.clock.Observe(o.TS)
+				e.ops[o.ID] = o
+				e.applyToView(o)
+			}
+			e.version += int64(len(fresh))
+			e.since += len(fresh)
+			if e.snapshotEvery > 0 && e.since >= e.snapshotEvery {
+				if err := e.snapshot(ctx); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+}
+
+// unseen returns the operations whose IDs are not yet known.
+func (e *Engine) unseen(ops []op.Op) []op.Op {
+	var fresh []op.Op
+	for _, o := range ops {
+		if _, ok := e.ops[o.ID]; !ok {
+			fresh = append(fresh, o)
+		}
+	}
+	return fresh
+}
+
+// catchUp reads operations appended by other writers since the last known
+// version and merges them into the local state.
+func (e *Engine) catchUp(ctx context.Context) error {
+	ops, version, err := e.store.Read(ctx, e.version)
+	if err != nil {
+		return err
+	}
+	for _, o := range ops {
+		e.clock.Observe(o.TS)
+		e.ops[o.ID] = o
+		e.applyToView(o)
+	}
+	e.version = version
+	return nil
+}
+
+// applyToView folds a single operation into the cached view, segments and
+// add/remove sets.
+func (e *Engine) applyToView(o op.Op) {
+	switch e.strategy {
+	case strategy.LWW, strategy.FWW:
+		e.segments = strategy.CombineSegments(e.strategy, e.segments, strategy.Segments(e.strategy, []op.Op{o}))
+		e.view = strategy.ToIntervals(e.segments)
+	case strategy.AdditiveWins:
+		if o.Kind == op.KindAdd {
+			e.adds = interval.Union(e.adds, []interval.Interval{o.Interval})
+		} else {
+			e.removes = interval.Union(e.removes, []interval.Interval{o.Interval})
+		}
+		e.view = interval.Difference(e.adds, e.removes)
+	case strategy.GrowOnly:
+		if o.Kind == op.KindAdd {
+			e.adds = interval.Union(e.adds, []interval.Interval{o.Interval})
+			e.view = e.adds
+		}
+	}
+}
+
+// materializeAll rebuilds the view, segments and add/remove sets from the full
+// op set.
+func (e *Engine) materializeAll() {
+	ops := e.opsList()
+	switch e.strategy {
+	case strategy.LWW, strategy.FWW:
+		e.segments = strategy.Segments(e.strategy, ops)
+		e.view = strategy.ToIntervals(e.segments)
+	case strategy.AdditiveWins:
+		e.adds = intervalsOf(ops, op.KindAdd)
+		e.removes = intervalsOf(ops, op.KindRemove)
+		e.view = interval.Difference(e.adds, e.removes)
+	case strategy.GrowOnly:
+		e.adds = intervalsOf(ops, op.KindAdd)
+		e.view = e.adds
+	}
+}
+
+// intervalsOf returns the normalized intervals of the operations of one kind.
+func intervalsOf(ops []op.Op, kind op.Kind) []interval.Interval {
+	ivs := make([]interval.Interval, 0, len(ops))
+	for _, o := range ops {
+		if o.Kind == kind {
+			ivs = append(ivs, o.Interval)
+		}
+	}
+	return interval.Normalize(ivs)
+}
+
+// opsList returns the known operations sorted by ID.
+func (e *Engine) opsList() []op.Op {
+	out := make([]op.Op, 0, len(e.ops))
+	for _, o := range e.ops {
+		out = append(out, o)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func isDefined(s strategy.Strategy) bool {
+	return s == strategy.LWW || s == strategy.FWW ||
+		s == strategy.AdditiveWins || s == strategy.GrowOnly
+}

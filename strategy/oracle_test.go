@@ -40,12 +40,18 @@ type oracleEntry struct {
 func (e oracleEntry) Overlap(r biogo.Range) bool {
 	switch rv := r.(type) {
 	case oracleEntry:
-		return e.iv.Overlaps(rv.iv)
+		return closedOverlap(e.iv, rv.iv)
 	case *oracleMutable:
-		return e.iv.Overlaps(rv.iv)
+		return closedOverlap(e.iv, rv.iv)
 	default:
 		panic("oracle: unknown range type")
 	}
+}
+
+// closedOverlap is the value-only overlap used by biogo's internal range
+// pruning; the oracle filters the result with the exact bound-aware Overlaps.
+func closedOverlap(a, b interval.Interval) bool {
+	return a.Start <= b.End && b.Start <= a.End
 }
 
 func (e oracleEntry) Start() biogo.Comparable { return floatKey(e.iv.Start) }
@@ -87,12 +93,17 @@ func (s *oracleSet) delete(e oracleEntry) {
 	_ = s.tree.Delete(e, false)
 }
 
+// get returns the stored entries whose intervals overlap iv exactly. It
+// traverses the whole tree because the tree's range annotation is value-only.
 func (s *oracleSet) get(iv interval.Interval) []oracleEntry {
-	matches := s.tree.Get(oracleEntry{iv: iv})
-	out := make([]oracleEntry, 0, len(matches))
-	for _, m := range matches {
-		out = append(out, m.(oracleEntry))
-	}
+	var out []oracleEntry
+	s.tree.Do(func(e biogo.Interface) (done bool) {
+		entry := e.(oracleEntry)
+		if entry.iv.Overlaps(iv) {
+			out = append(out, entry)
+		}
+		return
+	})
 	return out
 }
 

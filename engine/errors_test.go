@@ -1,0 +1,146 @@
+package engine_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"gitub.com/d-led/eventfulranges/engine"
+	"gitub.com/d-led/eventfulranges/interval"
+	"gitub.com/d-led/eventfulranges/op"
+	"gitub.com/d-led/eventfulranges/store"
+	"gitub.com/d-led/eventfulranges/store/memory"
+	"gitub.com/d-led/eventfulranges/strategy"
+)
+
+// stubStore is an EventStore that injects errors on demand.
+type stubStore struct {
+	appendErr error
+	readErr   error
+	readErrOn int // 1-based Read call to fail on; 0 means every Read fails
+	loadErr   error
+	snapErr   error
+	loadData  []byte
+	loadVer   int64
+	hasLoad   bool
+	reads     int
+	ops       []op.Op
+}
+
+func (s *stubStore) Append(_ context.Context, _ int64, events []op.Op) error {
+	if s.appendErr != nil {
+		return s.appendErr
+	}
+	s.ops = append(s.ops, events...)
+	return nil
+}
+
+func (s *stubStore) Read(_ context.Context, from int64) ([]op.Op, int64, error) {
+	s.reads++
+	if s.readErr != nil && (s.readErrOn == 0 || s.reads == s.readErrOn) {
+		return nil, 0, s.readErr
+	}
+	if from < 0 {
+		from = 0
+	}
+	if from > int64(len(s.ops)) {
+		from = int64(len(s.ops))
+	}
+	return append([]op.Op(nil), s.ops[from:]...), int64(len(s.ops)), nil
+}
+
+func (s *stubStore) SaveSnapshot(_ context.Context, data []byte, version int64) error {
+	if s.snapErr != nil {
+		return s.snapErr
+	}
+	s.loadData = data
+	s.loadVer = version
+	s.hasLoad = true
+	return nil
+}
+
+func (s *stubStore) LoadSnapshot(_ context.Context) ([]byte, int64, error) {
+	if s.loadErr != nil {
+		return nil, 0, s.loadErr
+	}
+	if !s.hasLoad {
+		return nil, 0, store.ErrSnapshotNotFound
+	}
+	return s.loadData, s.loadVer, nil
+}
+
+func validAdd(id string) op.Op {
+	return op.Op{ID: id, Kind: op.KindAdd, Interval: interval.Interval{Start: 1, End: 2}}
+}
+
+func TestApplyNonConflictError(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{appendErr: errors.New("boom")}
+	e, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.NoError(t, err)
+	require.ErrorContains(t, e.Apply(context.Background(), validAdd("a")), "boom")
+}
+
+func TestApplyConflictExhausted(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{appendErr: store.ErrVersionConflict}
+	e, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.NoError(t, err)
+	require.ErrorIs(t, e.Apply(context.Background(), validAdd("a")), store.ErrVersionConflict)
+}
+
+func TestCatchUpReadError(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{appendErr: store.ErrVersionConflict, readErr: errors.New("read boom"), readErrOn: 2}
+	e, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.NoError(t, err)
+	require.ErrorContains(t, e.Apply(context.Background(), validAdd("a")), "read boom")
+}
+
+func TestSnapshotError(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{snapErr: errors.New("snap boom")}
+	e, err := engine.Open(context.Background(), st, strategy.LWW, engine.WithSnapshotEvery(1))
+	require.NoError(t, err)
+	require.ErrorContains(t, e.Apply(context.Background(), validAdd("a")), "snap boom")
+}
+
+func TestOpenLoadError(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{loadErr: errors.New("load boom")}
+	_, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.ErrorContains(t, err, "load boom")
+}
+
+func TestOpenReadError(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{readErr: errors.New("read boom")}
+	_, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.ErrorContains(t, err, "read boom")
+}
+
+func TestOpenCorruptSnapshotData(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{hasLoad: true, loadData: []byte("not json")}
+	_, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.Error(t, err)
+}
+
+func TestReopenWithoutSnapshotReplaysLog(t *testing.T) {
+	t.Parallel()
+	st := memory.New()
+	ctx := context.Background()
+	e, err := engine.Open(ctx, st, strategy.AdditiveWins)
+	require.NoError(t, err)
+	require.NoError(t, e.ApplyAll(ctx, []op.Op{
+		{ID: "a", Kind: op.KindAdd, Interval: interval.Interval{Start: 1, End: 2}},
+		{ID: "b", Kind: op.KindAdd, Interval: interval.Interval{Start: 3, End: 4}},
+		{ID: "c", Kind: op.KindRemove, Interval: interval.Interval{Start: 5, End: 6}},
+	}))
+
+	reopened, err := engine.Open(ctx, st, strategy.AdditiveWins)
+	require.NoError(t, err)
+	require.Equal(t, e.Materialize(), reopened.Materialize())
+}
