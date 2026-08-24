@@ -1,4 +1,3 @@
-package kurrent
 //go:build kurrent
 
 // Package kurrent implements an EventStore backed by KurrentDB.

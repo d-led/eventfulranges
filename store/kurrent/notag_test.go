@@ -1,4 +1,3 @@
-package kurrent
 //go:build !kurrent
 
 package kurrent

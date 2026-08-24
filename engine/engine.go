@@ -41,7 +41,7 @@ func WithSnapshotEvery(n int) Option {
 // append-only event log.
 type Engine struct {
 	mu            sync.RWMutex
-	store         store.EventStore
+	store         store.Log
 	strategy      strategy.Strategy
 	clock         clock.Clock
 	snapshotEvery int
@@ -57,7 +57,7 @@ type Engine struct {
 
 // Open loads an existing log (and snapshot, when compatible) and returns a
 // ready engine.
-func Open(ctx context.Context, st store.EventStore, s strategy.Strategy, opts ...Option) (*Engine, error) {
+func Open(ctx context.Context, st store.Log, s strategy.Strategy, opts ...Option) (*Engine, error) {
 	if !isDefined(s) {
 		return nil, fmt.Errorf("engine: %w", strategy.ErrUnknownStrategy)
 	}

@@ -74,8 +74,13 @@ func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 	}
 }
 
-// snapshot writes the current view and version to the store.
+// snapshot writes the current view and version to the store. Backends without
+// snapshot support skip it.
 func (e *Engine) snapshot(ctx context.Context) error {
+	sn, ok := e.store.(store.Snapshotter)
+	if !ok {
+		return nil
+	}
 	snap := Snapshot{
 		Strategy:  e.strategy,
 		Version:   e.version,
@@ -90,7 +95,7 @@ func (e *Engine) snapshot(ctx context.Context) error {
 	}
 	// The strategy is validated at Open, so Marshal cannot fail.
 	data, _ := json.Marshal(snap)
-	if err := e.store.SaveSnapshot(ctx, data, e.version); err != nil {
+	if err := sn.SaveSnapshot(ctx, data, e.version); err != nil {
 		return err
 	}
 	e.since = 0
@@ -99,7 +104,11 @@ func (e *Engine) snapshot(ctx context.Context) error {
 
 // loadSnapshot reads and decodes the latest snapshot, if any.
 func (e *Engine) loadSnapshot(ctx context.Context) (*Snapshot, error) {
-	data, version, err := e.store.LoadSnapshot(ctx)
+	sn, ok := e.store.(store.Snapshotter)
+	if !ok {
+		return nil, store.ErrSnapshotNotFound
+	}
+	data, version, err := sn.LoadSnapshot(ctx)
 	if errors.Is(err, store.ErrSnapshotNotFound) {
 		return nil, store.ErrSnapshotNotFound
 	}

@@ -1,4 +1,3 @@
-package main
 // Command kurrent demonstrates the same convergence, but with the event log
 // stored in KurrentDB instead of a local file. Build and run it with the
 // kurrent tag after starting the database (scripts/kurrent-up.sh).
