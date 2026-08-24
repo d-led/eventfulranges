@@ -272,3 +272,12 @@ dist
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/go,goland+all,visualstudiocode,node
+
+# eventfulranges build artifacts and reports
+build/
+demo/*/data/
+demo/*/*.jsonl
+demo/*/*.snapshot.json
+
+# rapid failure reproductions
+testdata/rapid/

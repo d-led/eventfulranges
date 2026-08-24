@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.13.1
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Quality gate
+        run: ./scripts/quality-gate.sh
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: build/coverage.out
+          fail_ci_if_error: false
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: reports
+          path: |
+            build/coverage.out
+            build/reports/
+          if-no-files-found: ignore
+
+  kurrent-itest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Start KurrentDB
+        run: ./scripts/kurrent-up.sh
+      - name: Integration tests
+        run: ./scripts/itest-kurrent.sh
+      - name: Stop KurrentDB
+        if: always()
+        run: ./scripts/kurrent-down.sh
+
+  demos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Local demo
+        run: ./scripts/demo-local.sh
+      - name: Network demo
+        run: ./scripts/demo-network.sh

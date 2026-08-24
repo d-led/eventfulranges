@@ -1,0 +1,52 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - dupl
+    - errcheck
+    - errorlint
+    - funlen
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - nilnil
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+    - usestdlibvars
+
+  settings:
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 80
+      statements: 50
+    gocognit:
+      min-complexity: 12
+    gocyclo:
+      min-complexity: 10
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: exported
+
+  exclusions:
+    generated: lax
+
+formatters:
+  enable:
+    - gofumpt
