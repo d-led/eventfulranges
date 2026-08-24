@@ -19,9 +19,11 @@ fi
 
 mkdir -p build/reports
 # Note: gremlins mutates the module in the current directory; passing a
-# package pattern here makes it find nothing.
+# package pattern here makes it find nothing. The demo programs are
+# illustrations, not library code, so they are excluded from mutation.
 gremlins unleash \
   --threshold-efficacy 0.8 \
   --threshold-mcover 0.8 \
   --timeout-coefficient 30 \
+  --exclude-files '^demo/' \
   --output build/reports/gremlins.json

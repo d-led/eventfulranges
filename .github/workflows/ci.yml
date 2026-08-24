@@ -72,6 +72,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Hello demo
+        run: ./scripts/demo-hello.sh
       - name: Local demo
         run: ./scripts/demo-local.sh
       - name: Network demo
