@@ -129,7 +129,6 @@ func TestLamportClockStamps(t *testing.T) {
 func TestSnapshotRestore(t *testing.T) {
 	t.Parallel()
 	for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly} {
-		s := s
 		t.Run(s.String(), func(t *testing.T) {
 			t.Parallel()
 			st := memory.New()
@@ -186,7 +185,6 @@ func TestSnapshotIgnoredForDifferentStrategy(t *testing.T) {
 func TestConvergence(t *testing.T) {
 	t.Parallel()
 	for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly} {
-		s := s
 		t.Run(s.String(), func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()

@@ -132,47 +132,68 @@ func (e *Engine) Snapshot(ctx context.Context) error {
 }
 
 func (e *Engine) apply(ctx context.Context, ops []op.Op) error {
-	for i := range ops {
-		if err := ops[i].Validate(); err != nil {
-			return fmt.Errorf("engine: op %q: %w", ops[i].ID, err)
-		}
+	if err := validateOps(ops); err != nil {
+		return err
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.applyLocked(ctx, ops)
+}
+
+// applyLocked retries appends that conflict with concurrent writers.
+func (e *Engine) applyLocked(ctx context.Context, ops []op.Op) error {
 	for attempt := 0; ; attempt++ {
 		fresh := e.unseen(ops)
 		if len(fresh) == 0 {
 			return nil
 		}
-		for i := range fresh {
-			if fresh[i].TS == 0 {
-				fresh[i].TS = e.clock.Tick()
-			}
-		}
+		e.stamp(fresh)
 		err := e.store.Append(ctx, e.version, fresh)
-		switch {
-		case errors.Is(err, store.ErrVersionConflict) && attempt < 3:
+		if err != nil {
+			if !errors.Is(err, store.ErrVersionConflict) || attempt >= 3 {
+				return err
+			}
 			if cerr := e.catchUp(ctx); cerr != nil {
 				return cerr
 			}
-		case err != nil:
-			return err
-		default:
-			for _, o := range fresh {
-				e.clock.Observe(o.TS)
-				e.ops[o.ID] = o
-				e.applyToView(o)
-			}
-			e.version += int64(len(fresh))
-			e.since += len(fresh)
-			if e.snapshotEvery > 0 && e.since >= e.snapshotEvery {
-				if err := e.snapshot(ctx); err != nil {
-					return err
-				}
-			}
-			return nil
+			continue
+		}
+		return e.fold(ctx, fresh)
+	}
+}
+
+// stamp assigns timestamps to operations that do not carry one yet.
+func (e *Engine) stamp(fresh []op.Op) {
+	for i := range fresh {
+		if fresh[i].TS == 0 {
+			fresh[i].TS = e.clock.Tick()
 		}
 	}
+}
+
+// fold records the appended operations in the local state.
+func (e *Engine) fold(ctx context.Context, fresh []op.Op) error {
+	for _, o := range fresh {
+		e.clock.Observe(o.TS)
+		e.ops[o.ID] = o
+		e.applyToView(o)
+	}
+	e.version += int64(len(fresh))
+	e.since += len(fresh)
+	if e.snapshotEvery > 0 && e.since >= e.snapshotEvery {
+		return e.snapshot(ctx)
+	}
+	return nil
+}
+
+// validateOps reports the first operation that is not well-formed.
+func validateOps(ops []op.Op) error {
+	for i := range ops {
+		if err := ops[i].Validate(); err != nil {
+			return fmt.Errorf("engine: op %q: %w", ops[i].ID, err)
+		}
+	}
+	return nil
 }
 
 // unseen returns the operations whose IDs are not yet known.

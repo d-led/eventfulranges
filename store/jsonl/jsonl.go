@@ -57,7 +57,7 @@ func (s *Store) Append(_ context.Context, expectedVersion int64, events []op.Op)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	appendLines := s.appendLines
 	if appendLines == nil {
 		appendLines = s.appendEvents
@@ -91,7 +91,7 @@ func (s *Store) Read(_ context.Context, fromVersion int64) ([]op.Op, int64, erro
 	if err != nil {
 		return nil, 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	var (
 		out     []op.Op
 		version int64

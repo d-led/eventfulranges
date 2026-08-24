@@ -15,7 +15,7 @@ func Example() {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	rs, err := eventfulranges.Open(ctx, dir, strategy.LWW)
 	if err != nil {

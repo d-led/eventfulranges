@@ -125,16 +125,6 @@ func additiveMember(ops []op.Op, x float64) bool {
 	return added && !removed
 }
 
-// growMember reports membership under the grow-only oracle.
-func growMember(ops []op.Op, x float64) bool {
-	for _, o := range ops {
-		if o.Kind == op.KindAdd && o.Interval.Contains(x) {
-			return true
-		}
-	}
-	return false
-}
-
 func later(a, b op.Op) bool {
 	if a.TS != b.TS {
 		return a.TS > b.TS

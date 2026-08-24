@@ -25,7 +25,7 @@ type Snapshot struct {
 // log to rebuild the in-memory state.
 func (e *Engine) reload(ctx context.Context) error {
 	snap, err := e.loadSnapshot(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrSnapshotNotFound) {
 		return err
 	}
 	from := int64(0)
@@ -101,7 +101,7 @@ func (e *Engine) snapshot(ctx context.Context) error {
 func (e *Engine) loadSnapshot(ctx context.Context) (*Snapshot, error) {
 	data, version, err := e.store.LoadSnapshot(ctx)
 	if errors.Is(err, store.ErrSnapshotNotFound) {
-		return nil, nil
+		return nil, store.ErrSnapshotNotFound
 	}
 	if err != nil {
 		return nil, err

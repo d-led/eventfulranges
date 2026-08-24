@@ -394,7 +394,7 @@ func TestNormalize(t *testing.T) {
 			want: []interval.Interval{gridInterval(1, 3, interval.Closed, interval.Closed)},
 		},
 		{
-			name: "point merges with neighbour",
+			name: "point merges with neighbor",
 			in: []interval.Interval{
 				gridInterval(2, 2, interval.Closed, interval.Closed),
 				gridInterval(2, 3, interval.Closed, interval.Closed),

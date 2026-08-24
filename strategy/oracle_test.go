@@ -70,6 +70,7 @@ func (m *oracleMutable) End() biogo.Comparable   { return floatKey(m.iv.End) }
 func (m *oracleMutable) SetStart(c biogo.Comparable) {
 	m.iv.Start = float64(c.(floatKey))
 }
+
 func (m *oracleMutable) SetEnd(c biogo.Comparable) {
 	m.iv.End = float64(c.(floatKey))
 }
@@ -102,7 +103,7 @@ func (s *oracleSet) get(iv interval.Interval) []oracleEntry {
 		if entry.iv.Overlaps(iv) {
 			out = append(out, entry)
 		}
-		return
+		return done
 	})
 	return out
 }
@@ -131,7 +132,7 @@ func (s *oracleSet) ranges() []interval.Interval {
 	out := make([]interval.Interval, 0, s.tree.Len())
 	s.tree.Do(func(e biogo.Interface) (done bool) {
 		out = append(out, e.(oracleEntry).iv)
-		return
+		return done
 	})
 	return out
 }
@@ -150,28 +151,38 @@ func newOracle(s strategy.Strategy) *oracle {
 func (o *oracle) applyAll(ops []op.Op) {
 	switch o.strategy {
 	case strategy.LWW:
-		for _, p := range priorityOrder(ops, false) {
-			o.applyPriority(p)
-		}
+		o.applyPriorityAll(ops, false)
 	case strategy.FWW:
-		for _, p := range priorityOrder(ops, true) {
-			o.applyPriority(p)
-		}
+		o.applyPriorityAll(ops, true)
 	case strategy.AdditiveWins:
-		for _, p := range ops {
-			if p.Kind == op.KindAdd {
-				o.result.addUnion(p.Interval)
-			}
-		}
-		for _, p := range ops {
-			if p.Kind == op.KindRemove {
-				o.result.remove(p.Interval)
-			}
-		}
+		o.applyAdditiveAll(ops)
 	case strategy.GrowOnly:
-		for _, p := range ops {
-			o.applyGrow(p)
+		o.applyGrowAll(ops)
+	}
+}
+
+func (o *oracle) applyPriorityAll(ops []op.Op, ascending bool) {
+	for _, p := range priorityOrder(ops, ascending) {
+		o.applyPriority(p)
+	}
+}
+
+func (o *oracle) applyAdditiveAll(ops []op.Op) {
+	for _, p := range ops {
+		if p.Kind == op.KindAdd {
+			o.result.addUnion(p.Interval)
 		}
+	}
+	for _, p := range ops {
+		if p.Kind == op.KindRemove {
+			o.result.remove(p.Interval)
+		}
+	}
+}
+
+func (o *oracle) applyGrowAll(ops []op.Op) {
+	for _, p := range ops {
+		o.applyGrow(p)
 	}
 }
 

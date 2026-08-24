@@ -99,7 +99,7 @@ func TestAppendEventsWriteError(t *testing.T) {
 	reader, writer, err := os.Pipe()
 	require.NoError(t, err)
 	require.NoError(t, reader.Close())
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	s := &Store{}
 	require.Error(t, s.appendEvents(writer, []op.Op{testOp("a")}))
