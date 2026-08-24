@@ -54,6 +54,26 @@ func TestOpenStore(t *testing.T) {
 	require.Len(t, rs.Ranges(), 1)
 }
 
+func TestApplyAllForAntiEntropy(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	a, err := eventfulranges.OpenStore(ctx, memory.New(), strategy.LWW)
+	require.NoError(t, err)
+	b, err := eventfulranges.OpenStore(ctx, memory.New(), strategy.LWW)
+	require.NoError(t, err)
+
+	_, err = a.Add(ctx, 1, 4)
+	require.NoError(t, err)
+	_, err = b.Remove(ctx, 2, 3)
+	require.NoError(t, err)
+
+	// Exchange ops like two replicas doing anti-entropy.
+	require.NoError(t, a.ApplyAll(ctx, b.Ops()))
+	require.NoError(t, b.ApplyAll(ctx, a.Ops()))
+
+	require.Equal(t, a.Ranges(), b.Ranges(), "replicas must converge")
+}
+
 func TestOpenInvalidStrategy(t *testing.T) {
 	t.Parallel()
 	_, err := eventfulranges.Open(context.Background(), t.TempDir(), strategy.Strategy(99))

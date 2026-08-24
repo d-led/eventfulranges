@@ -26,8 +26,9 @@ func genValidInterval(t *rapid.T) *rapid.Generator[interval.Interval] {
 	return rapid.Custom(func(t *rapid.T) interval.Interval {
 		start := rapid.IntRange(-3, 3).Draw(t, "start")
 		end := rapid.IntRange(start, 3).Draw(t, "end")
-		sb := rapid.SampledFrom([]interval.Bound{interval.Closed, interval.Open}).Draw(t, "sb")
-		eb := rapid.SampledFrom([]interval.Bound{interval.Closed, interval.Open}).Draw(t, "eb")
+		sbName := rapid.SampledFrom([]string{"closed", "open"}).Draw(t, "sb")
+		ebName := rapid.SampledFrom([]string{"closed", "open"}).Draw(t, "eb")
+		sb, eb := boundByName(sbName), boundByName(ebName)
 		if start == end {
 			sb, eb = interval.Closed, interval.Closed
 		}
@@ -38,6 +39,14 @@ func genValidInterval(t *rapid.T) *rapid.Generator[interval.Interval] {
 			EndBound:   eb,
 		}
 	})
+}
+
+// boundByName maps a readable bound name to its value.
+func boundByName(name string) interval.Bound {
+	if name == "open" {
+		return interval.Open
+	}
+	return interval.Closed
 }
 
 // samplePoints returns grid points and midpoints covering every open segment.

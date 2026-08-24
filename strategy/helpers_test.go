@@ -33,18 +33,34 @@ func genOpList(t *rapid.T) []op.Op {
 	for i := range ops {
 		start := rapid.IntRange(-3, 3).Draw(t, "start")
 		end := rapid.IntRange(start, 3).Draw(t, "end")
-		sb := rapid.SampledFrom([]interval.Bound{interval.Closed, interval.Open}).Draw(t, "sb")
-		eb := rapid.SampledFrom([]interval.Bound{interval.Closed, interval.Open}).Draw(t, "eb")
-		kind := rapid.SampledFrom([]op.Kind{op.KindAdd, op.KindRemove}).Draw(t, "kind")
+		sbName := rapid.SampledFrom([]string{"closed", "open"}).Draw(t, "sb")
+		ebName := rapid.SampledFrom([]string{"closed", "open"}).Draw(t, "eb")
+		kindName := rapid.SampledFrom([]string{"add", "remove"}).Draw(t, "kind")
 		ts := rapid.IntRange(0, 4).Draw(t, "ts")
 		ops[i] = op.Op{
 			ID:       strconv.Itoa(i),
-			Kind:     kind,
+			Kind:     kindByName(kindName),
 			TS:       int64(ts),
-			Interval: iv(start, end, sb, eb),
+			Interval: iv(start, end, boundByName(sbName), boundByName(ebName)),
 		}
 	}
 	return ops
+}
+
+// boundByName maps a readable bound name to its value.
+func boundByName(name string) interval.Bound {
+	if name == "open" {
+		return interval.Open
+	}
+	return interval.Closed
+}
+
+// kindByName maps a readable kind name to its value.
+func kindByName(name string) op.Kind {
+	if name == "remove" {
+		return op.KindRemove
+	}
+	return op.KindAdd
 }
 
 // opsFromBytes derives ops with unique ids deterministically.

@@ -60,6 +60,13 @@ func (r *RangeSet) Apply(ctx context.Context, o op.Op) error {
 	return r.engine.Apply(ctx, o)
 }
 
+// ApplyAll applies a batch of operations, ignoring duplicates by ID. It is the
+// workhorse of anti-entropy: a replica can hand another replica's Ops() result
+// straight back to ApplyAll.
+func (r *RangeSet) ApplyAll(ctx context.Context, ops []op.Op) error {
+	return r.engine.ApplyAll(ctx, ops)
+}
+
 // Add applies a closed addition [start, end] and returns the applied op.
 func (r *RangeSet) Add(ctx context.Context, start, end float64) (op.Op, error) {
 	o := op.Add(start, end)

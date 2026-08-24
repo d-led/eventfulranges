@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # Mutation testing with gremlins. Fails if the mutant kill rate drops below 80%.
+#
+# --timeout-coefficient 30: the default (3x the baseline test time) is too
+# short once property tests are in the suite, which makes every mutant "time
+# out" and hides the real signal. 30x gives mutants enough time to actually
+# run, so KILLED/LIVED counts are meaningful.
+#
+# The gate still passes with a small number of equivalent mutants alive
+# (capacity-hint arithmetic and strict comparisons guarded by !=), so the
+# efficacy threshold is the quality bar rather than demanding 100%.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -9,4 +18,10 @@ if ! command -v gremlins >/dev/null 2>&1; then
 fi
 
 mkdir -p build/reports
-gremlins unleash --threshold-efficacy 0.8 --output build/reports/gremlins.json ./...
+# Note: gremlins mutates the module in the current directory; passing a
+# package pattern here makes it find nothing.
+gremlins unleash \
+  --threshold-efficacy 0.8 \
+  --threshold-mcover 0.8 \
+  --timeout-coefficient 30 \
+  --output build/reports/gremlins.json

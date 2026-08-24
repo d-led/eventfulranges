@@ -5,10 +5,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mkdir -p build/rapid
+failfile="$(pwd)/build/rapid/fail"
+
 for pkg in $(go list ./...); do
   dir=$(go list -f '{{.Dir}}' "$pkg")
-  if grep -Rqs --include='*_test.go' 'func TestProperty' "$dir"; then
+  if grep -qs -- 'func TestProperty' "$dir"/*_test.go 2>/dev/null; then
     echo "property testing $pkg"
-    go test -race -count=1 -run 'TestProperty' -rapid.checks=1000 -rapid.failfile=build/rapid/fail "$pkg"
+    # Custom -rapid.* flags belong to the test binary and must follow the
+    # package argument, otherwise `go test` forwards them incorrectly.
+    go test -race -count=1 -run 'TestProperty' "$pkg" -rapid.checks=1000 -rapid.failfile="$failfile"
   fi
 done
