@@ -1,0 +1,232 @@
+package kurrent
+//go:build kurrent
+
+// Package kurrent implements an EventStore backed by KurrentDB.
+package kurrent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+
+	"github.com/EventStore/EventStore-Client-Go/v4/esdb"
+	"github.com/gofrs/uuid"
+
+	"gitub.com/d-led/eventfulranges/op"
+	"gitub.com/d-led/eventfulranges/store"
+)
+
+var (
+	// opsStream holds the operation log.
+	opsStream = "eventfulranges-ops"
+	// snapshotStream holds the latest materialized snapshot.
+	snapshotStream = "eventfulranges-snapshot"
+
+	// errWrongVersion and errStreamNotFound are the only errors the store
+	// inspects. The esdb adapter maps them from KurrentDB error codes, and the
+	// test double returns them directly.
+	errWrongVersion  = errors.New("kurrent: wrong expected version")
+	errStreamNotFound = errors.New("kurrent: stream not found")
+)
+
+// reader is the subset of *esdb.ReadStream used by the store.
+type reader interface {
+	Recv() (*esdb.ResolvedEvent, error)
+	Close()
+}
+
+// client is the subset of KurrentDB operations the store needs, so the store
+// logic can be unit-tested without a server.
+type client interface {
+	AppendToStream(ctx context.Context, streamID string, opts esdb.AppendToStreamOptions, events ...esdb.EventData) (*esdb.WriteResult, error)
+	ReadStream(ctx context.Context, streamID string, opts esdb.ReadStreamOptions, count uint64) (reader, error)
+	Close() error
+}
+
+// esdbClient adapts the concrete *esdb.Client to the client interface,
+// translating KurrentDB error codes into the store's sentinels.
+type esdbClient struct {
+	c *esdb.Client
+}
+
+func (e *esdbClient) AppendToStream(ctx context.Context, streamID string, opts esdb.AppendToStreamOptions, events ...esdb.EventData) (*esdb.WriteResult, error) {
+	res, err := e.c.AppendToStream(ctx, streamID, opts, events...)
+	return res, translateError(err)
+}
+
+func (e *esdbClient) ReadStream(ctx context.Context, streamID string, opts esdb.ReadStreamOptions, count uint64) (reader, error) {
+	r, err := e.c.ReadStream(ctx, streamID, opts, count)
+	if err != nil {
+		return nil, translateError(err)
+	}
+	return r, nil
+}
+
+func (e *esdbClient) Close() error {
+	return e.c.Close()
+}
+
+func translateError(err error) error {
+	esdbErr, ok := esdb.FromError(err)
+	if !ok {
+		return err
+	}
+	switch esdbErr.Code() {
+	case esdb.ErrorCodeWrongExpectedVersion:
+		return errWrongVersion
+	case esdb.ErrorCodeResourceNotFound:
+		return errStreamNotFound
+	default:
+		return err
+	}
+}
+
+// Store is an event log backed by KurrentDB. It satisfies store.EventStore.
+type Store struct {
+	client client
+}
+
+// Open connects to KurrentDB at the given connection string, for example
+// "kurrentdb://localhost:2113?tls=false".
+func Open(connectionString string) (*Store, error) {
+	config, err := esdb.ParseConnectionString(connectionString)
+	if err != nil {
+		return nil, err
+	}
+	c, err := esdb.NewClient(config)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{client: &esdbClient{c: c}}, nil
+}
+
+// Close releases the underlying connection.
+func (s *Store) Close() error {
+	return s.client.Close()
+}
+
+// Append atomically appends the events at the given expected log length. It
+// returns store.ErrVersionConflict if another writer appended first.
+func (s *Store) Append(ctx context.Context, expectedVersion int64, events []op.Op) error {
+	data := make([]esdb.EventData, 0, len(events))
+	for _, e := range events {
+		payload, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		data = append(data, esdb.EventData{
+			EventID:     uuid.Must(uuid.NewV4()),
+			EventType:   "range-op",
+			ContentType: esdb.ContentTypeJson,
+			Data:        payload,
+		})
+	}
+	_, err := s.client.AppendToStream(ctx, opsStream, esdb.AppendToStreamOptions{
+		ExpectedRevision: expectedRevision(expectedVersion),
+	}, data...)
+	if errors.Is(err, errWrongVersion) {
+		return store.ErrVersionConflict
+	}
+	return err
+}
+
+// Read returns the operations at positions >= fromVersion and the new log
+// length.
+func (s *Store) Read(ctx context.Context, fromVersion int64) ([]op.Op, int64, error) {
+	stream, err := s.client.ReadStream(ctx, opsStream, esdb.ReadStreamOptions{
+		Direction: esdb.Forwards,
+		From:      esdb.Revision(uint64(max(fromVersion, 0))),
+	}, ^uint64(0))
+	if err != nil {
+		if errors.Is(err, errStreamNotFound) {
+			return nil, 0, nil
+		}
+		return nil, 0, err
+	}
+	defer stream.Close()
+
+	var (
+		ops     []op.Op
+		version = fromVersion
+	)
+	for {
+		ev, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		rec := ev.OriginalEvent()
+		var o op.Op
+		if err := json.Unmarshal(rec.Data, &o); err != nil {
+			return nil, 0, err
+		}
+		ops = append(ops, o)
+		version = int64(rec.EventNumber) + 1
+	}
+	return ops, version, nil
+}
+
+// snapshotMeta is stored as the event metadata of a snapshot event.
+type snapshotMeta struct {
+	Version int64 `json:"version"`
+}
+
+// SaveSnapshot stores a materialized snapshot at the given version.
+func (s *Store) SaveSnapshot(ctx context.Context, data []byte, version int64) error {
+	meta, err := json.Marshal(snapshotMeta{Version: version})
+	if err != nil {
+		return err
+	}
+	_, err = s.client.AppendToStream(ctx, snapshotStream, esdb.AppendToStreamOptions{
+		ExpectedRevision: esdb.Any{},
+	}, esdb.EventData{
+		EventID:     uuid.Must(uuid.NewV4()),
+		EventType:   "snapshot",
+		ContentType: esdb.ContentTypeJson,
+		Data:        data,
+		Metadata:    meta,
+	})
+	return err
+}
+
+// LoadSnapshot returns the latest snapshot and its version, or
+// store.ErrSnapshotNotFound when none exists.
+func (s *Store) LoadSnapshot(ctx context.Context) ([]byte, int64, error) {
+	stream, err := s.client.ReadStream(ctx, snapshotStream, esdb.ReadStreamOptions{
+		Direction: esdb.Backwards,
+		From:      esdb.End{},
+	}, 1)
+	if err != nil {
+		if errors.Is(err, errStreamNotFound) {
+			return nil, 0, store.ErrSnapshotNotFound
+		}
+		return nil, 0, err
+	}
+	defer stream.Close()
+
+	ev, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return nil, 0, store.ErrSnapshotNotFound
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	rec := ev.OriginalEvent()
+	var meta snapshotMeta
+	if err := json.Unmarshal(rec.UserMetadata, &meta); err != nil {
+		return nil, 0, err
+	}
+	return rec.Data, meta.Version, nil
+}
+
+// expectedRevision maps our log-length version onto KurrentDB revisions,
+// which are zero-based.
+func expectedRevision(version int64) esdb.ExpectedRevision {
+	if version == 0 {
+		return esdb.NoStream{}
+	}
+	return esdb.Revision(uint64(version - 1))
+}

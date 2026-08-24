@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+export KURRENTDB_CONNECTION="${KURRENTDB_CONNECTION:-kurrentdb://localhost:2113?tls=false}"
+
 cd demo/kurrent
-go test -race -count=1 ./...
-go run .
+go test -tags kurrent -race -count=1 ./...
+go run -tags kurrent .

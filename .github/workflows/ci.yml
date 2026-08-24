@@ -60,6 +60,8 @@ jobs:
         run: ./scripts/kurrent-up.sh
       - name: Integration tests
         run: ./scripts/itest-kurrent.sh
+      - name: Kurrent demo
+        run: ./scripts/demo-kurrent.sh
       - name: Stop KurrentDB
         if: always()
         run: ./scripts/kurrent-down.sh
