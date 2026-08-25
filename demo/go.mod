@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/cskr/pubsub/v2 v2.0.2
-	github.com/d-led/eventfulranges v0.0.0
+	github.com/d-led/eventfulranges v0.0.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/patrickmn/go-cache v2.1.0+incompatible
