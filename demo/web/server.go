@@ -136,27 +136,38 @@ func readClientOps(conn *websocket.Conn, h *hub, clientID string, done chan<- st
 // client until the socket closes.
 func writeUpdates(conn *websocket.Conn, updates, presence <-chan serverMsg, failures <-chan error, done <-chan struct{}) {
 	for {
-		select {
-		case <-done:
+		if !forward(conn, updates, presence, failures, done) {
 			return
-		case msg, ok := <-updates:
-			if !ok {
-				return
-			}
-			if conn.WriteJSON(msg) != nil {
-				return
-			}
-		case msg, ok := <-presence:
-			if !ok {
-				return
-			}
-			if conn.WriteJSON(msg) != nil {
-				return
-			}
-		case err := <-failures:
-			if conn.WriteJSON(serverMsg{Type: msgError, Error: err.Error()}) != nil {
-				return
-			}
 		}
 	}
+}
+
+// forward sends the next event, presence notice, fold error, or shutdown
+// signal to the socket, reporting whether writeUpdates should keep going.
+func forward(conn *websocket.Conn, updates, presence <-chan serverMsg, failures <-chan error, done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return false
+	case msg, ok := <-updates:
+		return writeMsg(conn, msg, ok)
+	case msg, ok := <-presence:
+		return writeMsg(conn, msg, ok)
+	case err := <-failures:
+		return writeErr(conn, err)
+	}
+}
+
+// writeMsg writes one broadcast envelope, reporting false when the source
+// channel closed or the socket rejected the write.
+func writeMsg(conn *websocket.Conn, msg serverMsg, ok bool) bool {
+	if !ok {
+		return false
+	}
+	return conn.WriteJSON(msg) == nil
+}
+
+// writeErr writes one fold error as an error envelope, reporting false when
+// the socket rejected the write.
+func writeErr(conn *websocket.Conn, err error) bool {
+	return conn.WriteJSON(serverMsg{Type: msgError, Error: err.Error()}) == nil
 }
