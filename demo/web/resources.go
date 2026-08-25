@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 )
 
 const dist = "dist"
@@ -25,5 +27,15 @@ func GetFS() http.FileSystem {
 		}
 		return http.FS(sub)
 	}
-	return http.FS(os.DirFS(dist))
+	return http.FS(os.DirFS(distDir()))
+}
+
+// distDir resolves the dist directory relative to this source file, so the
+// server works no matter which directory it is started from.
+func distDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return dist
+	}
+	return filepath.Join(filepath.Dir(file), dist)
 }

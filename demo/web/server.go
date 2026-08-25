@@ -17,33 +17,57 @@ type clientOp struct {
 
 // serverMsg is the envelope the server sends back over the socket.
 type serverMsg struct {
-	Type  string `json:"type"` // "state" or "error"
-	State *view  `json:"state,omitempty"`
-	Error string `json:"error,omitempty"`
+	Type     string     `json:"type"` // "state" | "op" | "presence" | "error"
+	State    *view      `json:"state,omitempty"`
+	Op       *opRecord  `json:"op,omitempty"`
+	Ops      []opRecord `json:"ops,omitempty"` // the full log, sent on join
+	Clients  int        `json:"clients,omitempty"`
+	ClientID string     `json:"clientID,omitempty"`
+	Error    string     `json:"error,omitempty"`
 }
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
-func newRouter(h *hub, fs http.FileSystem) *gin.Engine {
+func newRouter(s *sessions, fs http.FileSystem) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
-	r.StaticFS("/ui/", fs)
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/ui/")
 	})
+
+	// A bare /ui/ visit has no session yet: mint one and redirect to the
+	// shareable URL so every collaborator who opens it joins the same model.
+	r.Use(func(c *gin.Context) {
+		if c.Request.URL.Path == "/ui/" && c.Query("s") == "" {
+			c.Redirect(http.StatusFound, "/ui/?s="+newSessionID())
+			c.Abort()
+			return
+		}
+		c.Next()
+	})
+
+	r.StaticFS("/ui/", fs)
 	r.GET("/ws", func(c *gin.Context) {
-		handleWS(c, h)
+		handleWS(c, s)
 	})
 	return r
 }
 
-// handleWS keeps one browser in sync with the shared view: a reader goroutine
-// folds this client's operations while the handler writes every broadcast
-// state back to the socket.
-func handleWS(c *gin.Context, h *hub) {
+// handleWS keeps one browser in sync with the session's shared view: a reader
+// goroutine folds this client's operations while the handler writes every
+// broadcast event back to the socket.
+func handleWS(c *gin.Context, s *sessions) {
+	id := c.Query("s")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing session id"})
+		return
+	}
+	h := s.model(id)
+	clientID := newClientID()
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("websocket upgrade: %v", err)
@@ -54,45 +78,48 @@ func handleWS(c *gin.Context, h *hub) {
 	updates := h.subscribe()
 	defer h.unsubscribe(updates)
 
-	// A late joiner catches up immediately.
+	log, clients := h.join()
+	defer h.leave()
+
+	// A late joiner catches up with the view, the watcher count, and the log.
 	snap := h.snapshot()
-	if err := conn.WriteJSON(serverMsg{Type: "state", State: &snap}); err != nil {
+	if err := conn.WriteJSON(serverMsg{Type: "state", State: &snap, ClientID: clientID, Clients: clients, Ops: log}); err != nil {
 		return
 	}
 
 	done := make(chan struct{})
 	failures := make(chan error, 8)
-	go readClientOps(conn, h, done, failures)
+	go readClientOps(conn, h, clientID, done, failures)
 	writeUpdates(conn, updates, failures, done)
 }
 
 // readClientOps folds the operations this client contributes until the socket
-// closes.
-func readClientOps(conn *websocket.Conn, h *hub, done chan<- struct{}, failures chan<- error) {
+// closes, attributing each one to the client's identity.
+func readClientOps(conn *websocket.Conn, h *hub, clientID string, done chan<- struct{}, failures chan<- error) {
 	defer close(done)
 	for {
 		var op clientOp
 		if err := conn.ReadJSON(&op); err != nil {
 			return
 		}
-		if _, err := h.apply(opKind(op.Kind), op.Min, op.Max); err != nil {
+		if _, err := h.record(clientID, opKind(op.Kind), op.Min, op.Max); err != nil {
 			failures <- err
 		}
 	}
 }
 
-// writeUpdates streams the converged view and any fold errors back to the
+// writeUpdates streams every broadcast event and any fold errors back to the
 // client until the socket closes.
-func writeUpdates(conn *websocket.Conn, updates <-chan view, failures <-chan error, done <-chan struct{}) {
+func writeUpdates(conn *websocket.Conn, updates <-chan serverMsg, failures <-chan error, done <-chan struct{}) {
 	for {
 		select {
 		case <-done:
 			return
-		case v, ok := <-updates:
+		case msg, ok := <-updates:
 			if !ok {
 				return
 			}
-			if conn.WriteJSON(serverMsg{Type: "state", State: &v}) != nil {
+			if conn.WriteJSON(msg) != nil {
 				return
 			}
 		case err := <-failures:
