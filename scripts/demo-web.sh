@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "web UI not built — (re-)generating it now"
+echo "(re-)generating the web UI"
 ./scripts/build-web.sh
 
 cd demo/web

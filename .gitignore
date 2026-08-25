@@ -284,12 +284,11 @@ demo/*/*.snapshot.json
 testdata/rapid/
 
 # The web demo builds its UI from ui-src into dist/ for go:embed. Only the
-# directory marker and the "run the build" placeholder are committed; the
-# bundled app.js and style.css are generated and ignored.
-!demo/web/dist/
+# directory marker is committed; the bundled app.js, index.html, and style.css
+# are generated and ignored. The "not built yet" placeholder lives in
+# demo/web/placeholder/ and is embedded as the default.
 demo/web/dist/*
 !demo/web/dist/.gitkeep
-!demo/web/dist/index.html
 
 # Playwright artifacts
 demo/web/ui-src/test-results/

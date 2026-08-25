@@ -9,25 +9,63 @@ import (
 	"runtime"
 )
 
-const dist = "dist"
+const (
+	dist        = "dist"
+	placeholder = "placeholder"
+)
 
 // DoEmbed is set to true by the embed build tag (see embed.go).
 var DoEmbed bool
 
-//go:embed dist/*
+// The generated UI is embedded wholesale. all: includes the committed .gitkeep
+// marker, so the pattern still matches on a fresh checkout where the UI has
+// not been built yet.
+//
+//go:embed all:dist
 var embeddedDist embed.FS
 
-// GetFS returns the embedded UI when built with -tags embed, or the local
-// dist/ directory during development.
+// The "not built yet" placeholder is always embedded, so the server can show
+// build instructions instead of a 404 when dist/ has no index.html.
+//
+//go:embed placeholder/*
+var embeddedPlaceholder embed.FS
+
+// GetFS returns the built UI when it exists, and the "not built yet"
+// placeholder otherwise.
 func GetFS() http.FileSystem {
+	if d := builtDist(); d != nil {
+		return http.FS(d)
+	}
+	return placeholderFS()
+}
+
+// builtDist resolves the generated dist/ filesystem, or nil when the UI has
+// not been built. Embedded builds read the embedded dist; dev builds read the
+// dist/ directory next to this file.
+func builtDist() fs.FS {
 	if DoEmbed {
 		sub, err := fs.Sub(embeddedDist, dist)
 		if err != nil {
 			panic(err)
 		}
-		return http.FS(sub)
+		if _, err := fs.Stat(sub, "index.html"); err != nil {
+			return nil
+		}
+		return sub
 	}
-	return http.FS(os.DirFS(distDir()))
+	if _, err := os.Stat(filepath.Join(distDir(), "index.html")); err != nil {
+		return nil
+	}
+	return os.DirFS(distDir())
+}
+
+// placeholderFS returns the embedded "not built yet" page.
+func placeholderFS() http.FileSystem {
+	sub, err := fs.Sub(embeddedPlaceholder, placeholder)
+	if err != nil {
+		panic(err)
+	}
+	return http.FS(sub)
 }
 
 // distDir resolves the dist directory relative to this source file, so the

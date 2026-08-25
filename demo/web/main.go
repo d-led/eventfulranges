@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
-	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,28 +26,12 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 
-	if err := ensureUI(); err != nil {
-		log.Fatal(err)
-	}
-
 	s := newSessions(sessionTTL)
 	log.Printf("eventfulranges visualizer listening on %s", *addr)
 	log.Printf("open %s", uiURL(*addr))
 	if err := newRouter(s, GetFS()).Run(*addr); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// ensureUI fails with a hint when the dev-mode UI has not been built yet.
-// Embedded builds always have the UI and skip the check.
-func ensureUI() error {
-	if DoEmbed {
-		return nil
-	}
-	if _, err := os.Stat(filepath.Join(distDir(), "index.html")); err != nil {
-		return fmt.Errorf("web UI not built yet — run `go generate ./demo/web` (or `npm --prefix demo/web/ui-src run build`)")
-	}
-	return nil
 }
 
 // uiURL renders a clickable URL for the listen address, defaulting the host

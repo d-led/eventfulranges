@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -301,9 +302,26 @@ func TestUIURL(t *testing.T) {
 	require.Equal(t, "http://127.0.0.1:18080/ui/", uiURL("127.0.0.1:18080"))
 }
 
-func TestEnsureUIFindsTheBuiltUI(t *testing.T) {
+func TestPlaceholderServesBuildInstructions(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, ensureUI(), "the committed dist/ must be present")
+	srv := httptest.NewServer(newRouter(newSessions(time.Hour), placeholderFS()))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/ui/?s=shared")
+	require.NoError(t, err)
+	defer func() { _ = res.Body.Close() }()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "hasn't been built")
+}
+
+func TestGetFSAlwaysServesAnIndexPage(t *testing.T) {
+	t.Parallel()
+	f, err := GetFS().Open("index.html")
+	require.NoError(t, err, "a fresh checkout without a built UI must still serve a page")
+	defer func() { _ = f.Close() }()
 }
 
 func dial(t *testing.T, url string) *websocket.Conn {
