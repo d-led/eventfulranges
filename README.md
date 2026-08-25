@@ -99,25 +99,25 @@ and [KurrentDB](#kurrentdb) for the event-database backend.
 
 ## Strategies
 
-| Strategy      | Semantics                                              |
-| ------------- | ------------------------------------------------------ |
-| `LWW`         | Highest `(timestamp, id)` wins at each point           |
-| `FWW`         | Lowest `(timestamp, id)` wins at each point            |
-| `AdditiveWins`| Union of all additions minus union of all removals     |
-| `GrowOnly`    | Union of all additions, removals ignored               |
+| Strategy       | Semantics                                          |
+| -------------- | -------------------------------------------------- |
+| `LWW`          | Highest `(timestamp, id)` wins at each point       |
+| `FWW`          | Lowest `(timestamp, id)` wins at each point        |
+| `AdditiveWins` | Union of all additions minus union of all removals |
+| `GrowOnly`     | Union of all additions, removals ignored           |
 
 ## Packages
 
-| Package    | Purpose                                              |
-| ---------- | ---------------------------------------------------- |
-| `interval` | 1-D open/closed intervals with canonical set algebra |
-| `op`       | The append-only operation (`add` / `remove`)         |
-| `clock`    | Hybrid logical clock and Lamport clock                |
-| `strategy` | Conflict resolution: materializes ops to a set       |
-| `engine`   | Concurrency-safe log + view, snapshotting            |
-| `store`    | The `EventStore` interface (append/read/snapshot)    |
-| `store/memory`, `store/jsonl` | In-memory and file backends   |
-| `space`    | n-dimensional generalization (half-open boxes)       |
+| Package                       | Purpose                                              |
+| ----------------------------- | ---------------------------------------------------- |
+| `interval`                    | 1-D open/closed intervals with canonical set algebra |
+| `op`                          | The append-only operation (`add` / `remove`)         |
+| `clock`                       | Hybrid logical clock and Lamport clock               |
+| `strategy`                    | Conflict resolution: materializes ops to a set       |
+| `engine`                      | Concurrency-safe log + view, snapshotting            |
+| `store`                       | The `EventStore` interface (append/read/snapshot)    |
+| `store/memory`, `store/jsonl` | In-memory and file backends                          |
+| `space`                       | n-dimensional generalization (half-open boxes)       |
 
 The public facade is the root package `eventfulranges`.
 
@@ -132,7 +132,7 @@ timestamp, never as a coordinate.
 
 ## Demos
 
-```
+```shell
 go run ./demo/hello    # simplest use, no concurrency
 go run ./demo/local    # goroutine replicas converge over channels
 go run ./demo/pubsub   # replicas converge over an in-process pub/sub bus
@@ -173,6 +173,8 @@ One command starts it, and the other scripts cover the rest:
 ```
 
 Each demo has a smoke test; run them with `go test ./demo/...`.
+
+![web demo 2d](./docs/img/eventfulranges-2d-demo.gif)
 
 ## Quality
 
