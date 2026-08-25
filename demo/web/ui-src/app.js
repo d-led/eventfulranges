@@ -451,6 +451,7 @@ sendBtn.addEventListener('click', () => {
     }
     for (const op of ops) sendOp(op);
     setStatus(`sent ${ops.length} op(s)`);
+    opsEl.value = ''; // clear the window like a chat input
   } catch (e) {
     setStatus(`error: ${e.message}`);
   }
@@ -462,7 +463,8 @@ exampleBtn.addEventListener('click', () => {
 });
 
 randomBtn.addEventListener('click', () => {
-  opsEl.value = randomOp(currentDims);
+  const op = randomOp(currentDims);
+  opsEl.value = opsEl.value ? `${opsEl.value}\n${op}` : op;
   setStatus('drafted a random op — review and send');
 });
 

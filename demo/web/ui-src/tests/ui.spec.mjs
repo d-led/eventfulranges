@@ -110,27 +110,42 @@ test('the 4D sweep changes what is rendered', async ({ page }) => {
   expect(Buffer.compare(atLow, atHigh)).not.toBe(0);
 });
 
-test('random op drafts a valid command in the session dimension', async ({ page }) => {
+test('random op appends a valid command in the session dimension', async ({ page }) => {
   await page.goto('/ui/');
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
   await page.locator('#random').click();
-  const text = await page.locator('#ops').inputValue();
-  const m = text.match(/^(add|remove),\(([^)]*)\),\(([^)]*)\)$/);
-  expect(m).toBeTruthy();
+  await page.locator('#random').click();
+  const lines = (await page.locator('#ops').inputValue()).trim().split('\n');
+  expect(lines).toHaveLength(2);
+
   // The current (default) session is 3D, so each tuple carries 3 coordinates.
-  expect(m[2].split(',')).toHaveLength(3);
-  expect(m[3].split(',')).toHaveLength(3);
-  for (const coord of [...m[2].split(','), ...m[3].split(',')]) {
-    const n = Number(coord);
-    expect(Number.isFinite(n)).toBe(true);
-    expect(n).toBeGreaterThanOrEqual(-0.25);
-    expect(n).toBeLessThanOrEqual(4.25);
+  for (const line of lines) {
+    const m = line.match(/^(add|remove),\(([^)]*)\),\(([^)]*)\)$/);
+    expect(m).toBeTruthy();
+    expect(m[2].split(',')).toHaveLength(3);
+    expect(m[3].split(',')).toHaveLength(3);
+    for (const coord of [...m[2].split(','), ...m[3].split(',')]) {
+      const n = Number(coord);
+      expect(Number.isFinite(n)).toBe(true);
+      expect(n).toBeGreaterThanOrEqual(-0.25);
+      expect(n).toBeLessThanOrEqual(4.25);
+    }
   }
 });
 
-test('presence distinguishes this session from all connected', async ({ browser }) => {
+test('send clears the ops window', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#ops').fill('add,(0,0,0),(4,4,4)');
+  await page.locator('#send').click();
+  await expect(page.locator('#ops')).toHaveValue('');
+});
+
+test('presence separates this session from all connected', async ({ browser }) => {
   const alice = await browser.newPage();
   await alice.goto('/ui/');
   await alice.waitForURL(/[?&]s=/);
@@ -139,6 +154,16 @@ test('presence distinguishes this session from all connected', async ({ browser 
   await bob.goto('/ui/'); // a different session than alice's
   await bob.waitForURL(/[?&]s=/);
 
-  await expect(alice.locator('#presence')).toContainText('1 here · 2 connected');
-  await expect(bob.locator('#presence')).toContainText('1 here · 2 connected');
+  // Each tab is alone in its own session ("1 here"), while the global total
+  // counts at least the two of them (plus any still-connected test clients).
+  await expect(alice.locator('#presence')).toContainText('1 here');
+  await expect(bob.locator('#presence')).toContainText('1 here');
+
+  const connected = async (page) => {
+    const text = await page.locator('#presence').textContent();
+    const m = text.match(/(\d+) connected/);
+    return m ? Number(m[1]) : 0;
+  };
+  await expect.poll(() => connected(alice)).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => connected(bob)).toBeGreaterThanOrEqual(2);
 });
