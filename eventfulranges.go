@@ -46,8 +46,10 @@ func Open(ctx context.Context, dir string, s strategy.Strategy, opts ...Option) 
 	return OpenStore(ctx, st, s, opts...)
 }
 
-// OpenStore opens a range set backed by the given event store.
-func OpenStore(ctx context.Context, st store.EventStore, s strategy.Strategy, opts ...Option) (*RangeSet, error) {
+// OpenStore opens a range set backed by the given event log. Backends that
+// also implement store.Snapshotter get snapshotting for free; stream-only
+// backends simply skip it.
+func OpenStore(ctx context.Context, st store.Log, s strategy.Strategy, opts ...Option) (*RangeSet, error) {
 	e, err := engine.Open(ctx, st, s, opts...)
 	if err != nil {
 		return nil, err
