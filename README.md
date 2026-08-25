@@ -36,6 +36,28 @@ _ = b.ApplyAll(ctx, a.Ops())
 // a.Ranges() == b.Ranges()
 ```
 
+## Use case: a shared calendar
+
+The full program is in [`examples/calendar`](examples/calendar). A date is
+just a day number (`float64`), so a date range is a plain interval:
+
+```go
+cal, _ := eventfulranges.OpenStore(ctx, memory.New(), strategy.AdditiveWins)
+book, cancel := func(f, t string) { _, _ = cal.Add(ctx, days(f), days(t)) },
+                func(f, t string) { _, _ = cal.Remove(ctx, days(f), days(t)) }
+
+book("2026-07-01", "2026-07-10")   // Alice's vacation
+book("2026-07-06", "2026-07-15")   // Bob's vacation (overlaps)
+cancel("2026-07-08", "2026-07-10") // Alice cuts the trip short
+
+cal.Contains(days("2026-07-01")) // true  — booked
+cal.Contains(days("2026-07-08")) // false — cancelled
+cal.Contains(days("2026-07-12")) // true  — Bob's still away
+```
+
+`AdditiveWins` makes the busy set the union of all bookings minus all
+cancellations, so concurrent edits converge no matter the order.
+
 ## Storage & transport
 
 A replica is a `store.Log` plus a strategy. Three backends ship in the repo,
