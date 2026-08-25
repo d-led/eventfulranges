@@ -22,37 +22,46 @@ func box2(x0, y0, x1, y1 float64) Box {
 func TestValidate(t *testing.T) {
 	t.Parallel()
 
-	t.Run("valid", func(t *testing.T) {
-		t.Parallel()
-		require.NoError(t, box2(0, 0, 1, 1).Validate())
-	})
-	t.Run("dimension mismatch", func(t *testing.T) {
-		t.Parallel()
-		b := Box{Min: []float64{0, 0}, Max: []float64{1}}
-		require.ErrorIs(t, b.Validate(), ErrDimensions)
-	})
-	t.Run("no dimensions", func(t *testing.T) {
-		t.Parallel()
-		b := Box{Min: nil, Max: nil}
-		require.ErrorIs(t, b.Validate(), ErrNoDimensions)
-	})
-	t.Run("nan", func(t *testing.T) {
-		t.Parallel()
-		b := box2(0, 0, 1, 1)
-		b.Max[1] = nan()
-		require.ErrorIs(t, b.Validate(), ErrNaN)
-	})
-	t.Run("infinite", func(t *testing.T) {
-		t.Parallel()
-		b := box2(0, 0, 1, 1)
-		b.Min[0] = inf()
-		require.ErrorIs(t, b.Validate(), ErrInfinite)
-	})
-	t.Run("inverted", func(t *testing.T) {
-		t.Parallel()
-		b := box2(1, 0, 0, 1)
-		require.ErrorIs(t, b.Validate(), ErrInverted)
-	})
+	tests := []struct {
+		name    string
+		box     Box
+		wantErr error
+	}{
+		{name: "a 1D interval", box: NewBox([]float64{0}, []float64{1})},
+		{name: "a 2D rectangle", box: box2(0, 0, 1, 1)},
+		{name: "a 3D box", box: NewBox([]float64{0, 0, 0}, []float64{1, 1, 1})},
+		{name: "a 4D box", box: NewBox([]float64{0, 0, 0, 0}, []float64{1, 1, 1, 1})},
+		{
+			name: "a zero-width side is still well-formed",
+			box:  box2(1, 0, 1, 1),
+		},
+
+		{name: "min longer than max", box: Box{Min: []float64{0, 0}, Max: []float64{1}}, wantErr: ErrDimensions},
+		{name: "max longer than min", box: Box{Min: []float64{0}, Max: []float64{1, 1}}, wantErr: ErrDimensions},
+		{name: "no coordinates at all", box: Box{}, wantErr: ErrNoDimensions},
+		{name: "empty coordinate slices", box: Box{Min: []float64{}, Max: []float64{}}, wantErr: ErrNoDimensions},
+
+		{name: "NaN in the first min coordinate", box: box2(nan(), 0, 1, 1), wantErr: ErrNaN},
+		{name: "NaN in the last max coordinate", box: NewBox([]float64{0, 0, 0}, []float64{1, 1, nan()}), wantErr: ErrNaN},
+
+		{name: "positive infinity in a min coordinate", box: box2(inf(), 0, 1, 1), wantErr: ErrInfinite},
+		{name: "negative infinity in a max coordinate", box: box2(0, 0, 1, math.Inf(-1)), wantErr: ErrInfinite},
+
+		{name: "inverted first dimension", box: box2(1, 0, 0, 1), wantErr: ErrInverted},
+		{name: "inverted middle dimension", box: NewBox([]float64{0, 1, 0}, []float64{1, 0, 1}), wantErr: ErrInverted},
+		{name: "inverted last dimension", box: NewBox([]float64{0, 0, 1}, []float64{1, 1, 0}), wantErr: ErrInverted},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.wantErr == nil {
+				require.NoError(t, tt.box.Validate())
+				return
+			}
+			require.ErrorIs(t, tt.box.Validate(), tt.wantErr)
+		})
+	}
 }
 
 func TestContains(t *testing.T) {

@@ -27,8 +27,8 @@ var (
 	ErrInverted = errors.New("space: min must not exceed max")
 )
 
-// Box is an axis-aligned, half-open n-dimensional rectangle.
-// The zero value is the empty box [0,0) in one dimension.
+// Box is an axis-aligned, half-open n-dimensional rectangle. The zero value
+// has no dimensions and fails validation; build boxes with NewBox instead.
 type Box struct {
 	Min []float64 `json:"min"`
 	Max []float64 `json:"max"`
