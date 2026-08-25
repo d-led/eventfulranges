@@ -87,3 +87,5 @@ jobs:
         run: ./scripts/demo-local.sh
       - name: Network demo
         run: ./scripts/demo-network.sh
+      - name: Web demo
+        run: ./scripts/demo-web.sh
