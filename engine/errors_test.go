@@ -71,6 +71,20 @@ func (s *stubStore) LoadSnapshot(_ context.Context) ([]byte, int64, error) {
 	return s.loadData, s.loadVer, nil
 }
 
+// logOnlyStore hides the snapshot surface of an inner store, so the engine
+// treats it as a stream-only backend (a Log without a Snapshotter).
+type logOnlyStore struct {
+	inner store.EventStore
+}
+
+func (s logOnlyStore) Append(ctx context.Context, version int64, events []op.Op) error {
+	return s.inner.Append(ctx, version, events)
+}
+
+func (s logOnlyStore) Read(ctx context.Context, from int64) ([]op.Op, int64, error) {
+	return s.inner.Read(ctx, from)
+}
+
 func validAdd(id string) op.Op {
 	return op.Op{ID: id, Kind: op.KindAdd, Interval: interval.Interval{Start: 1, End: 2}}
 }
@@ -143,4 +157,23 @@ func TestReopenWithoutSnapshotReplaysLog(t *testing.T) {
 	reopened, err := engine.Open(ctx, st, strategy.AdditiveWins)
 	require.NoError(t, err)
 	require.Equal(t, e.Materialize(), reopened.Materialize())
+}
+
+// TestLogOnlyStoreSkipsSnapshotting exercises the stream-only backend path:
+// opening must not fail on a missing snapshot, and saving must be skipped
+// without error, while the view still converges by replaying the log.
+func TestLogOnlyStoreSkipsSnapshotting(t *testing.T) {
+	t.Parallel()
+	inner := memory.New()
+	ctx := context.Background()
+
+	e, err := engine.Open(ctx, logOnlyStore{inner: inner}, strategy.LWW, engine.WithSnapshotEvery(1))
+	require.NoError(t, err)
+	require.NoError(t, e.Apply(ctx, validAdd("a")))
+	require.NoError(t, e.Snapshot(ctx))
+	require.True(t, e.Contains(1.5))
+
+	reopened, err := engine.Open(ctx, logOnlyStore{inner: inner}, strategy.LWW)
+	require.NoError(t, err)
+	require.True(t, reopened.Contains(1.5))
 }
