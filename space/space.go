@@ -25,6 +25,8 @@ var (
 	ErrInfinite = errors.New("space: coordinates must be finite")
 	// ErrInverted is returned when Min exceeds Max in some dimension.
 	ErrInverted = errors.New("space: min must not exceed max")
+	// ErrEmpty is returned when a box contains no point at all.
+	ErrEmpty = errors.New("space: a box must contain at least one point")
 )
 
 // Box is an axis-aligned, half-open n-dimensional rectangle. The zero value

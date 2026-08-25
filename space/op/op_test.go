@@ -59,6 +59,11 @@ func TestValidate(t *testing.T) {
 			o:    op.Op{ID: "a", Kind: op.KindAdd, Box: space.NewBox([]float64{5}, []float64{1})},
 			err:  space.ErrInverted,
 		},
+		{
+			name: "empty box",
+			o:    op.Op{ID: "a", Kind: op.KindAdd, Box: space.NewBox([]float64{1}, []float64{1})},
+			err:  space.ErrEmpty,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

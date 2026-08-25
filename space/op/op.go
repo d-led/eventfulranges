@@ -70,7 +70,13 @@ func (o Op) Validate() error {
 	if o.Kind != KindAdd && o.Kind != KindRemove {
 		return fmt.Errorf("invalid op kind %d", o.Kind)
 	}
-	return o.Box.Validate()
+	if err := o.Box.Validate(); err != nil {
+		return err
+	}
+	if o.Box.Empty() {
+		return space.ErrEmpty
+	}
+	return nil
 }
 
 // New builds an op of the given kind with a freshly generated ID.
