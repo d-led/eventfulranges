@@ -13,7 +13,7 @@ require (
 require (
 	github.com/klauspost/compress v1.17.6 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/rogpeppe/go-internal v1.10.0 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
