@@ -8,16 +8,17 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// clientOp is one add/remove/clear the browser submits over the socket.
+// clientOp is one add/remove/dims command the browser submits over the socket.
 type clientOp struct {
 	Kind string    `json:"kind"`
 	Min  []float64 `json:"min"`
 	Max  []float64 `json:"max"`
+	Dims int       `json:"dims"`
 }
 
 // serverMsg is the envelope the server sends back over the socket.
 type serverMsg struct {
-	Type     string     `json:"type"` // "state" | "op" | "presence" | "error"
+	Type     string     `json:"type"` // one of msgState, msgOp, msgPresence, msgError
 	State    *view      `json:"state,omitempty"`
 	Op       *opRecord  `json:"op,omitempty"`
 	Ops      []opRecord `json:"ops,omitempty"` // the full log, sent on join
@@ -25,6 +26,15 @@ type serverMsg struct {
 	ClientID string     `json:"clientID,omitempty"`
 	Error    string     `json:"error,omitempty"`
 }
+
+// serverMsg.Type values, named so writers and readers agree on the envelope
+// kinds instead of repeating string literals.
+const (
+	msgState    = "state"
+	msgOp       = "op"
+	msgPresence = "presence"
+	msgError    = "error"
+)
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
@@ -83,7 +93,7 @@ func handleWS(c *gin.Context, s *sessions) {
 
 	// A late joiner catches up with the view, the watcher count, and the log.
 	snap := h.snapshot()
-	if err := conn.WriteJSON(serverMsg{Type: "state", State: &snap, ClientID: clientID, Clients: clients, Ops: log}); err != nil {
+	if err := conn.WriteJSON(serverMsg{Type: msgState, State: &snap, ClientID: clientID, Clients: clients, Ops: log}); err != nil {
 		return
 	}
 
@@ -101,6 +111,12 @@ func readClientOps(conn *websocket.Conn, h *hub, clientID string, done chan<- st
 		var op clientOp
 		if err := conn.ReadJSON(&op); err != nil {
 			return
+		}
+		if op.Kind == string(opDims) {
+			if _, err := h.setDims(clientID, op.Dims); err != nil {
+				failures <- err
+			}
+			continue
 		}
 		if _, err := h.record(clientID, opKind(op.Kind), op.Min, op.Max); err != nil {
 			failures <- err
@@ -123,7 +139,7 @@ func writeUpdates(conn *websocket.Conn, updates <-chan serverMsg, failures <-cha
 				return
 			}
 		case err := <-failures:
-			if conn.WriteJSON(serverMsg{Type: "error", Error: err.Error()}) != nil {
+			if conn.WriteJSON(serverMsg{Type: msgError, Error: err.Error()}) != nil {
 				return
 			}
 		}

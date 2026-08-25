@@ -18,13 +18,20 @@
       </p>
 
       <div class="field">
-        <label for="dims">Dimensions</label>
-        <select id="dims">
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3" selected>3</option>
-          <option value="4">4</option>
-        </select>
+        <div class="dims-row">
+          <label for="dims">Dimensions</label>
+          <select id="dims">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+          </select>
+          <button id="newSession" title="Start a new session with the chosen dimension">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            New session
+          </button>
+        </div>
+        <p class="hint">The dimension is fixed per session — start a new session to switch it.</p>
       </div>
 
       <div class="field">
@@ -35,7 +42,6 @@
       <div class="row">
         <button id="send" class="primary">Send ops</button>
         <button id="example">Load example</button>
-        <button id="reset">Reset view</button>
       </div>
 
       <div class="row">

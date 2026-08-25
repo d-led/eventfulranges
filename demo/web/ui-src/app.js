@@ -7,7 +7,7 @@ const dimsSel = $('dims');
 const opsEl = $('ops');
 const sendBtn = $('send');
 const exampleBtn = $('example');
-const resetBtn = $('reset');
+const newSessionBtn = $('newSession');
 const sliceEl = $('slice');
 const wInput = $('w');
 const wVal = $('wval');
@@ -301,8 +301,10 @@ function appendLog(op) {
   const li = document.createElement('li');
   li.className = op.kind;
   const when = new Date(op.at).toLocaleTimeString();
-  const coords = op.min && op.min.length ? ` (${op.min.join(',')})→(${op.max.join(',')})` : '';
-  li.textContent = `${when}  ${op.client}  ${op.kind}${coords}`;
+  const detail = op.kind === 'dims'
+    ? ` → ${op.dims}D`
+    : (op.min && op.min.length ? ` (${op.min.join(',')})→(${op.max.join(',')})` : '');
+  li.textContent = `${when}  ${op.client}  ${op.kind}${detail}`;
   if (op.client === clientID) li.classList.add('me');
   logEl.appendChild(li);
   logEl.scrollTop = logEl.scrollHeight;
@@ -363,11 +365,16 @@ function connect() {
       for (const op of msg.ops) appendLog(op);
     }
     if (msg.op) {
-      if (msg.op.kind === 'clear') logEl.innerHTML = ''; // a reset wipes the feed
       appendLog(msg.op);
     }
     if (msg.clients !== undefined) updatePresence(msg.clients);
-    if (msg.type === 'error') setStatus(`error: ${msg.error}`);
+    if (msg.type === 'error') {
+      setStatus(`error: ${msg.error}`);
+      // A rejected dimension change leaves the dropdown out of sync; restore
+      // it to the session's actual dimension.
+      dimsSel.value = String(Math.min(currentDims, 4));
+      sliceEl.hidden = currentDims !== 4;
+    }
   };
 }
 
@@ -379,14 +386,14 @@ function sendOp(op) {
   }
 }
 
-// Apply a scenario: clear the shared view, then fold the given ops in order.
+// Apply a scenario: fold the given ops into the shared view in order. The
+// ops are unioned/removed, so loading the same example twice is idempotent.
 function applyScenario(dims, text) {
   try {
     const ops = parseOps(text, dims);
     if (ops.length === 0) return;
-    sendOp({ kind: 'clear' });
     for (const op of ops) sendOp(op);
-    setStatus(`loaded ${ops.length} op(s)`);
+    setStatus(`sent ${ops.length} op(s)`);
   } catch (e) {
     setStatus(`error: ${e.message}`);
   }
@@ -420,9 +427,9 @@ exampleBtn.addEventListener('click', () => {
   applyScenario(dims, opsEl.value);
 });
 
-resetBtn.addEventListener('click', () => {
-  sendOp({ kind: 'clear' });
-  opsEl.value = '';
+newSessionBtn.addEventListener('click', () => {
+  // A session's dimension is fixed; start a fresh one to pick another.
+  location.replace('/ui/');
 });
 
 fitViewBtn.addEventListener('click', () => {
@@ -430,8 +437,10 @@ fitViewBtn.addEventListener('click', () => {
 });
 
 dimsSel.addEventListener('change', () => {
-  sliceEl.hidden = Number(dimsSel.value) !== 4;
-  opsEl.value = exampleFor(Number(dimsSel.value));
+  const dims = Number(dimsSel.value);
+  sendOp({ kind: 'dims', dims }); // the session dimension is shared state
+  sliceEl.hidden = dims !== 4;
+  opsEl.value = exampleFor(dims);
 });
 
 wInput.addEventListener('input', () => {

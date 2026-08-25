@@ -31,6 +31,7 @@ type opRecord struct {
 	Kind   string    `json:"kind"`
 	Min    []float64 `json:"min,omitempty"`
 	Max    []float64 `json:"max,omitempty"`
+	Dims   int       `json:"dims,omitempty"`
 	At     time.Time `json:"at"`
 }
 
@@ -42,7 +43,7 @@ type hub struct {
 	events  *pubsub.PubSub[string, serverMsg]
 	adds    []space.Box
 	removes []space.Box
-	dims    int // -1 until the first operation fixes the dimension
+	dims    int // session dimension: -1 until fixed by a dims op or the first box
 	clients int
 	ops     []opRecord
 }
@@ -59,8 +60,13 @@ type opKind string
 const (
 	opAdd    opKind = "add"
 	opRemove opKind = "remove"
-	opClear  opKind = "clear"
+	opDims   opKind = "dims"
 )
+
+// maxDims is the highest dimension the visualizer can draw: a 3D canvas plus
+// one sliceable w axis. The library supports arbitrary n; the demo stops at 4
+// so every box can be rendered.
+const maxDims = 4
 
 // apply folds one anonymous operation into the shared view and broadcasts the
 // new state. Tests use it to exercise the model without a client identity.
@@ -71,26 +77,22 @@ func (h *hub) apply(kind opKind, min, max []float64) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
-	h.events.Pub(serverMsg{Type: "state", State: &v}, topic)
+	h.events.Pub(serverMsg{Type: msgState, State: &v}, topic)
 	return v, nil
 }
 
 // record applies one operation attributed to a client, appends it to the
 // activity log, and broadcasts the log entry together with the new state.
-// A clear resets the view, so it also wipes the prior activity.
 func (h *hub) record(clientID string, kind opKind, min, max []float64) (view, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if kind == opClear {
-		h.ops = nil
-	}
 	v, err := h.foldLocked(kind, min, max)
 	if err != nil {
 		return view{}, err
 	}
 	rec := opRecord{Client: clientID, Kind: string(kind), Min: min, Max: max, At: time.Now()}
 	h.ops = append(h.ops, rec)
-	h.events.Pub(serverMsg{Type: "op", Op: &rec, State: &v}, topic)
+	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
 	return v, nil
 }
 
@@ -101,7 +103,7 @@ func (h *hub) join() (log []opRecord, clients int) {
 	defer h.mu.Unlock()
 	h.clients++
 	log = append([]opRecord(nil), h.ops...)
-	h.events.Pub(serverMsg{Type: "presence", Clients: h.clients}, topic)
+	h.events.Pub(serverMsg{Type: msgPresence, Clients: h.clients}, topic)
 	return log, h.clients
 }
 
@@ -112,7 +114,7 @@ func (h *hub) leave() {
 	if h.clients > 0 {
 		h.clients--
 	}
-	h.events.Pub(serverMsg{Type: "presence", Clients: h.clients}, topic)
+	h.events.Pub(serverMsg{Type: msgPresence, Clients: h.clients}, topic)
 }
 
 // snapshot returns the current view without broadcasting it.
@@ -134,12 +136,6 @@ func (h *hub) unsubscribe(ch chan serverMsg) {
 // foldLocked validates and folds one operation, returning the new view. The
 // caller must hold h.mu.
 func (h *hub) foldLocked(kind opKind, min, max []float64) (view, error) {
-	if kind == opClear {
-		h.adds = nil
-		h.removes = nil
-		h.dims = -1
-		return h.materializeLocked(), nil
-	}
 	b := space.NewBox(min, max)
 	if err := b.Validate(); err != nil {
 		return view{}, err
@@ -158,6 +154,48 @@ func (h *hub) foldLocked(kind opKind, min, max []float64) (view, error) {
 		return view{}, fmt.Errorf("unknown operation %q", kind)
 	}
 	return h.materializeLocked(), nil
+}
+
+// foldDimsLocked fixes the session's dimension. The dimension is session
+// metadata, not box content: it persists across reload, and once the view
+// holds boxes it can no longer change (start a new session to switch). The
+// caller must hold h.mu.
+func (h *hub) foldDimsLocked(dims int) (view, error) {
+	if dims < 1 || dims > maxDims {
+		return view{}, fmt.Errorf("dimension %d out of range [1,%d]", dims, maxDims)
+	}
+	if (len(h.adds) > 0 || len(h.removes) > 0) && h.dims != dims {
+		return view{}, fmt.Errorf("view already has %d dimensions", h.dims)
+	}
+	h.dims = dims
+	return h.materializeLocked(), nil
+}
+
+// applyDims fixes the session dimension without a client identity; tests use it.
+func (h *hub) applyDims(dims int) (view, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	v, err := h.foldDimsLocked(dims)
+	if err != nil {
+		return view{}, err
+	}
+	h.events.Pub(serverMsg{Type: msgState, State: &v}, topic)
+	return v, nil
+}
+
+// setDims fixes the session dimension for a client, appends the change to the
+// activity log, and broadcasts the log entry together with the new state.
+func (h *hub) setDims(clientID string, dims int) (view, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	v, err := h.foldDimsLocked(dims)
+	if err != nil {
+		return view{}, err
+	}
+	rec := opRecord{Client: clientID, Kind: string(opDims), Dims: dims, At: time.Now()}
+	h.ops = append(h.ops, rec)
+	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
+	return v, nil
 }
 
 func (h *hub) materializeLocked() view {

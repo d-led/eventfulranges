@@ -69,21 +69,55 @@ func TestViewRejectsBadInput(t *testing.T) {
 	require.Error(t, err, "unknown operation")
 }
 
-func TestViewClearResetsDimensions(t *testing.T) {
+func TestViewDimensionIsFixedByTheFirstBox(t *testing.T) {
 	t.Parallel()
 	h := newHub()
 	_, err := h.apply(opAdd, []float64{0}, []float64{1})
 	require.NoError(t, err)
 
-	_, err = h.apply(opClear, nil, nil)
+	// A box of a different dimension cannot join a fixed session.
+	_, err = h.apply(opAdd, []float64{0, 0, 0}, []float64{1, 1, 1})
+	require.Error(t, err)
+	require.Equal(t, 1, h.snapshot().Dims)
+}
+
+func TestDimsFixesTheSessionDimension(t *testing.T) {
+	t.Parallel()
+	h := newHub()
+
+	v, err := h.applyDims(4)
+	require.NoError(t, err)
+	require.Equal(t, 4, v.Dims)
+	require.Empty(t, v.Boxes)
+	require.Equal(t, 4, h.snapshot().Dims)
+
+	// An empty session may still choose another dimension.
+	_, err = h.applyDims(2)
+	require.NoError(t, err)
+	require.Equal(t, 2, h.snapshot().Dims)
+}
+
+func TestDimsRejectsOutOfRange(t *testing.T) {
+	t.Parallel()
+	h := newHub()
+	for _, d := range []int{0, -1, 5} {
+		_, err := h.applyDims(d)
+		require.Error(t, err, "dimension %d must be rejected", d)
+	}
+	require.Equal(t, -1, h.snapshot().Dims)
+}
+
+func TestDimsCannotChangeOnceBoxesExist(t *testing.T) {
+	t.Parallel()
+	h := newHub()
+	_, err := h.apply(opAdd, []float64{0, 0, 0}, []float64{1, 1, 1})
 	require.NoError(t, err)
 
-	v := h.snapshot()
-	require.Empty(t, v.Boxes)
-	require.Equal(t, -1, v.Dims)
+	_, err = h.applyDims(4)
+	require.Error(t, err)
 
-	// A different dimension is accepted after clearing.
-	_, err = h.apply(opAdd, []float64{0, 0, 0}, []float64{1, 1, 1})
+	// Re-fixing the same dimension is a no-op.
+	_, err = h.applyDims(3)
 	require.NoError(t, err)
 	require.Equal(t, 3, h.snapshot().Dims)
 }
@@ -131,22 +165,18 @@ func TestHubTracksPresenceAndLog(t *testing.T) {
 	h.leave()
 }
 
-func TestHubClearResetsLog(t *testing.T) {
+func TestHubLogsDimensionChanges(t *testing.T) {
 	t.Parallel()
 	h := newHub()
 
-	_, err := h.record("alice", opAdd, []float64{0}, []float64{1})
+	_, err := h.setDims("alice", 4)
 	require.NoError(t, err)
-	_, err = h.record("alice", opRemove, []float64{2}, []float64{3})
-	require.NoError(t, err)
-	_, err = h.record("alice", opClear, nil, nil)
-	require.NoError(t, err)
-	_, err = h.record("bob", opAdd, []float64{5}, []float64{6})
+	_, err = h.record("bob", opAdd, []float64{0, 0, 0, 0}, []float64{1, 1, 1, 1})
 	require.NoError(t, err)
 
 	log, _ := h.join()
-	require.Equal(t, []string{"clear", "add"}, []string{log[0].Kind, log[1].Kind},
-		"a clear wipes the history, leaving only the reset and what follows")
+	require.Equal(t, []string{"dims", "add"}, []string{log[0].Kind, log[1].Kind})
+	require.Equal(t, 4, log[0].Dims)
 }
 
 func TestWebSocketReportsIdentityAndLog(t *testing.T) {
@@ -283,4 +313,54 @@ func readState(t *testing.T, conn *websocket.Conn) *view {
 func assertState(t *testing.T, conn *websocket.Conn, check func(*view)) {
 	t.Helper()
 	check(readState(t, conn))
+}
+
+func assertError(t *testing.T, conn *websocket.Conn, check func(string)) {
+	t.Helper()
+	for {
+		var msg serverMsg
+		require.NoError(t, conn.ReadJSON(&msg))
+		if msg.Type == "error" {
+			check(msg.Error)
+			return
+		}
+	}
+}
+
+func TestWebSocketBroadcastsDimensionToEveryClient(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(newRouter(newSessions(time.Hour), GetFS()))
+	defer srv.Close()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?s=shared"
+
+	alice := dial(t, url)
+	defer func() { _ = alice.Close() }()
+	bob := dial(t, url)
+	defer func() { _ = bob.Close() }()
+
+	// Both clients receive the initial empty state.
+	assertState(t, alice, func(s *view) { require.Empty(t, s.Boxes) })
+	assertState(t, bob, func(s *view) { require.Empty(t, s.Boxes) })
+
+	// Alice fixes the dimension; both clients observe it, boxes or no boxes.
+	require.NoError(t, alice.WriteJSON(clientOp{Kind: "dims", Dims: 4}))
+
+	assertState(t, alice, func(s *view) { require.Equal(t, 4, s.Dims) })
+	assertState(t, bob, func(s *view) { require.Equal(t, 4, s.Dims) })
+}
+
+func TestWebSocketRejectsIllegalCommands(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(newRouter(newSessions(time.Hour), GetFS()))
+	defer srv.Close()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?s=shared"
+	alice := dial(t, url)
+	defer func() { _ = alice.Close() }()
+
+	assertState(t, alice, func(s *view) { require.Empty(t, s.Boxes) })
+
+	require.NoError(t, alice.WriteJSON(clientOp{Kind: "dims", Dims: 9}))
+	assertError(t, alice, func(msg string) { require.Contains(t, msg, "out of range") })
 }

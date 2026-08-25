@@ -122,6 +122,19 @@ textarea {
 
 .row { display: flex; gap: 8px; margin-bottom: 14px; }
 
+.dims-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.dims-row label { margin: 0; flex-shrink: 0; }
+
+.dims-row select { flex: 1; min-width: 0; }
+
+.dims-row button { flex: 0 0 auto; white-space: nowrap; }
+
 button {
   flex: 1;
   padding: 8px 10px;

@@ -17,8 +17,7 @@ test('two tabs converge on the same view', async ({ browser }) => {
   await expect(alice.locator('#status')).toContainText('connected');
   await expect(bob.locator('#status')).toContainText('connected');
 
-  // Start from a clean shared view, then add a cube and carve out its middle.
-  await alice.locator('#reset').click();
+  // Both tabs share one empty model: Alice adds a cube and carves its middle.
   await alice.locator('#ops').fill('add,(0,0,0),(4,4,4)\nremove,(1,1,1),(3,3,3)');
   await alice.locator('#send').click();
 
@@ -32,4 +31,51 @@ test('two tabs converge on the same view', async ({ browser }) => {
 
   const lines = (await alice.locator('#result').inputValue()).trim().split('\n');
   expect(lines).toHaveLength(6);
+});
+
+test('the chosen dimension survives a reload', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#dims').selectOption('4');
+  // The dimension is shared state: wait until the server records the change.
+  await expect(page.locator('#log li')).toContainText('dims');
+
+  await page.reload();
+  await expect(page.locator('#status')).toContainText('connected');
+  await expect(page.locator('#dims')).toHaveValue('4');
+  await expect(page.locator('#slice')).toBeVisible();
+});
+
+test('new session starts fresh with an unfixed dimension', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#dims').selectOption('4');
+  await expect(page.locator('#log li')).toContainText('dims');
+  const before = page.url();
+
+  await page.locator('#newSession').click();
+  await expect(page).not.toHaveURL(before);
+  await expect(page.locator('#status')).toContainText('connected');
+  await expect(page.locator('#dims')).toHaveValue('3');
+  await expect(page.locator('#slice')).toBeHidden();
+});
+
+test('4D animate sweeps the w slice', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#dims').selectOption('4');
+  await page.locator('#example').click();
+
+  // The slice position readout moves while animate is checked.
+  await expect(page.locator('#wval')).not.toHaveText('2.00');
+  const before = await page.locator('#wval').textContent();
+  await page.waitForTimeout(300);
+  const after = await page.locator('#wval').textContent();
+  expect(after).not.toBe(before);
 });
