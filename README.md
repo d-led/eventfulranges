@@ -113,6 +113,15 @@ to the same instance shares one view: each `add`/`remove` is folded with
 additive-wins semantics and broadcast over a WebSocket, so concurrent edits
 converge regardless of order. Open `http://localhost:8080/ui/`.
 
+One command starts it, and the other scripts cover the rest:
+
+```bash
+./scripts/demo-web.sh     # start the web visualizer (open the printed URL)
+./scripts/build-web.sh    # (re)build the embedded UI (npm install + esbuild)
+./scripts/itest-web.sh    # smoke test: unit tests + server serves the UI
+./scripts/e2e-web.sh      # Playwright end-to-end tests
+```
+
 Each demo has a smoke test; run them with `go test ./demo/...`.
 
 ## Quality
