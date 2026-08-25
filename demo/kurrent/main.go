@@ -40,7 +40,7 @@ func run(connectionString string) error {
 }
 
 func main() {
-	conn := flag.String("conn", "kurrentdb://localhost:2113?tls=false", "KurrentDB connection string")
+	conn := flag.String("conn", "esdb://localhost:2113?tls=false", "KurrentDB connection string")
 	flag.Parse()
 	if err := run(*conn); err != nil {
 		log.Fatal(err)

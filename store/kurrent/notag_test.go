@@ -12,7 +12,7 @@ import (
 func TestStubFailsEveryOperation(t *testing.T) {
 	t.Parallel()
 
-	s, err := Open("kurrentdb://localhost:2113?tls=false")
+	s, err := Open("esdb://localhost:2113?tls=false")
 	require.Nil(t, s)
 	require.Error(t, err)
 

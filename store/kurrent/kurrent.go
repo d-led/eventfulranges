@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/EventStore/EventStore-Client-Go/v4/esdb"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 
 	"gitub.com/d-led/eventfulranges/op"
 	"gitub.com/d-led/eventfulranges/store"
@@ -22,58 +22,21 @@ var (
 	// snapshotStream holds the latest materialized snapshot.
 	snapshotStream = "eventfulranges-snapshot"
 
-	// errWrongVersion and errStreamNotFound are the only errors the store
-	// inspects. The esdb adapter maps them from KurrentDB error codes, and the
-	// test double returns them directly.
-	errWrongVersion  = errors.New("kurrent: wrong expected version")
+	// errStreamNotFound marks a missing KurrentDB stream: an empty log or no
+	// snapshot yet, depending on which stream was read.
 	errStreamNotFound = errors.New("kurrent: stream not found")
 )
 
-// reader is the subset of *esdb.ReadStream used by the store.
-type reader interface {
-	Recv() (*esdb.ResolvedEvent, error)
-	Close()
-}
-
-// client is the subset of KurrentDB operations the store needs, so the store
-// logic can be unit-tested without a server.
-type client interface {
-	AppendToStream(ctx context.Context, streamID string, opts esdb.AppendToStreamOptions, events ...esdb.EventData) (*esdb.WriteResult, error)
-	ReadStream(ctx context.Context, streamID string, opts esdb.ReadStreamOptions, count uint64) (reader, error)
-	Close() error
-}
-
-// esdbClient adapts the concrete *esdb.Client to the client interface,
-// translating KurrentDB error codes into the store's sentinels.
-type esdbClient struct {
-	c *esdb.Client
-}
-
-func (e *esdbClient) AppendToStream(ctx context.Context, streamID string, opts esdb.AppendToStreamOptions, events ...esdb.EventData) (*esdb.WriteResult, error) {
-	res, err := e.c.AppendToStream(ctx, streamID, opts, events...)
-	return res, translateError(err)
-}
-
-func (e *esdbClient) ReadStream(ctx context.Context, streamID string, opts esdb.ReadStreamOptions, count uint64) (reader, error) {
-	r, err := e.c.ReadStream(ctx, streamID, opts, count)
-	if err != nil {
-		return nil, translateError(err)
-	}
-	return r, nil
-}
-
-func (e *esdbClient) Close() error {
-	return e.c.Close()
-}
-
+// translateError maps KurrentDB error codes onto store-level errors. Other
+// errors pass through unchanged.
 func translateError(err error) error {
-	esdbErr, ok := esdb.FromError(err)
-	if !ok {
-		return err
+	if err == nil {
+		return nil
 	}
+	esdbErr, _ := esdb.FromError(err)
 	switch esdbErr.Code() {
 	case esdb.ErrorCodeWrongExpectedVersion:
-		return errWrongVersion
+		return store.ErrVersionConflict
 	case esdb.ErrorCodeResourceNotFound:
 		return errStreamNotFound
 	default:
@@ -81,13 +44,19 @@ func translateError(err error) error {
 	}
 }
 
-// Store is an event log backed by KurrentDB. It satisfies store.EventStore.
+// streamNotFound reports whether err signals a missing KurrentDB stream.
+func streamNotFound(err error) bool {
+	return errors.Is(translateError(err), errStreamNotFound)
+}
+
+// Store is an event log backed by KurrentDB. It satisfies store.Log and
+// store.Snapshotter.
 type Store struct {
-	client client
+	client *esdb.Client
 }
 
 // Open connects to KurrentDB at the given connection string, for example
-// "kurrentdb://localhost:2113?tls=false".
+// "esdb://localhost:2113?tls=false".
 func Open(connectionString string) (*Store, error) {
 	config, err := esdb.ParseConnectionString(connectionString)
 	if err != nil {
@@ -97,7 +66,7 @@ func Open(connectionString string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{client: &esdbClient{c: c}}, nil
+	return &Store{client: c}, nil
 }
 
 // Close releases the underlying connection.
@@ -114,8 +83,12 @@ func (s *Store) Append(ctx context.Context, expectedVersion int64, events []op.O
 		if err != nil {
 			return err
 		}
+		id, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
 		data = append(data, esdb.EventData{
-			EventID:     uuid.Must(uuid.NewV4()),
+			EventID:     id,
 			EventType:   "range-op",
 			ContentType: esdb.ContentTypeJson,
 			Data:        payload,
@@ -124,10 +97,7 @@ func (s *Store) Append(ctx context.Context, expectedVersion int64, events []op.O
 	_, err := s.client.AppendToStream(ctx, opsStream, esdb.AppendToStreamOptions{
 		ExpectedRevision: expectedRevision(expectedVersion),
 	}, data...)
-	if errors.Is(err, errWrongVersion) {
-		return store.ErrVersionConflict
-	}
-	return err
+	return translateError(err)
 }
 
 // Read returns the operations at positions >= fromVersion and the new log
@@ -138,7 +108,7 @@ func (s *Store) Read(ctx context.Context, fromVersion int64) ([]op.Op, int64, er
 		From:      esdb.Revision(uint64(max(fromVersion, 0))),
 	}, ^uint64(0))
 	if err != nil {
-		if errors.Is(err, errStreamNotFound) {
+		if streamNotFound(err) {
 			return nil, 0, nil
 		}
 		return nil, 0, err
@@ -155,6 +125,9 @@ func (s *Store) Read(ctx context.Context, fromVersion int64) ([]op.Op, int64, er
 			break
 		}
 		if err != nil {
+			if streamNotFound(err) {
+				return nil, 0, nil
+			}
 			return nil, 0, err
 		}
 		rec := ev.OriginalEvent()
@@ -175,20 +148,22 @@ type snapshotMeta struct {
 
 // SaveSnapshot stores a materialized snapshot at the given version.
 func (s *Store) SaveSnapshot(ctx context.Context, data []byte, version int64) error {
-	meta, err := json.Marshal(snapshotMeta{Version: version})
+	// snapshotMeta is a plain struct of JSON types, so Marshal cannot fail.
+	meta, _ := json.Marshal(snapshotMeta{Version: version})
+	id, err := uuid.NewRandom()
 	if err != nil {
 		return err
 	}
 	_, err = s.client.AppendToStream(ctx, snapshotStream, esdb.AppendToStreamOptions{
 		ExpectedRevision: esdb.Any{},
 	}, esdb.EventData{
-		EventID:     uuid.Must(uuid.NewV4()),
+		EventID:     id,
 		EventType:   "snapshot",
 		ContentType: esdb.ContentTypeJson,
 		Data:        data,
 		Metadata:    meta,
 	})
-	return err
+	return translateError(err)
 }
 
 // LoadSnapshot returns the latest snapshot and its version, or
@@ -199,7 +174,7 @@ func (s *Store) LoadSnapshot(ctx context.Context) ([]byte, int64, error) {
 		From:      esdb.End{},
 	}, 1)
 	if err != nil {
-		if errors.Is(err, errStreamNotFound) {
+		if streamNotFound(err) {
 			return nil, 0, store.ErrSnapshotNotFound
 		}
 		return nil, 0, err
@@ -211,6 +186,9 @@ func (s *Store) LoadSnapshot(ctx context.Context) ([]byte, int64, error) {
 		return nil, 0, store.ErrSnapshotNotFound
 	}
 	if err != nil {
+		if streamNotFound(err) {
+			return nil, 0, store.ErrSnapshotNotFound
+		}
 		return nil, 0, err
 	}
 	rec := ev.OriginalEvent()
