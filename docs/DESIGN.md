@@ -66,20 +66,34 @@ restarting never changes the result.
 
 ## Stores
 
-`store.EventStore` is the only storage contract:
+Persistence is split into two contracts so stream-only backends (for example
+Kafka) need implement no snapshot logic:
 
 ```go
-Append(ctx, expectedVersion, events) error
-Read(ctx, fromVersion) (events, version, error)
-SaveSnapshot(ctx, data, version) error
-LoadSnapshot(ctx) (data, version, error)
+// store.Log is the minimum: an append-only, ordered operation stream.
+type Log interface {
+	Append(ctx, expectedVersion, events) error
+	Read(ctx, fromVersion) (events, version, error)
+}
+
+// store.Snapshotter is optional; backends that do not implement it skip
+// snapshotting.
+type Snapshotter interface {
+	SaveSnapshot(ctx, data, version) error
+	LoadSnapshot(ctx) (data, version, error)
+}
 ```
+
+The engine depends only on `store.Log` and type-asserts the optional
+`store.Snapshotter`. `store.EventStore` is the combined contract.
 
 Backends:
 
 - `store/memory` — for tests and single-process use.
 - `store/jsonl` — one JSON object per line, no server required.
-- `store/kurrent` — KurrentDB, behind the `kurrent` build tag.
+- `store/kurrent` — KurrentDB, behind the `kurrent` build tag; implements both
+  contracts and is covered by unit tests for its pure helpers plus integration
+  tests against a real server (no fakes).
 
 ## Clocks
 
