@@ -166,6 +166,42 @@ func TestHubTracksPresenceAndLog(t *testing.T) {
 	h.leave()
 }
 
+func TestPresenceSeparatesSessionAndTotal(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(newRouter(newSessions(time.Hour), GetFS()))
+	defer srv.Close()
+
+	alice := dial(t, "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws?s=a")
+	defer func() { _ = alice.Close() }()
+	bob := dial(t, "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws?s=b")
+	defer func() { _ = bob.Close() }()
+
+	// Each session reports one viewer, but two clients are connected overall.
+	assertPresence(t, alice, 1, 2)
+	assertPresence(t, bob, 1, 2)
+}
+
+// assertPresence reads until the session's viewer count and the global total
+// have both been observed at the expected values. Session and global presence
+// arrive as separate messages, so each field may come from a different one.
+func assertPresence(t *testing.T, conn *websocket.Conn, wantClients, wantTotal int) {
+	t.Helper()
+	var clients, total int
+	for clients != wantClients || total != wantTotal {
+		var msg serverMsg
+		require.NoError(t, conn.ReadJSON(&msg))
+		if msg.Type != msgPresence {
+			continue
+		}
+		if msg.Clients != 0 {
+			clients = msg.Clients
+		}
+		if msg.Total != 0 {
+			total = msg.Total
+		}
+	}
+}
+
 func TestHubLogsDimensionChanges(t *testing.T) {
 	t.Parallel()
 	h := newHub()

@@ -22,8 +22,9 @@ type serverMsg struct {
 	Type     string     `json:"type"` // one of msgState, msgOp, msgPresence, msgError
 	State    *view      `json:"state,omitempty"`
 	Op       *opRecord  `json:"op,omitempty"`
-	Ops      []opRecord `json:"ops,omitempty"` // the full log, sent on join
-	Clients  int        `json:"clients,omitempty"`
+	Ops      []opRecord `json:"ops,omitempty"`     // the full log, sent on join
+	Clients  int        `json:"clients,omitempty"` // clients watching this session
+	Total    int        `json:"total,omitempty"`   // clients connected across all sessions
 	ClientID string     `json:"clientID,omitempty"`
 	Error    string     `json:"error,omitempty"`
 }
@@ -92,20 +93,22 @@ func handleWS(c *gin.Context, s *sessions) {
 
 	updates := h.subscribe()
 	defer h.unsubscribe(updates)
+	presence := s.subscribePresence()
+	defer s.unsubscribePresence(presence)
 
 	log, clients := h.join()
 	defer h.leave()
 
-	// A late joiner catches up with the view, the watcher count, and the log.
+	// A late joiner catches up with the view, the watcher counts, and the log.
 	snap := h.snapshot()
-	if err := conn.WriteJSON(serverMsg{Type: msgState, State: &snap, ClientID: clientID, Clients: clients, Ops: log}); err != nil {
+	if err := conn.WriteJSON(serverMsg{Type: msgState, State: &snap, ClientID: clientID, Clients: clients, Total: int(s.total.Load()), Ops: log}); err != nil {
 		return
 	}
 
 	done := make(chan struct{})
 	failures := make(chan error, 8)
 	go readClientOps(conn, h, clientID, done, failures)
-	writeUpdates(conn, updates, failures, done)
+	writeUpdates(conn, updates, presence, failures, done)
 }
 
 // readClientOps folds the operations this client contributes until the socket
@@ -131,12 +134,19 @@ func readClientOps(conn *websocket.Conn, h *hub, clientID string, done chan<- st
 
 // writeUpdates streams every broadcast event and any fold errors back to the
 // client until the socket closes.
-func writeUpdates(conn *websocket.Conn, updates <-chan serverMsg, failures <-chan error, done <-chan struct{}) {
+func writeUpdates(conn *websocket.Conn, updates, presence <-chan serverMsg, failures <-chan error, done <-chan struct{}) {
 	for {
 		select {
 		case <-done:
 			return
 		case msg, ok := <-updates:
+			if !ok {
+				return
+			}
+			if conn.WriteJSON(msg) != nil {
+				return
+			}
+		case msg, ok := <-presence:
 			if !ok {
 				return
 			}

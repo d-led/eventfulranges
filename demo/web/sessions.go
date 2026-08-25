@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base32"
+	"sync/atomic"
 	"time"
 
+	"github.com/cskr/pubsub/v2"
 	"github.com/patrickmn/go-cache"
 )
 
@@ -13,11 +15,17 @@ import (
 // themselves instead of accumulating forever.
 const sessionTTL = 24 * time.Hour
 
+// presenceTopic names the global channel every client also subscribes to, so a
+// join in one session refreshes the "total connected" count on every screen.
+const presenceTopic = "presence"
+
 // sessions owns the in-memory collection of shared views, one per session ID.
 // Every share link carries a session ID; the pub/sub model for that ID is the
 // topic its collaborators converge on, isolated from every other link.
 type sessions struct {
-	models *cache.Cache
+	models   *cache.Cache
+	total    atomic.Int64                      // connected clients across all sessions
+	presence *pubsub.PubSub[string, serverMsg] // global presence topic
 }
 
 func newSessions(ttl time.Duration) *sessions {
@@ -25,7 +33,10 @@ func newSessions(ttl time.Duration) *sessions {
 	if cleanup < time.Minute {
 		cleanup = time.Minute
 	}
-	return &sessions{models: cache.New(ttl, cleanup)}
+	return &sessions{
+		models:   cache.New(ttl, cleanup),
+		presence: pubsub.New[string, serverMsg](1024),
+	}
 }
 
 // model returns the live shared view for id, creating it on first use or once
@@ -37,8 +48,19 @@ func (s *sessions) model(id string) *hub {
 		return h.(*hub)
 	}
 	h := newHub()
+	h.total = &s.total
+	h.presence = s.presence
 	s.models.SetDefault(id, h)
 	return h
+}
+
+// subscribePresence returns a channel receiving every global presence update.
+func (s *sessions) subscribePresence() chan serverMsg {
+	return s.presence.Sub(presenceTopic)
+}
+
+func (s *sessions) unsubscribePresence(ch chan serverMsg) {
+	s.presence.Unsub(ch, presenceTopic)
 }
 
 // newSessionID mints a short, URL-safe, unguessable identifier for a fresh

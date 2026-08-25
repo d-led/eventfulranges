@@ -129,3 +129,16 @@ test('random op drafts a valid command in the session dimension', async ({ page 
     expect(n).toBeLessThanOrEqual(4.25);
   }
 });
+
+test('presence distinguishes this session from all connected', async ({ browser }) => {
+  const alice = await browser.newPage();
+  await alice.goto('/ui/');
+  await alice.waitForURL(/[?&]s=/);
+
+  const bob = await browser.newPage();
+  await bob.goto('/ui/'); // a different session than alice's
+  await bob.waitForURL(/[?&]s=/);
+
+  await expect(alice.locator('#presence')).toContainText('1 here · 2 connected');
+  await expect(bob.locator('#presence')).toContainText('1 here · 2 connected');
+});

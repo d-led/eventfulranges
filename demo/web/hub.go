@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cskr/pubsub/v2"
@@ -39,13 +40,15 @@ type opRecord struct {
 // broadcasts every change through its own pub/sub topic, isolated from every
 // other session. It also counts the clients currently watching the session.
 type hub struct {
-	mu      sync.Mutex
-	events  *pubsub.PubSub[string, serverMsg]
-	adds    []space.Box
-	removes []space.Box
-	dims    int // session dimension: -1 until fixed by a dims op or the first box
-	clients int
-	ops     []opRecord
+	mu       sync.Mutex
+	events   *pubsub.PubSub[string, serverMsg]
+	adds     []space.Box
+	removes  []space.Box
+	dims     int // session dimension: -1 until fixed by a dims op or the first box
+	clients  int
+	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
+	presence *pubsub.PubSub[string, serverMsg] // global presence topic; nil standalone
+	ops      []opRecord
 }
 
 func newHub() *hub {
@@ -102,8 +105,12 @@ func (h *hub) join() (log []opRecord, clients int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients++
+	if h.total != nil {
+		h.total.Add(1)
+	}
 	log = append([]opRecord(nil), h.ops...)
 	h.events.Pub(serverMsg{Type: msgPresence, Clients: h.clients}, topic)
+	h.publishGlobalPresence()
 	return log, h.clients
 }
 
@@ -113,8 +120,21 @@ func (h *hub) leave() {
 	defer h.mu.Unlock()
 	if h.clients > 0 {
 		h.clients--
+		if h.total != nil {
+			h.total.Add(-1)
+		}
 	}
 	h.events.Pub(serverMsg{Type: msgPresence, Clients: h.clients}, topic)
+	h.publishGlobalPresence()
+}
+
+// publishGlobalPresence notifies every connected client of the new total,
+// regardless of which session they are watching. A standalone hub (tests)
+// has no global channel to publish to.
+func (h *hub) publishGlobalPresence() {
+	if h.presence != nil && h.total != nil {
+		h.presence.Pub(serverMsg{Type: msgPresence, Total: int(h.total.Load())}, presenceTopic)
+	}
 }
 
 // snapshot returns the current view without broadcasting it.

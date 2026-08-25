@@ -69,7 +69,8 @@ let sliceDir = 1; // animation sweep direction (ping-pong, no wrap teleport)
 let startDimsSent = false; // the ?dims= URL preference is applied once
 let needsFit = true;
 let clientID = '';
-let clients = 0;
+let clients = 0; // viewers of this session
+let total = 0;   // viewers connected across all sessions
 
 function resize() {
   const w = canvasHost.clientWidth;
@@ -322,10 +323,11 @@ function setStatus(text) {
 }
 
 // updatePresence renders the connected-client count and this client's own id.
-function updatePresence(n) {
+function updatePresence(n, t) {
   if (n !== undefined) clients = n;
+  if (t !== undefined) total = t;
   const me = clientID ? ` · you are ${clientID}` : '';
-  presenceEl.textContent = `${clients} connected${me}`;
+  presenceEl.textContent = `${clients} here · ${total} connected${me}`;
 }
 
 // appendLog renders one activity entry, newest last, highlighting this client.
@@ -405,7 +407,7 @@ function connect() {
     if (msg.op) {
       appendLog(msg.op);
     }
-    if (msg.clients !== undefined) updatePresence(msg.clients);
+    if (msg.clients !== undefined || msg.total !== undefined) updatePresence(msg.clients, msg.total);
     if (msg.type === 'error') {
       setStatus(`error: ${msg.error}`);
     }
