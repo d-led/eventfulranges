@@ -132,30 +132,58 @@ operation timestamps and log-version counters — never as a coordinate.
 
 ## Demos
 
+- [hello](#hello) — simplest use, no concurrency
+- [local](#local) — goroutine replicas converge over channels
+- [pubsub](#pubsub) — replicas converge over an in-process pub/sub bus
+- [network](#network) — two HTTP peers converge
+- [web](#web) — interactive 3D visualizer, shared live over WebSockets
+
+### hello
+
 ```shell
-go run ./demo/hello    # simplest use, no concurrency
-go run ./demo/local    # goroutine replicas converge over channels
-go run ./demo/pubsub   # replicas converge over an in-process pub/sub bus
-go run ./demo/network  # two HTTP peers converge
-go run ./demo/web      # interactive 3D visualizer, shared live over WebSockets
+go run ./demo/hello
 ```
 
 `demo/hello` opens an in-memory set and prints what a single add/remove leaves
 behind — the smallest possible program.
 
+### local
+
+```shell
+go run ./demo/local
+```
+
 `demo/local` opens three in-memory replicas, lets each mutate its own copy from
 a goroutine, then floods every replica's `Ops()` to every other replica until
 they agree. The transport is Go channels; there is no network.
+
+### pubsub
+
+```shell
+go run ./demo/pubsub
+```
 
 `demo/pubsub` is the same idea through a bus: each replica subscribes to a
 topic on a `github.com/cskr/pubsub/v2` bus, mutates locally, and publishes its
 operations. Every replica applies every broadcast it receives, so they converge
 without talking to each other directly.
 
+### network
+
+```shell
+go run ./demo/network
+```
+
 `demo/network` runs two replicas, each behind its own HTTP server. There is no
 CRDT-specific protocol — a peer exports its log as `GET /ops` (JSON) and folds
 someone else's log in with `POST /ops`. Each peer mutates its own copy, then
 the two exchange logs and converge; ports come from `-ports 18080,18081`.
+
+### web
+
+```shell
+go run ./demo/web
+```
 
 `demo/web` serves an n-dimensional range-set visualizer (1–4 dimensions, with a
 rotatable translucent-box 3D view and copy/pasteable CSV). Everyone connected
