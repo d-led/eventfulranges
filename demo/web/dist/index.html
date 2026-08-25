@@ -47,9 +47,15 @@
       </div>
 
       <div class="field" id="slice" hidden>
-        <label for="w">4th-dimension slice <span id="wval"></span></label>
+        <label for="w">4th dimension · w (slice position) <span id="wval"></span></label>
         <input type="range" id="w" min="0" max="4" step="0.01" value="2" />
         <label class="inline"><input type="checkbox" id="animate" checked /> animate</label>
+        <p class="hint">
+          The w slider is a 3D <strong>cross-section</strong> through the 4th
+          dimension, not a projection: each frame shows only the part of each
+          box that reaches w. Sweep it — or animate — and boxes fade in where
+          they start and fade out where they end.
+        </p>
       </div>
 
       <div class="field">
