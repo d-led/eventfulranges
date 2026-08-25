@@ -132,6 +132,13 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 
 button:hover { filter: brightness(1.12); }
 
+button .icon {
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
 #status {
   font-size: 12px;
   color: var(--muted);
