@@ -80,6 +80,15 @@ and [KurrentDB](#kurrentdb) for the event-database backend.
 
 The public facade is the root package `eventfulranges`.
 
+## Coordinates
+
+Range endpoints are `float64`. Integer literals convert exactly while they fit
+a float64's 53-bit mantissa (`|n| <= 2^53`); fractional values are stored and
+compared verbatim, so no rounding error accumulates. There is no
+arbitrary-precision (`math/big`) coordinate type: endpoints beyond `2^53` round
+to the nearest representable value. `int64` appears only as the operation
+timestamp, never as a coordinate.
+
 ## Demos
 
 ```
