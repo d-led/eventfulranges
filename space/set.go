@@ -148,11 +148,13 @@ func equalBox(a, b Box) bool {
 
 func sortBoxes(boxes []Box) {
 	sort.Slice(boxes, func(i, j int) bool {
-		return lessBox(boxes[i], boxes[j])
+		return Less(boxes[i], boxes[j])
 	})
 }
 
-func lessBox(a, b Box) bool {
+// Less reports whether a sorts before b in canonical cover order: by lower
+// corner first, then by upper corner, comparing coordinate by coordinate.
+func Less(a, b Box) bool {
 	for i := range a.Min {
 		if a.Min[i] != b.Min[i] {
 			return a.Min[i] < b.Min[i]

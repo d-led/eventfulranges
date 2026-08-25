@@ -97,8 +97,8 @@ func TestDims(t *testing.T) {
 func TestBoxOrderingHelpers(t *testing.T) {
 	t.Parallel()
 	a := box2(0, 0, 1, 1)
-	require.True(t, lessBox(a, box2(0, 0, 1, 2)), "same min, smaller max sorts first")
-	require.False(t, lessBox(a, a), "equal boxes are not strictly ordered")
+	require.True(t, Less(a, box2(0, 0, 1, 2)), "same min, smaller max sorts first")
+	require.False(t, Less(a, a), "equal boxes are not strictly ordered")
 	require.True(t, equalBox(a, a))
 	require.False(t, equalBox(a, box2(0, 0, 1, 2)), "max differs")
 	require.False(t, equalBox(a, box2(1, 0, 1, 1)), "min differs")

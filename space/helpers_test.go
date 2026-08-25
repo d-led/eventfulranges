@@ -83,7 +83,7 @@ func requireCanonical(t *rapid.T, set []Box) {
 		}
 	}
 	for i := 1; i < len(set); i++ {
-		if !lessBox(set[i-1], set[i]) {
+		if !Less(set[i-1], set[i]) {
 			t.Fatalf("not sorted: %v then %v", set[i-1], set[i])
 		}
 	}
