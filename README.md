@@ -9,17 +9,17 @@ An event-sourced **CRDT for real-valued ranges**. Ranges can be added and
 removed from any number of replicas, in any order, over any transport — and
 every replica that has seen the same operations converges to the same set.
 
-The default backend is a JSON Lines file and needs no network at all. A
-[KurrentDB](https://kurrent.io) backend is available behind the `kurrent`
-build tag.
+Storage and transport are both swappable. A replica can keep its operations in
+a JSON Lines file, in memory, or in any backend you write against the
+`store.Log` interface. Replicas converge by exchanging operations over whatever
+transport you already have — goroutine channels, an in-process pub/sub bus,
+plain HTTP, or an event database such as
+[KurrentDB](https://kurrent.io) (behind the `kurrent` build tag).
 
 ## Quick start
 
 ```go
-set, err := eventfulranges.Open(ctx, "/tmp/example", strategy.LWW)
-if err != nil {
-    log.Fatal(err)
-}
+set, _ := eventfulranges.Open(ctx, "./example", strategy.LWW) // ./example/ranges.stream.jsonl
 _, _ = set.Add(ctx, 1, 10)   // [1,10]
 _, _ = set.Remove(ctx, 3, 5) // cut a hole
 for _, iv := range set.Ranges() {
@@ -35,6 +35,26 @@ _ = a.ApplyAll(ctx, b.Ops())
 _ = b.ApplyAll(ctx, a.Ops())
 // a.Ranges() == b.Ranges()
 ```
+
+## Storage & transport
+
+A replica is a `store.Log` plus a strategy. Three backends ship in the repo,
+and you can plug in your own:
+
+```go
+set, _ := eventfulranges.Open(ctx, "./example", strategy.LWW)         // JSON Lines stream (default)
+set, _ := eventfulranges.OpenStore(ctx, memory.New(), strategy.LWW)   // in memory
+set, _ := eventfulranges.OpenStore(ctx, myBackend, strategy.LWW)      // your own store.Log
+```
+
+`Open` keeps the append-only event stream as JSON Lines
+(`./example/ranges.stream.jsonl`) and caches the materialized view in a
+sidecar snapshot (`./example/ranges.snapshot.json`). The stream is the source
+of truth; the snapshot only fast-forwards a restart.
+
+Transport is yours to choose, too: convergence is just shipping `Ops()` and
+calling `ApplyAll`. See [Demos](#demos) for channels, a pub/sub bus, and HTTP,
+and [KurrentDB](#kurrentdb) for the event-database backend.
 
 ## Strategies
 
@@ -64,16 +84,34 @@ The public facade is the root package `eventfulranges`.
 
 ```
 go run ./demo/hello    # simplest use, no concurrency
-go run ./demo/local    # goroutine replicas converge without a network
+go run ./demo/local    # goroutine replicas converge over channels
+go run ./demo/pubsub   # replicas converge over an in-process pub/sub bus
 go run ./demo/network  # two HTTP peers converge
 go run ./demo/web      # interactive 3D visualizer, shared live over WebSockets
 ```
 
-The web demo serves an n-dimensional range-set visualizer (1–4 dimensions,
-with a rotatable translucent-box 3D view and copy/pasteable CSV). Everyone
-connected to the same instance shares one view: each `add`/`remove` is folded
-with additive-wins semantics and broadcast over a WebSocket, so concurrent
-edits converge regardless of order. Open `http://localhost:8080/ui/`.
+`demo/hello` opens an in-memory set and prints what a single add/remove leaves
+behind — the smallest possible program.
+
+`demo/local` opens three in-memory replicas, lets each mutate its own copy from
+a goroutine, then floods every replica's `Ops()` to every other replica until
+they agree. The transport is Go channels; there is no network.
+
+`demo/pubsub` is the same idea through a bus: each replica subscribes to a
+topic on a `github.com/cskr/pubsub/v2` bus, mutates locally, and publishes its
+operations. Every replica applies every broadcast it receives, so they converge
+without talking to each other directly.
+
+`demo/network` runs two replicas, each behind its own HTTP server. There is no
+CRDT-specific protocol — a peer exports its log as `GET /ops` (JSON) and folds
+someone else's log in with `POST /ops`. Each peer mutates its own copy, then
+the two exchange logs and converge; ports come from `-ports 18080,18081`.
+
+`demo/web` serves an n-dimensional range-set visualizer (1–4 dimensions, with a
+rotatable translucent-box 3D view and copy/pasteable CSV). Everyone connected
+to the same instance shares one view: each `add`/`remove` is folded with
+additive-wins semantics and broadcast over a WebSocket, so concurrent edits
+converge regardless of order. Open `http://localhost:8080/ui/`.
 
 Each demo has a smoke test; run them with `go test ./demo/...`.
 

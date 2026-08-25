@@ -30,13 +30,15 @@ type Store struct {
 	appendLines func(file *os.File, events []op.Op) error
 }
 
-// Open returns a store rooted at dir, creating it if needed.
+// Open returns a store rooted at dir, creating it if needed. The append-only
+// event stream lives in ranges.stream.jsonl; the materialized view is cached
+// in ranges.snapshot.json.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	return &Store{
-		opsPath:  filepath.Join(dir, "ranges.jsonl"),
+		opsPath:  filepath.Join(dir, "ranges.stream.jsonl"),
 		snapPath: filepath.Join(dir, "ranges.snapshot.json"),
 	}, nil
 }

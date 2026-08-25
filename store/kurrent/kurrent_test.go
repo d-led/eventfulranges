@@ -41,7 +41,7 @@ func TestOpenInvalidConnectionString(t *testing.T) {
 	require.Error(t, err)
 
 	// A lone user certificate without its key fails client validation.
-	_, err = Open("esdb://localhost:2113?usercertfile=/tmp/cert.pem")
+	_, err = Open("esdb://localhost:2113?usercertfile=./cert.pem")
 	require.Error(t, err)
 }
 

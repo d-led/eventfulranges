@@ -9,6 +9,6 @@ for pkg in $(go list ./...); do
   targets=$(grep -ho 'func Fuzz[A-Za-z0-9_]*' "$dir"/*_test.go 2>/dev/null | awk '{print $2}' || true)
   for name in $targets; do
     echo "fuzzing $pkg $name"
-    go test -run '^$' -fuzz="^${name}$" -fuzztime=30s "$pkg"
+    go test -race -run '^$' -fuzz="^${name}$" -fuzztime=30s "$pkg"
   done
 done

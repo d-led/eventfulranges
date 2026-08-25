@@ -93,7 +93,7 @@ func TestJSONLCorruptLine(t *testing.T) {
 	dir := t.TempDir()
 	_, err := jsonl.Open(dir)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.jsonl"), []byte("not json\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.stream.jsonl"), []byte("not json\n"), 0o644))
 
 	s, err := jsonl.Open(dir)
 	require.NoError(t, err)
