@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  lint:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -23,6 +23,14 @@ jobs:
         uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.13.1
+      - name: Run unit tests with coverage
+        run: ./scripts/test.sh
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/coverage.out
+          fail_ci_if_error: false
 
   # Long-running quality gate: only on manual trigger to keep PR checks fast.
   quality-gate:
@@ -37,12 +45,6 @@ jobs:
           cache: true
       - name: Quality gate
         run: ./scripts/quality-gate.sh
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: build/coverage.out
-          fail_ci_if_error: false
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v7.0.1
