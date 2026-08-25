@@ -23,6 +23,11 @@ jobs:
         uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.13.1
+      - name: Lint demo module
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.13.1
+          working-directory: demo
       - name: Run unit tests with coverage
         run: ./scripts/test.sh
       - name: Upload coverage to Codecov
@@ -87,5 +92,9 @@ jobs:
         run: ./scripts/demo-local.sh
       - name: Network demo
         run: ./scripts/demo-network.sh
-      - name: Web demo
-        run: ./scripts/demo-web.sh
+      - name: Pub/sub demo
+        run: ./scripts/demo-pubsub.sh
+      - name: Web demo (smoke test)
+        run: ./scripts/itest-web.sh
+      - name: Web demo (Playwright e2e)
+        run: ./scripts/e2e-web.sh

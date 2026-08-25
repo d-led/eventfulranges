@@ -1,25 +1,18 @@
 #!/usr/bin/env bash
-# Runs all unit tests with the race detector and prints the library coverage
-# report. The demo programs are smoke-tested here but excluded from the 100%
-# coverage gate, which targets library code only.
+# Runs the core library tests with coverage and the demo module tests without
+# coverage. The demos live in their own module (demo/go.mod), so the 100%
+# coverage gate stays scoped to library code only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mkdir -p build
 
-lib=$(go list ./... | grep -v '/demo/')
-demo=$(go list ./... | grep '/demo/' || true)
-
 echo "== library tests (with coverage)"
-# shellcheck disable=SC2086
-go test -race -count=1 -coverprofile=build/coverage.out $lib
+go test -race -count=1 -coverprofile=build/coverage.out ./...
 
 echo
 echo "== demo smoke tests"
-if [ -n "$demo" ]; then
-  # shellcheck disable=SC2086
-  go test -race -count=1 $demo
-fi
+(cd demo && go test -race -count=1 ./...)
 
 echo
 echo "=== coverage report ==="
