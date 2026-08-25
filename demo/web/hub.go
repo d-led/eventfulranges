@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -8,7 +9,11 @@ import (
 
 	"github.com/cskr/pubsub/v2"
 
+	"github.com/d-led/eventfulranges"
 	"github.com/d-led/eventfulranges/space"
+	sop "github.com/d-led/eventfulranges/space/op"
+	"github.com/d-led/eventfulranges/space/store/memory"
+	sstrategy "github.com/d-led/eventfulranges/space/strategy"
 )
 
 // topic is the pub/sub channel inside one session's hub. Every session owns
@@ -38,12 +43,12 @@ type opRecord struct {
 
 // hub is one session's shared model: it owns the view and the activity log and
 // broadcasts every change through its own pub/sub topic, isolated from every
-// other session. It also counts the clients currently watching the session.
+// other session. The view is materialized by the n-dimensional event-sourced
+// engine; the hub only folds client commands into it and tracks presence.
 type hub struct {
 	mu       sync.Mutex
 	events   *pubsub.PubSub[string, serverMsg]
-	adds     []space.Box
-	removes  []space.Box
+	set      *eventfulranges.BoxSet
 	dims     int // session dimension: -1 until fixed by a dims op or the first box
 	clients  int
 	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
@@ -52,8 +57,13 @@ type hub struct {
 }
 
 func newHub() *hub {
+	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWins)
+	if err != nil {
+		panic(err) // a fresh in-memory store cannot fail to open
+	}
 	return &hub{
 		events: pubsub.New[string, serverMsg](1024),
+		set:    set,
 		dims:   -1,
 	}
 }
@@ -167,9 +177,13 @@ func (h *hub) foldLocked(kind opKind, min, max []float64) (view, error) {
 	}
 	switch kind {
 	case opAdd:
-		h.adds = append(h.adds, b)
+		if _, err := h.set.Add(context.Background(), min, max); err != nil {
+			return view{}, err
+		}
 	case opRemove:
-		h.removes = append(h.removes, b)
+		if _, err := h.set.Remove(context.Background(), min, max); err != nil {
+			return view{}, err
+		}
 	default:
 		return view{}, fmt.Errorf("unknown operation %q", kind)
 	}
@@ -184,7 +198,7 @@ func (h *hub) foldDimsLocked(dims int) (view, error) {
 	if dims < 1 || dims > maxDims {
 		return view{}, fmt.Errorf("dimension %d out of range [1,%d]", dims, maxDims)
 	}
-	if (len(h.adds) > 0 || len(h.removes) > 0) && h.dims != dims {
+	if len(h.set.Ops()) > 0 && h.dims != dims {
 		return view{}, fmt.Errorf("view already has %d dimensions", h.dims)
 	}
 	h.dims = dims
@@ -219,12 +233,18 @@ func (h *hub) setDims(clientID string, dims int) (view, error) {
 }
 
 func (h *hub) materializeLocked() view {
-	adds := space.Union(h.adds, nil)
-	removes := space.Union(h.removes, nil)
+	adds, removes := 0, 0
+	for _, o := range h.set.Ops() {
+		if o.Kind == sop.KindAdd {
+			adds++
+		} else {
+			removes++
+		}
+	}
 	return view{
-		Boxes:   space.Difference(adds, removes),
-		Adds:    len(h.adds),
-		Removes: len(h.removes),
+		Boxes:   h.set.Boxes(),
+		Adds:    adds,
+		Removes: removes,
 		Dims:    h.dims,
 	}
 }
