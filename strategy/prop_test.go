@@ -5,8 +5,8 @@ import (
 
 	"pgregory.net/rapid"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 // TestPropertyMatchesBiogoOracle checks that the CRDT materialization equals a

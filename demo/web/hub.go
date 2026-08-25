@@ -7,7 +7,7 @@ import (
 
 	"github.com/cskr/pubsub/v2"
 
-	"gitub.com/d-led/eventfulranges/space"
+	"github.com/d-led/eventfulranges/space"
 )
 
 // topic is the pub/sub channel inside one session's hub. Every session owns

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"gitub.com/d-led/eventfulranges"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 func Example() {

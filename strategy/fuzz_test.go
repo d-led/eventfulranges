@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 // requireCanonicalSet asserts sorted, non-overlapping, valid intervals.

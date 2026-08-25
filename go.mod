@@ -1,4 +1,4 @@
-module gitub.com/d-led/eventfulranges
+module github.com/d-led/eventfulranges
 
 go 1.27.0
 

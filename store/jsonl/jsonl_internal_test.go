@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
 )
 
 func testOp(id string) op.Op {

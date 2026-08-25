@@ -4,7 +4,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"pgregory.net/rapid"
 
-	"gitub.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/interval"
 )
 
 // gridInterval builds a valid interval from grid endpoints.

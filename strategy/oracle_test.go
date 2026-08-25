@@ -7,9 +7,9 @@ import (
 	biogo "github.com/biogo/store/interval"
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 // This file is the sequential reference model (oracle) for the property-based

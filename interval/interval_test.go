@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/interval"
 )
 
 func TestBoundString(t *testing.T) {

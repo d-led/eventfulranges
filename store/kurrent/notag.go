@@ -10,7 +10,7 @@ import (
 	"context"
 	"errors"
 
-	"gitub.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/op"
 )
 
 var errNotBuilt = errors.New("kurrent: support not compiled; build with -tags kurrent")

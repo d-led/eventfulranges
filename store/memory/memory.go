@@ -6,8 +6,8 @@ import (
 	"context"
 	"sync"
 
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
 )
 
 // Store is an in-memory EventStore.

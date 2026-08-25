@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
 )
 
 // Store persists operations in a JSON Lines file with a sidecar snapshot.

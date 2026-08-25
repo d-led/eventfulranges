@@ -3,7 +3,7 @@ package interval_test
 import (
 	"testing"
 
-	"gitub.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/interval"
 )
 
 func FuzzNormalize(f *testing.F) {

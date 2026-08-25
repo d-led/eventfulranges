@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
 )
 
 // openTestStore skips the test when no KurrentDB is reachable and points the

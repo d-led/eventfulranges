@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"log"
 
-	"gitub.com/d-led/eventfulranges"
-	"gitub.com/d-led/eventfulranges/store/kurrent"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges"
+	"github.com/d-led/eventfulranges/store/kurrent"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 func run(connectionString string) error {

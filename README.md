@@ -1,8 +1,8 @@
 # eventfulranges
 
-[![CI](https://github.com/d-led/go-eventfulranges/actions/workflows/ci.yml/badge.svg)](https://github.com/d-led/go-eventfulranges/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/d-led/go-eventfulranges/branch/main/graph/badge.svg?token=NOT_REQUIRED)](https://codecov.io/gh/d-led/go-eventfulranges)
-[![Go Reference](https://pkg.go.dev/badge/gitub.com/d-led/eventfulranges.svg)](https://pkg.go.dev/gitub.com/d-led/eventfulranges)
+[![CI](https://github.com/d-led/eventfulranges/actions/workflows/ci.yml/badge.svg)](https://github.com/d-led/eventfulranges/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/d-led/eventfulranges/branch/main/graph/badge.svg?token=NOT_REQUIRED)](https://codecov.io/gh/d-led/eventfulranges)
+[![Go Reference](https://pkg.go.dev/badge/github.com/d-led/eventfulranges.svg)](https://pkg.go.dev/github.com/d-led/eventfulranges)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
 
 An event-sourced **CRDT for real-valued ranges**. Ranges can be added and

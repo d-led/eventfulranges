@@ -10,10 +10,10 @@ import (
 	"log"
 	"sync"
 
-	"gitub.com/d-led/eventfulranges"
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/store/memory"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/store/memory"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 const replicas = 3

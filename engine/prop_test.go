@@ -6,10 +6,10 @@ import (
 
 	"pgregory.net/rapid"
 
-	"gitub.com/d-led/eventfulranges/engine"
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/store/memory"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges/engine"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/store/memory"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 func TestPropertyEngineMatchesStrategy(t *testing.T) {

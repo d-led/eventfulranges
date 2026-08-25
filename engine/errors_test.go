@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/engine"
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
-	"gitub.com/d-led/eventfulranges/store/memory"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges/engine"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/store/memory"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 // stubStore is an EventStore that injects errors on demand.

@@ -9,13 +9,13 @@ package eventfulranges
 import (
 	"context"
 
-	"gitub.com/d-led/eventfulranges/clock"
-	"gitub.com/d-led/eventfulranges/engine"
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
-	"gitub.com/d-led/eventfulranges/store/jsonl"
-	"gitub.com/d-led/eventfulranges/strategy"
+	"github.com/d-led/eventfulranges/clock"
+	"github.com/d-led/eventfulranges/engine"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/store/jsonl"
+	"github.com/d-led/eventfulranges/strategy"
 )
 
 // Option customizes a RangeSet.

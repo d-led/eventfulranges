@@ -12,8 +12,8 @@ import (
 	"github.com/EventStore/EventStore-Client-Go/v4/esdb"
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
 )
 
 // TestTranslateError pins the error-code mapping. The wrong-version and

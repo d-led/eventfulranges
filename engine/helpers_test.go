@@ -5,8 +5,8 @@ import (
 
 	"pgregory.net/rapid"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
 )
 
 // iv builds an interval from grid endpoints.

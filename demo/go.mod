@@ -1,14 +1,14 @@
-module gitub.com/d-led/eventfulranges/demo
+module github.com/d-led/eventfulranges/demo
 
 go 1.27.0
 
 require (
 	github.com/cskr/pubsub/v2 v2.0.2
+	github.com/d-led/eventfulranges v0.0.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/stretchr/testify v1.12.1
-	gitub.com/d-led/eventfulranges v0.0.0
 )
 
 require (
@@ -48,4 +48,4 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-replace gitub.com/d-led/eventfulranges => ../
+replace github.com/d-led/eventfulranges => ../

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"gitub.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/interval"
 )
 
 // Kind is the type of a range operation.

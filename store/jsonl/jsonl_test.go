@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
-	"gitub.com/d-led/eventfulranges/store/jsonl"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/store/jsonl"
 )
 
 func opAdd(id string, ts int64, start, end int) op.Op {

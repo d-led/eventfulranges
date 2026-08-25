@@ -12,8 +12,8 @@ import (
 	"github.com/EventStore/EventStore-Client-Go/v4/esdb"
 	"github.com/google/uuid"
 
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
 )
 
 var (

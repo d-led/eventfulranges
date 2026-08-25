@@ -5,7 +5,7 @@ import (
 
 	"pgregory.net/rapid"
 
-	"gitub.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/interval"
 )
 
 func TestPropertyNormalize(t *testing.T) {

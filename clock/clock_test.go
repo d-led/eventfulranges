@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/clock"
+	"github.com/d-led/eventfulranges/clock"
 )
 
 func TestLamportTick(t *testing.T) {

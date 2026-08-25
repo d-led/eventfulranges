@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/space"
+	"github.com/d-led/eventfulranges/space"
 )
 
 func TestViewAddThenRemoveYieldsHollowShell(t *testing.T) {

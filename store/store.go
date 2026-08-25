@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 
-	"gitub.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/op"
 )
 
 var (

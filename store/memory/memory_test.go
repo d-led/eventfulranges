@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitub.com/d-led/eventfulranges/interval"
-	"gitub.com/d-led/eventfulranges/op"
-	"gitub.com/d-led/eventfulranges/store"
-	"gitub.com/d-led/eventfulranges/store/memory"
+	"github.com/d-led/eventfulranges/interval"
+	"github.com/d-led/eventfulranges/op"
+	"github.com/d-led/eventfulranges/store"
+	"github.com/d-led/eventfulranges/store/memory"
 )
 
 func TestMemoryAppendRead(t *testing.T) {
