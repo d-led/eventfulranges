@@ -19,4 +19,13 @@ done
 # Refresh the workspace checksums after the module files changed.
 go work sync
 
+# Upgrade the web UI's npm dependencies. The UI (three) and the Playwright test
+# tooling (@playwright/test, esbuild) live in a single package.json, so one
+# `taze -w major` bumps both the UI and the test dependencies.
+(
+  cd demo/web/ui-src
+  npx -y taze -w major
+  npm install --no-audit --no-fund
+)
+
 echo "dependencies upgraded"
