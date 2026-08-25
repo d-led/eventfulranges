@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"path/filepath"
 	"testing"
 
 	"github.com/EventStore/EventStore-Client-Go/v4/esdb"
@@ -40,8 +41,11 @@ func TestOpenInvalidConnectionString(t *testing.T) {
 	_, err := Open("http://localhost:2113")
 	require.Error(t, err)
 
-	// A lone user certificate without its key fails client validation.
-	_, err = Open("esdb://localhost:2113?usercertfile=./cert.pem")
+	// A lone user certificate without its key fails client validation. The
+	// certificate path points at a throwaway file in a test temp dir, so the
+	// test never touches the working directory.
+	cert := filepath.Join(t.TempDir(), "cert.pem")
+	_, err = Open("esdb://localhost:2113?usercertfile=" + cert)
 	require.Error(t, err)
 }
 
