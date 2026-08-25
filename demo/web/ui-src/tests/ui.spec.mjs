@@ -115,6 +115,9 @@ test('random op appends a valid command in the session dimension', async ({ page
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
+  // The ops window is pre-filled with an example; clear it to isolate the
+  // append behaviour of the random drafts.
+  await page.locator('#ops').fill('');
   await page.locator('#random').click();
   await page.locator('#random').click();
   const lines = (await page.locator('#ops').inputValue()).trim().split('\n');
