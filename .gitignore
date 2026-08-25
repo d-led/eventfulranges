@@ -283,10 +283,13 @@ demo/*/*.snapshot.json
 # rapid failure reproductions
 testdata/rapid/
 
-# The web demo bundles its UI into dist/ for go:embed; that directory is
-# committed on purpose (see demo/web/ui-src for the sources and build).
+# The web demo builds its UI from ui-src into dist/ for go:embed. Only the
+# directory marker and the "run the build" placeholder are committed; the
+# bundled app.js and style.css are generated and ignored.
 !demo/web/dist/
-!demo/web/dist/**
+demo/web/dist/*
+!demo/web/dist/.gitkeep
+!demo/web/dist/index.html
 
 # Playwright artifacts
 demo/web/ui-src/test-results/

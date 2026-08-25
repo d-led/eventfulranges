@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Runs the Playwright end-to-end tests for the web demo (demo/web).
+# Builds the web UI and runs the Playwright end-to-end tests (demo/web).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+./scripts/build-web.sh
+
 cd demo/web/ui-src
-npm install --no-audit --no-fund
 npx playwright install --with-deps chromium
 npx playwright test

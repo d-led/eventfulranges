@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Builds and smoke-tests the web visualizer (demo/web) without a browser.
+# Builds the web UI and smoke-tests the visualizer (demo/web) without a browser.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+./scripts/build-web.sh
 
 cd demo/web
 go test -race -count=1 ./...

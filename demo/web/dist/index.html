@@ -3,80 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>eventfulranges — live range-set visualizer</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>eventfulranges — UI not built</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: #111318; color: #e6e8ee; font: 15px/1.6 system-ui, sans-serif; }
+    main { max-width: 36rem; padding: 2rem; text-align: center; }
+    code { background: #181b22; border: 1px solid #2a2f3a; border-radius: 6px;
+           padding: 2px 6px; font-size: 13px; }
+    pre { text-align: left; background: #181b22; border: 1px solid #2a2f3a;
+          border-radius: 8px; padding: 12px 16px; overflow: auto; }
+  </style>
 </head>
 <body>
   <main>
-    <aside id="panel">
-      <h1>eventfulranges</h1>
-      <p id="presence" class="presence">connecting…</p>
-      <p class="lede">
-        A live n-dimensional range set. Everyone who opens the same link shares
-        one view: add and remove boxes and watch every browser converge. Each
-        share link is its own private model that expires after a day of silence.
-      </p>
-
-      <div class="field">
-        <label for="dims">Dimensions</label>
-        <select id="dims">
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3" selected>3</option>
-          <option value="4">4</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="ops">Operations — CSV: <code>kind,(min…),(max…)</code> (<code>#</code> = comment)</label>
-        <textarea id="ops" spellcheck="false"></textarea>
-      </div>
-
-      <div class="row">
-        <button id="send" class="primary">Send ops</button>
-        <button id="example">Load example</button>
-        <button id="reset">Reset view</button>
-      </div>
-
-      <div class="row">
-        <button id="fitView">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0 1 20.25 6v1.5m0 9V18A2.25 2.25 0 0 1 18 20.25h-1.5m-9 0H6A2.25 2.25 0 0 1 3.75 18v-1.5M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-          Fit view
-        </button>
-        <button id="copyLink">Copy share link</button>
-      </div>
-
-      <div class="field" id="slice" hidden>
-        <label for="w">4th dimension · w (slice position) <span id="wval"></span></label>
-        <input type="range" id="w" min="0" max="4" step="0.01" value="2" />
-        <label class="inline"><input type="checkbox" id="animate" checked /> animate</label>
-        <p class="hint">
-          The w slider is a 3D <strong>cross-section</strong> through the 4th
-          dimension, not a projection: each frame shows only the part of each
-          box that reaches w. Sweep it — or animate — and boxes fade in where
-          they start and fade out where they end.
-        </p>
-      </div>
-
-      <div class="field">
-        <label for="status">Status</label>
-        <div id="status">connecting…</div>
-      </div>
-
-      <details>
-        <summary>Materialized boxes (copyable CSV)</summary>
-        <textarea id="result" readonly spellcheck="false"></textarea>
-        <button id="copy">Copy result CSV</button>
-      </details>
-    </aside>
-
-    <section id="canvas"></section>
-
-    <section id="activity" aria-label="Activity log">
-      <ol id="log"></ol>
-    </section>
+    <h1>eventfulranges</h1>
+    <p>The web UI hasn't been built yet.</p>
+    <p>Build it, then reload this page:</p>
+    <pre>go generate ./demo/web</pre>
+    <p>or, equivalently: <code>npm --prefix demo/web/ui-src run build</code></p>
   </main>
-
-  <script type="module" src="app.js"></script>
 </body>
 </html>
