@@ -55,6 +55,25 @@ cal.Contains(days("2026-07-08")) // false — cancelled
 cal.Contains(days("2026-07-12")) // true  — Bob's still away
 ```
 
+```mermaid
+gantt
+    title       Shared calendar — AdditiveWins
+    dateFormat  YYYY-MM-DD
+    axisFormat  %m-%d
+
+    section Start (bookings)
+    Alice books               :a, 2026-07-01, 10d
+    Bob books                 :b, 2026-07-06, 10d
+
+    section Operation
+    Alice cancels             :crit, c, 2026-07-08, 3d
+
+    section Result
+    Busy (Alice, then Alice+Bob) :done,   r1, 2026-07-01, 7d
+    Free                         :active, r2, 2026-07-08, 3d
+    Busy (Bob)                   :done,   r3, 2026-07-11, 5d
+```
+
 `AdditiveWins` makes the busy set the union of all bookings minus all
 cancellations, so concurrent edits converge no matter the order.
 
