@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>eventfulranges — live range-set visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <aside id="panel">
+      <h1>eventfulranges</h1>
+      <p class="lede">
+        A live n-dimensional range set. Everyone on this page shares one view:
+        add and remove boxes and watch every browser converge.
+      </p>
+
+      <div class="field">
+        <label for="dims">Dimensions</label>
+        <select id="dims">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="ops">Operations — CSV: <code>kind,min…,max…</code> (<code>#</code> = comment)</label>
+        <textarea id="ops" spellcheck="false"></textarea>
+      </div>
+
+      <div class="row">
+        <button id="send" class="primary">Send ops</button>
+        <button id="example">Load example</button>
+        <button id="reset">Reset view</button>
+      </div>
+
+      <div class="field" id="slice" hidden>
+        <label for="w">4th-dimension slice <span id="wval"></span></label>
+        <input type="range" id="w" min="0" max="1" step="0.01" value="0.5" />
+        <label class="inline"><input type="checkbox" id="animate" checked /> animate</label>
+      </div>
+
+      <div class="field">
+        <label for="status">Status</label>
+        <div id="status">connecting…</div>
+      </div>
+
+      <details>
+        <summary>Materialized boxes (copyable CSV)</summary>
+        <textarea id="result" readonly spellcheck="false"></textarea>
+        <button id="copy">Copy result CSV</button>
+      </details>
+    </aside>
+
+    <section id="canvas"></section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

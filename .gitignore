@@ -281,3 +281,8 @@ demo/*/*.snapshot.json
 
 # rapid failure reproductions
 testdata/rapid/
+
+# The web demo bundles its UI into dist/ for go:embed; that directory is
+# committed on purpose (see demo/web/ui-src for the sources and build).
+!demo/web/dist/
+!demo/web/dist/**
