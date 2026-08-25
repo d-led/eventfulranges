@@ -64,6 +64,14 @@ and nothing else.
 The cached view is an optimization only — the log is the source of truth, so
 restarting never changes the result.
 
+An n-dimensional counterpart mirrors this engine over `space.Box` under
+`space/engine`, sharing the same `clock` and the same event-log contracts
+under `space/store`. The one behavioral difference: because the n-D canonical
+cover is not uniquely decomposable, `space/engine` materializes `LWW`/`FWW`
+from the full operation list rather than folding incrementally, so two
+replicas that have seen the same operations always produce the identical
+cover. `AdditiveWins` and `GrowOnly` fold incrementally exactly as in 1-D.
+
 ## Stores
 
 Persistence is split into two contracts so stream-only backends (for example
@@ -94,6 +102,9 @@ Backends:
 - `store/kurrent` — KurrentDB, behind the `kurrent` build tag; implements both
   contracts and is covered by unit tests for its pure helpers plus integration
   tests against a real server (no fakes).
+
+The n-D engine uses the same contracts typed to `space/op.Op`, with the
+`space/store/memory` and `space/store/jsonl` backends.
 
 ## Clocks
 

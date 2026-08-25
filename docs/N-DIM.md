@@ -1,7 +1,7 @@
 # n-dimensional ranges
 
 The `space` package generalizes the one-dimensional `interval` set to **n
-dimensions**. It is the geometry layer for a future n-dimensional engine.
+dimensions**. It is the geometry layer for the n-dimensional CRDT engine.
 
 ## Boxes
 
@@ -35,18 +35,25 @@ oracle**: for dense sample grids, a point is in `Normalize(x)` /
 Because the oracle is membership, not the implementation, a geometry bug
 cannot slip through.
 
-## Relationship to the 1-D CRDT
+## The n-D CRDT engine
 
-The 1-D package and the n-D package share the same shape:
+The n-dimensional engine mirrors the 1-D stack, one package per layer, all
+typed to `space.Box` instead of `interval.Interval`:
 
-| 1-D (`interval`)        | n-D (`space`)          |
-| ----------------------- | ---------------------- |
-| `Interval` (open/closed)| `Box` (half-open)      |
-| `Normalize` (merge)     | `Normalize` (subsume)  |
-| `Union` / `Difference`  | `Union` / `Difference` |
-| `Contains` / `Overlaps` | `Contains` / `OverlapsSet` |
+| Layer            | 1-D                    | n-D                     |
+| ---------------- | ---------------------- | ----------------------- |
+| Operation        | `op`                   | `space/op`              |
+| Conflict policy  | `strategy`             | `space/strategy`        |
+| Event log        | `store`, `store/memory`, `store/jsonl` | `space/store`, `space/store/memory`, `space/store/jsonl` |
+| Engine           | `engine`               | `space/engine`          |
+| Facade           | `eventfulranges.RangeSet` | `eventfulranges.BoxSet` |
 
-An n-D CRDT engine would apply the same conflict-resolution strategies to
-operations over `space.Box` instead of `interval.Interval`; the strategy
-layer is shape-agnostic in principle. That engine is future work — today
-`space` ships as a fully tested geometry package.
+Every 1-D strategy (`LWW`, `FWW`, `AdditiveWins`, `GrowOnly`) has an n-D
+counterpart with the same semantics, materializing `[]space.Box` instead of
+`[]interval.Interval`. `AdditiveWins` and `GrowOnly` reduce to `space.Union`
+and `space.Difference`; `LWW` and `FWW` layer operations in priority order,
+carving each box by the region still undecided. Because the n-D cover is not
+uniquely decomposable (partially overlapping boxes are kept, not subdivided),
+the engine materializes `LWW`/`FWW` from the full operation list — never
+incrementally — so two replicas that have seen the same operations always
+yield the identical cover.
