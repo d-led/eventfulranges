@@ -63,6 +63,7 @@ const palette = [
 let currentBoxes = []; // [{min, max}] as returned by the server
 let currentDims = 3;
 let sliceW = 2;
+let sliceDir = 1; // animation sweep direction (ping-pong, no wrap teleport)
 let needsFit = true;
 let clientID = '';
 let clients = 0;
@@ -77,13 +78,13 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-function makeBox(lo, hi, color, opacity) {
+function makeBox(lo, hi, color, alpha) {
   const size = lo.map((v, i) => Math.max(hi[i] - v, 1e-4));
   const geo = new THREE.BoxGeometry(size[0], size[1], size[2]);
   const fill = new THREE.MeshStandardMaterial({
     color,
     transparent: true,
-    opacity,
+    opacity: 0.4 * alpha,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -95,17 +96,26 @@ function makeBox(lo, hi, color, opacity) {
   );
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(geo),
-    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 * alpha }),
   );
   mesh.add(edges);
   return mesh;
 }
 
 // Project an n-dimensional box onto 3D. Missing dimensions are padded to thin
-// slabs; 4D boxes are sliced at the current w value.
+// slabs; 4D boxes are sliced at the current w value with a soft falloff near
+// their w-boundaries, so sweeping w fades boxes in and out instead of popping
+// them in at the hyperplane.
+const FADE_FRACTION = 0.3; // share of a box's w-span used for the fade
+const FADE_FLOOR = 0.05;   // absolute fade width, so thin boxes still fade
+
 function project(box, dims, w) {
   const { min, max } = box;
-  if (dims === 4 && !(min[3] <= w && w < max[3])) return null;
+  let opacity = 1;
+  if (dims === 4) {
+    opacity = fadeOpacity(min[3], max[3], w);
+    if (opacity <= 0) return null;
+  }
   const lo = min.slice(0, 3);
   const hi = max.slice(0, 3);
   for (let d = dims; d < 3; d++) {
@@ -114,7 +124,15 @@ function project(box, dims, w) {
     lo.push(d === 1 ? -0.5 : 0);
     hi.push(d === 1 ? 0.5 : 0.02);
   }
-  return { lo, hi };
+  return { lo, hi, opacity };
+}
+
+// fadeOpacity is 1 well inside a box's w-interval and ramps to 0 just outside
+// each edge, so the cross-section reads as a blurred slab rather than a hard
+// binary cut. Boxes are half-open in w: [minW, maxW).
+function fadeOpacity(minW, maxW, w) {
+  const fade = Math.max((maxW - minW) * FADE_FRACTION, FADE_FLOOR);
+  return Math.min(1, Math.max(0, (w - minW) / fade, (maxW - w) / fade));
 }
 
 function projectedBoxes() {
@@ -131,7 +149,7 @@ function rebuild() {
   for (let i = 0; i < currentBoxes.length; i++) {
     const p = project(currentBoxes[i], currentDims, sliceW);
     if (!p) continue;
-    boxesGroup.add(makeBox(p.lo, p.hi, palette[i % palette.length], 0.4));
+    boxesGroup.add(makeBox(p.lo, p.hi, palette[i % palette.length], p.opacity));
   }
 }
 
@@ -197,8 +215,9 @@ function fitCamera() {
 function tick() {
   requestAnimationFrame(tick);
   if (currentDims === 4 && animateChk.checked) {
-    sliceW += 0.008;
-    if (sliceW >= 4) sliceW = 0;
+    sliceW += sliceDir * 0.008;
+    if (sliceW >= 4) { sliceW = 4; sliceDir = -1; }
+    else if (sliceW <= 0) { sliceW = 0; sliceDir = 1; }
     wInput.value = sliceW;
     wVal.textContent = sliceW.toFixed(2);
     rebuild();
