@@ -65,8 +65,8 @@ func TestSegmentsDefinedForPriorityStrategiesOnly(t *testing.T) {
 
 func TestCombineSegmentsMerges(t *testing.T) {
 	t.Parallel()
-	a := strategy.Segments(strategy.LWW, []op.Op{op.Op{ID: "a", Kind: op.KindAdd, TS: 2, Box: box(0, 0, 2, 2)}})
-	b := strategy.Segments(strategy.LWW, []op.Op{op.Op{ID: "b", Kind: op.KindAdd, TS: 1, Box: box(4, 0, 6, 2)}})
+	a := strategy.Segments(strategy.LWW, []op.Op{{ID: "a", Kind: op.KindAdd, TS: 2, Box: box(0, 0, 2, 2)}})
+	b := strategy.Segments(strategy.LWW, []op.Op{{ID: "b", Kind: op.KindAdd, TS: 1, Box: box(4, 0, 6, 2)}})
 	combined := strategy.CombineSegments(strategy.LWW, a, b)
 	require.Len(t, combined, 2)
 }
