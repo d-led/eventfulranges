@@ -1,0 +1,72 @@
+version: 2
+
+project_name: eventfulranges
+
+# Separate dir so --clean never wipes the generated frontend output
+# (demo/web/dist is produced by the before hook and consumed by go:embed).
+dist: .goreleaser-dist
+
+before:
+  hooks:
+    # Build the embedded UI into demo/web/dist before go:embed runs.
+    # npm ci (not install) keeps package-lock.json from drifting and the
+    # working tree clean, so the tag build is reproducible.
+    - cd demo/web/ui-src && npm ci --no-audit --no-fund && npm run build
+
+builds:
+  - id: web
+    dir: demo/web
+    main: .
+    binary: eventfulranges
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # The UI is only embedded with this build tag (see demo/web/embed.go).
+    tags:
+      - embed
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+# Merge darwin/amd64 and darwin/arm64 into a single universal binary.
+# ids must reference the build id ("web") — it defaults to the project name,
+# which would not match here.
+universal_binaries:
+  - id: web
+    ids:
+      - web
+    replace: true
+
+archives:
+  - formats: ['tar.gz']
+    # uname-compatible name template; zip for Windows.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

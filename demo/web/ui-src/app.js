@@ -166,40 +166,93 @@ function setOrthoFrustum(center, half) {
   orthoCamera.updateProjectionMatrix();
 }
 
+// boundsOf returns the axis-aligned bounds of the projected boxes, or null
+// when there is nothing to frame.
+function boundsOf(boxes) {
+  if (boxes.length === 0) return null;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const { lo, hi } of boxes) {
+    for (let i = 0; i < 3; i++) {
+      min[i] = Math.min(min[i], lo[i]);
+      max[i] = Math.max(max[i], hi[i]);
+    }
+  }
+  return { min, max };
+}
+
+// centroidOf returns the volume-weighted center (barycenter) of the boxes, so
+// the camera orbits the material rather than the origin.
+function centroidOf(boxes) {
+  const c = [0, 0, 0];
+  let volume = 0;
+  for (const { lo, hi } of boxes) {
+    const v = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
+    for (let i = 0; i < 3; i++) c[i] += v * (lo[i] + hi[i]) / 2;
+    volume += v;
+  }
+  return volume > 0 ? c.map((x) => x / volume) : [0, 0, 0];
+}
+
+// norm3 scales a direction vector to unit length, so the camera distance does
+// not depend on the viewing angle.
+function norm3(x, y, z) {
+  const len = Math.hypot(x, y, z);
+  return [x / len, y / len, z / len];
+}
+
 function fitCamera() {
   const boxes = projectedBoxes();
-  const center = [0, 0, 0];
-  let half = 4;
-  let radius = 8;
-  if (boxes.length > 0) {
-    const min = [Infinity, Infinity, Infinity];
-    const max = [-Infinity, -Infinity, -Infinity];
-    for (const { lo, hi } of boxes) {
-      for (let i = 0; i < 3; i++) {
-        min[i] = Math.min(min[i], lo[i]);
-        max[i] = Math.max(max[i], hi[i]);
-      }
-    }
-    center[0] = (min[0] + max[0]) / 2;
-    center[1] = (min[1] + max[1]) / 2;
-    center[2] = (min[2] + max[2]) / 2;
-    half = Math.max(1, (max[0] - min[0]) / 2, (max[1] - min[1]) / 2);
-    radius = Math.max(1, max[0] - min[0], max[1] - min[1], max[2] - min[2]);
-  }
-  controls.target.set(...center);
+  const bounds = boundsOf(boxes);
+
   if (camera === orthoCamera) {
+    // Flat views are centered on the material and framed so both extents fit,
+    // scaling for the canvas aspect so nothing is clipped.
+    const aspect = (canvasHost.clientWidth / canvasHost.clientHeight) || 1;
+    const center = bounds
+      ? [(bounds.min[0] + bounds.max[0]) / 2, (bounds.min[1] + bounds.max[1]) / 2, 0]
+      : [0, 0, 0];
+    const half = bounds
+      ? Math.max(1, (bounds.max[1] - bounds.min[1]) / 2, (bounds.max[0] - bounds.min[0]) / (2 * aspect))
+      : 4;
+    controls.target.set(center[0], center[1], 0);
     orthoCamera.near = 0.1;
     orthoCamera.far = 100;
     setOrthoFrustum(center, half);
     orthoCamera.position.set(center[0], center[1], 10);
   } else {
+    // Perspective views orbit the barycenter and step back far enough that the
+    // material's bounding sphere fits the narrower of the two fields of view.
+    const center = bounds ? centroidOf(boxes) : [0, 0, 0];
+    let radius = 8; // empty-scene fallback
+    if (bounds) {
+      let r2 = 0;
+      for (const x of [bounds.min[0], bounds.max[0]]) {
+        for (const y of [bounds.min[1], bounds.max[1]]) {
+          for (const z of [bounds.min[2], bounds.max[2]]) {
+            const dx = x - center[0];
+            const dy = y - center[1];
+            const dz = z - center[2];
+            r2 = Math.max(r2, dx * dx + dy * dy + dz * dz);
+          }
+        }
+      }
+      radius = Math.max(1, Math.sqrt(r2));
+    }
+    camera.aspect = (canvasHost.clientWidth / canvasHost.clientHeight) || 1;
+    const fov = (camera.fov * Math.PI) / 180;
+    const hFov = 2 * Math.atan(Math.tan(fov / 2) * camera.aspect);
+    const halfFov = Math.min(fov, hFov) / 2;
+    const dist = (radius / Math.sin(halfFov)) * 1.15; // a little breathing room
+    const dir = norm3(0.8, 0.8, 1.1);
+    controls.target.set(...center);
     camera.position.set(
-      center[0] + radius * 0.8,
-      center[1] + radius * 0.8,
-      center[2] + radius * 1.1,
+      center[0] + dir[0] * dist,
+      center[1] + dir[1] * dist,
+      center[2] + dir[2] * dist,
     );
-    camera.near = radius / 10;
-    camera.far = radius * 20;
+    camera.near = dist / 100;
+    camera.far = dist * 100;
     camera.updateProjectionMatrix();
   }
   controls.update();
@@ -346,8 +399,9 @@ function appendLog(op) {
 }
 
 // applyState folds a server view into the scene and the result textarea. It
-// deliberately never refits the camera: an incoming edit must not yank the view.
+// frames the first content that appears, but later edits never yank the view.
 function applyState(state) {
+  const hadBoxes = currentBoxes.length > 0;
   currentBoxes = state.boxes || [];
   const dims = state.dims;
   if (dims > 0 && dims !== currentDims) {
@@ -359,6 +413,7 @@ function applyState(state) {
   }
   resultEl.value = boxesToCSV(currentBoxes);
   rebuild();
+  if (!hadBoxes && currentBoxes.length > 0) needsFit = true;
 }
 
 function connect() {

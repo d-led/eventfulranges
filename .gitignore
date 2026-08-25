@@ -276,6 +276,7 @@ dist
 
 # eventfulranges build artifacts and reports
 build/
+.goreleaser-dist/
 demo/*/data/
 demo/*/*.jsonl
 demo/*/*.snapshot.json
