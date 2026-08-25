@@ -18,6 +18,7 @@ const copyBtn = $('copy');
 const copyLinkBtn = $('copyLink');
 const presenceEl = $('presence');
 const logEl = $('log');
+const fitViewBtn = $('fitView');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -289,7 +290,8 @@ function appendLog(op) {
   while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
 }
 
-// applyState folds a server view into the scene and the result textarea.
+// applyState folds a server view into the scene and the result textarea. It
+// deliberately never refits the camera: an incoming edit must not yank the view.
 function applyState(state) {
   currentBoxes = state.boxes || [];
   const dims = state.dims;
@@ -301,7 +303,6 @@ function applyState(state) {
   }
   resultEl.value = boxesToCSV(currentBoxes);
   rebuild();
-  needsFit = true;
 }
 
 function connect() {
@@ -336,6 +337,7 @@ function connect() {
     if (msg.clientID) {
       clientID = msg.clientID;
       updatePresence();
+      needsFit = true; // fit once on join, not on every later edit
     }
     if (msg.ops) {
       logEl.innerHTML = '';
@@ -399,6 +401,10 @@ exampleBtn.addEventListener('click', () => {
 resetBtn.addEventListener('click', () => {
   sendOp({ kind: 'clear' });
   opsEl.value = '';
+});
+
+fitViewBtn.addEventListener('click', () => {
+  needsFit = true;
 });
 
 dimsSel.addEventListener('change', () => {
