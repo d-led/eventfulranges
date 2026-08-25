@@ -343,7 +343,10 @@ function connect() {
       logEl.innerHTML = '';
       for (const op of msg.ops) appendLog(op);
     }
-    if (msg.op) appendLog(msg.op);
+    if (msg.op) {
+      if (msg.op.kind === 'clear') logEl.innerHTML = ''; // a reset wipes the feed
+      appendLog(msg.op);
+    }
     if (msg.clients !== undefined) updatePresence(msg.clients);
     if (msg.type === 'error') setStatus(`error: ${msg.error}`);
   };

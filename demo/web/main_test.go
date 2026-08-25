@@ -131,6 +131,24 @@ func TestHubTracksPresenceAndLog(t *testing.T) {
 	h.leave()
 }
 
+func TestHubClearResetsLog(t *testing.T) {
+	t.Parallel()
+	h := newHub()
+
+	_, err := h.record("alice", opAdd, []float64{0}, []float64{1})
+	require.NoError(t, err)
+	_, err = h.record("alice", opRemove, []float64{2}, []float64{3})
+	require.NoError(t, err)
+	_, err = h.record("alice", opClear, nil, nil)
+	require.NoError(t, err)
+	_, err = h.record("bob", opAdd, []float64{5}, []float64{6})
+	require.NoError(t, err)
+
+	log, _ := h.join()
+	require.Equal(t, []string{"clear", "add"}, []string{log[0].Kind, log[1].Kind},
+		"a clear wipes the history, leaving only the reset and what follows")
+}
+
 func TestWebSocketReportsIdentityAndLog(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(newRouter(newSessions(time.Hour), GetFS()))

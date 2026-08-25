@@ -77,9 +77,13 @@ func (h *hub) apply(kind opKind, min, max []float64) (view, error) {
 
 // record applies one operation attributed to a client, appends it to the
 // activity log, and broadcasts the log entry together with the new state.
+// A clear resets the view, so it also wipes the prior activity.
 func (h *hub) record(clientID string, kind opKind, min, max []float64) (view, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if kind == opClear {
+		h.ops = nil
+	}
 	v, err := h.foldLocked(kind, min, max)
 	if err != nil {
 		return view{}, err
