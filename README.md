@@ -66,7 +66,14 @@ The public facade is the root package `eventfulranges`.
 go run ./demo/hello    # simplest use, no concurrency
 go run ./demo/local    # goroutine replicas converge without a network
 go run ./demo/network  # two HTTP peers converge
+go run ./demo/web      # interactive 3D visualizer, shared live over WebSockets
 ```
+
+The web demo serves an n-dimensional range-set visualizer (1–4 dimensions,
+with a rotatable translucent-box 3D view and copy/pasteable CSV). Everyone
+connected to the same instance shares one view: each `add`/`remove` is folded
+with additive-wins semantics and broadcast over a WebSocket, so concurrent
+edits converge regardless of order. Open `http://localhost:8080/ui/`.
 
 Each demo has a smoke test; run them with `go test ./demo/...`.
 
