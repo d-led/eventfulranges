@@ -1,0 +1,132 @@
+# 2026/08/26 01:35:59.024795 [TestPropertyConvergence/lww] [rapid] draw n: 5
+# 2026/08/26 01:35:59.024810 [TestPropertyConvergence/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.024819 [TestPropertyConvergence/lww] [rapid] draw x1: 1
+# 2026/08/26 01:35:59.024827 [TestPropertyConvergence/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.024833 [TestPropertyConvergence/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.024841 [TestPropertyConvergence/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.024848 [TestPropertyConvergence/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.024854 [TestPropertyConvergence/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.024860 [TestPropertyConvergence/lww] [rapid] draw x1: 1
+# 2026/08/26 01:35:59.024867 [TestPropertyConvergence/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.024873 [TestPropertyConvergence/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.024879 [TestPropertyConvergence/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.024884 [TestPropertyConvergence/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.024890 [TestPropertyConvergence/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.024896 [TestPropertyConvergence/lww] [rapid] draw x1: 1
+# 2026/08/26 01:35:59.024901 [TestPropertyConvergence/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.024906 [TestPropertyConvergence/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.024915 [TestPropertyConvergence/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.024920 [TestPropertyConvergence/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:59.024926 [TestPropertyConvergence/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.024932 [TestPropertyConvergence/lww] [rapid] draw x1: 2
+# 2026/08/26 01:35:59.024937 [TestPropertyConvergence/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.024941 [TestPropertyConvergence/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.024946 [TestPropertyConvergence/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.024951 [TestPropertyConvergence/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:59.024958 [TestPropertyConvergence/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.024963 [TestPropertyConvergence/lww] [rapid] draw x1: 2
+# 2026/08/26 01:35:59.024968 [TestPropertyConvergence/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.024973 [TestPropertyConvergence/lww] [rapid] draw y1: 2
+# 2026/08/26 01:35:59.024978 [TestPropertyConvergence/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.024985 [TestPropertyConvergence/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.024994 [TestPropertyConvergence/lww] [rapid] draw perm: []op.Op{op.Op{ID:"0", Kind:0x0, Box:space.Box{Min:[]float64{0, 0}, Max:[]float64{1, 1}}, TS:1, Origin:""}, op.Op{ID:"1", Kind:0x0, Box:space.Box{Min:[]float64{0, 0}, Max:[]float64{1, 1}}, TS:1, Origin:""}, op.Op{ID:"2", Kind:0x0, Box:space.Box{Min:[]float64{0, 0}, Max:[]float64{1, 1}}, TS:2, Origin:""}, op.Op{ID:"4", Kind:0x0, Box:space.Box{Min:[]float64{0, 0}, Max:[]float64{2, 2}}, TS:1, Origin:""}, op.Op{ID:"3", Kind:0x0, Box:space.Box{Min:[]float64{0, 0}, Max:[]float64{2, 1}}, TS:2, Origin:""}}
+# 2026/08/26 01:35:59.025253 [TestPropertyConvergence/lww] lww did not converge: [[0 2) x [0 1) [0 2) x [1 2)] vs [[0 1) x [1 2) [0 2) x [0 1) [1 2) x [1 2)] (ops [{0 add [0 1) x [0 1) 1 } {1 add [0 1) x [0 1) 1 } {2 add [0 1) x [0 1) 2 } {3 add [0 2) x [0 1) 2 } {4 add [0 2) x [0 2) 1 }])
+# 
+v0.4.8#14636592359380902565
+0x0
+0x6b74f03291620
+0x5
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0

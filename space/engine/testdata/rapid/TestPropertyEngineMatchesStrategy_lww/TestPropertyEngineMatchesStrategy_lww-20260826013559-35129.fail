@@ -1,0 +1,145 @@
+# 2026/08/26 01:35:59.010589 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw n: 6
+# 2026/08/26 01:35:59.010603 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.010611 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x1: 1
+# 2026/08/26 01:35:59.010619 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.010625 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.010632 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.010640 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.010646 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.010654 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x1: 1
+# 2026/08/26 01:35:59.010662 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.010667 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.010672 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.010679 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.010685 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.010691 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x1: 1
+# 2026/08/26 01:35:59.010696 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:59.010701 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.010706 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.010717 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.010722 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.010728 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x1: 2
+# 2026/08/26 01:35:59.010733 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y0: -1
+# 2026/08/26 01:35:59.010739 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y1: 0
+# 2026/08/26 01:35:59.010744 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.010750 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:59.010755 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x0: 1
+# 2026/08/26 01:35:59.010761 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x1: 3
+# 2026/08/26 01:35:59.010766 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y0: -1
+# 2026/08/26 01:35:59.010771 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:59.010776 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.010783 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.010788 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:59.010793 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw x1: 3
+# 2026/08/26 01:35:59.010799 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y0: -1
+# 2026/08/26 01:35:59.010804 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw y1: 0
+# 2026/08/26 01:35:59.010809 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:59.010821 [TestPropertyEngineMatchesStrategy/lww] [rapid] draw ts: 1
+# 2026/08/26 01:35:59.010992 [TestPropertyEngineMatchesStrategy/lww] lww mismatch: want [[0 1) x [0 1) [0 2) x [-1 0) [1 3) x [0 1) [2 3) x [-1 0)] got [[0 1) x [0 1) [0 2) x [-1 0) [1 2) x [0 1) [2 3) x [-1 0) [2 3) x [0 1)] (ops [{0 add [0 1) x [0 1) 1 } {1 add [0 1) x [0 1) 1 } {2 add [0 1) x [0 1) 1 } {3 add [0 2) x [-1 0) 2 } {4 add [1 3) x [-1 1) 1 } {5 add [0 3) x [-1 0) 1 }])
+# 
+v0.4.8#9384632749258251398
+0x0
+0x6b74f03291620
+0x6
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x10000000000000
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x1
+0x0
+0x0
+0x1
+0x10000000000000
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1f2b5a0e61c3a6
+0x0
+0x10000000000000
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

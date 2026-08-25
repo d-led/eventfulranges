@@ -1,0 +1,171 @@
+# 2026/08/26 01:35:57.706322 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw n: 7
+# 2026/08/26 01:35:57.706350 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: -1
+# 2026/08/26 01:35:57.706360 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: 0
+# 2026/08/26 01:35:57.706372 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: -1
+# 2026/08/26 01:35:57.706379 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:57.706386 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x1
+# 2026/08/26 01:35:57.706395 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 3
+# 2026/08/26 01:35:57.706403 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: -2
+# 2026/08/26 01:35:57.706409 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: -1
+# 2026/08/26 01:35:57.706420 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: 1
+# 2026/08/26 01:35:57.706426 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: 2
+# 2026/08/26 01:35:57.706431 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x1
+# 2026/08/26 01:35:57.706438 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 3
+# 2026/08/26 01:35:57.706445 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: -1
+# 2026/08/26 01:35:57.706450 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: 2
+# 2026/08/26 01:35:57.706458 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: -2
+# 2026/08/26 01:35:57.706464 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: 3
+# 2026/08/26 01:35:57.706476 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:57.706483 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:57.706489 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: 1
+# 2026/08/26 01:35:57.706495 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: 2
+# 2026/08/26 01:35:57.706502 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: -1
+# 2026/08/26 01:35:57.706508 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: 2
+# 2026/08/26 01:35:57.706513 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:57.706519 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:57.706525 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:57.706530 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: 3
+# 2026/08/26 01:35:57.706536 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:57.706543 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: 2
+# 2026/08/26 01:35:57.706548 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:57.706554 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:57.706560 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: 0
+# 2026/08/26 01:35:57.706565 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: 2
+# 2026/08/26 01:35:57.706571 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: -2
+# 2026/08/26 01:35:57.707469 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: -1
+# 2026/08/26 01:35:57.707479 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x1
+# 2026/08/26 01:35:57.707486 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 4
+# 2026/08/26 01:35:57.707493 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x0: 2
+# 2026/08/26 01:35:57.707499 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw x1: 3
+# 2026/08/26 01:35:57.707505 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y0: 0
+# 2026/08/26 01:35:57.707510 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw y1: 1
+# 2026/08/26 01:35:57.707516 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:57.707522 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw ts: 2
+# 2026/08/26 01:35:57.707528 [TestPropertyConcurrentReplicasConverge/lww] [rapid] draw replicas: 4
+# 
+v0.4.8#12024616403092367640
+0x0
+0x8013215688819
+0x7
+0x1f957e38f05648
+0x11d5898f01cc5b
+0x0
+0x1e4fba1aa7e68c
+0x6aa971aacd408
+0x0
+0x102e393069eaab
+0x1499dccbee210c
+0x0
+0x3434c3e97d6b
+0x8c6eefc8f3fe6
+0x1
+0x38fdc53e68840
+0x1
+0x10db96e0c2d330
+0x19db259074172e
+0x2
+0x1c7592fbc60295
+0x1644b303a54b1c
+0x1
+0x1da1f5b570ab2e
+0xf9c150523060e
+0x0
+0xa4b49a6f3c835
+0x1cafded5ee70e
+0x1
+0x97162346414f2
+0xf657c40dcdc15
+0x0
+0x1b12bce3a75bfa
+0x1
+0x18db1ae9d06d5f
+0xc09f271f5fc52
+0x2
+0x1468833c73c31b
+0x186aa4e2a4f411
+0x0
+0x7202ed9166f4d
+0x1694192a43f19f
+0x2
+0x1ba9d6a92ab919
+0x1b0210cb1e49d3
+0x1
+0xb3ab8f57c51b0
+0xaff566a31e46b
+0x3
+0x8cc06d54143c8
+0x0
+0x1d6d460e8a7b36
+0x1c3dce70b8dfe9
+0x1
+0x49e51eca369bc
+0x49c5cb909b3f3
+0x1
+0x1ec709f38a401
+0x1ee80d2c2fb021
+0x0
+0x1ca249170e2ea2
+0x13ffbb1d618d76
+0x0
+0x1d696fc4a56e48
+0x12b1650ca2f133
+0x2
+0x1309bc073ad2e0
+0x0
+0x1d57cddbcf3d8e
+0x792c738d6e736
+0x1
+0xb2aa61722e580
+0xc02159a3d3dbd
+0x0
+0xc68648e5d4001
+0x4c023291571ab
+0x2
+0xd547938901b1f
+0x1b5e78d7025494
+0x0
+0x9904478d09f4
+0x1325e72344e730
+0x1
+0x1a73e398c2ed5e
+0x0
+0x1374078ebdb033
+0x159445b1224b84
+0x1
+0xfc9b3ca3941a5
+0x9680a788a09c7
+0x0
+0xb113fc17a86a3
+0x1efa0bf8180911
+0x1
+0x12c56748d61d90
+0x6862ec8d9bf42
+0x1
+0x111acba88c163c
+0x15b95d83cffd2f
+0x0
+0xbb95865cfaebc
+0x1
+0x1a641d514e60ea
+0x118ab9bd5382a3
+0x3
+0x46396e2c329ac
+0x1c3f87eca2b823
+0x2
+0x53a726dcbc633
+0x7898a559a9a64
+0x0
+0x978e7eb876ad1
+0x11bdd7db532e75
+0x0
+0x1031863dca14c0
+0x12edcb4610b87b
+0x0
+0xa7062ddb27ee3
+0x0
+0x866f13ea058af
+0x1e2b3edca19bba
+0x1
+0x1f6e6c527d8197
+0x10ff8e60836a9e
+0x2

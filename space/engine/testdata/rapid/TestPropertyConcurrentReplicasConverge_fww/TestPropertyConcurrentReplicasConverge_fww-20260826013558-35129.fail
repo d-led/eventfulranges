@@ -1,0 +1,153 @@
+# 2026/08/26 01:35:58.963258 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw n: 6
+# 2026/08/26 01:35:58.963271 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x0: 0
+# 2026/08/26 01:35:58.963279 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x1: 1
+# 2026/08/26 01:35:58.963287 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y0: 0
+# 2026/08/26 01:35:58.963293 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y1: 1
+# 2026/08/26 01:35:58.963302 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:58.963309 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw ts: 1
+# 2026/08/26 01:35:58.963315 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x0: 0
+# 2026/08/26 01:35:58.963321 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x1: 1
+# 2026/08/26 01:35:58.963329 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y0: 0
+# 2026/08/26 01:35:58.963335 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y1: 1
+# 2026/08/26 01:35:58.963340 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:58.963346 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw ts: 1
+# 2026/08/26 01:35:58.963352 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x0: 0
+# 2026/08/26 01:35:58.963357 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x1: 1
+# 2026/08/26 01:35:58.963362 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y0: 0
+# 2026/08/26 01:35:58.963368 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y1: 1
+# 2026/08/26 01:35:58.963399 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:58.963405 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw ts: 1
+# 2026/08/26 01:35:58.963410 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x0: 0
+# 2026/08/26 01:35:58.963415 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x1: 1
+# 2026/08/26 01:35:58.963420 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y0: 0
+# 2026/08/26 01:35:58.963426 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y1: 1
+# 2026/08/26 01:35:58.963430 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:58.963436 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw ts: 1
+# 2026/08/26 01:35:58.963442 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x0: -1
+# 2026/08/26 01:35:58.963447 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x1: 1
+# 2026/08/26 01:35:58.963452 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y0: 0
+# 2026/08/26 01:35:58.963457 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y1: 1
+# 2026/08/26 01:35:58.963462 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:58.963467 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw ts: 1
+# 2026/08/26 01:35:58.963472 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x0: -1
+# 2026/08/26 01:35:58.963477 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw x1: 1
+# 2026/08/26 01:35:58.963483 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y0: 0
+# 2026/08/26 01:35:58.963509 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw y1: 2
+# 2026/08/26 01:35:58.963514 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw kind: 0x0
+# 2026/08/26 01:35:58.963519 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw ts: 1
+# 2026/08/26 01:35:58.963524 [TestPropertyConcurrentReplicasConverge/fww] [rapid] draw replicas: 2
+# 2026/08/26 01:35:58.965315 [TestPropertyConcurrentReplicasConverge/fww] fww scenario did not converge to the oracle
+#   replicas: 2
+#   history:  [{0 add [0 1) x [0 1) 1 } {1 add [0 1) x [0 1) 1 } {2 add [0 1) x [0 1) 1 } {3 add [0 1) x [0 1) 1 } {4 add [-1 1) x [0 1) 1 } {5 add [-1 1) x [0 2) 1 }]
+#   oracle:   [[-1 0) x [0 1) [-1 1) x [1 2) [0 1) x [0 1)]
+#   replica:  [[-1 0) x [0 1) [-1 0) x [1 2) [0 1) x [0 1) [0 1) x [1 2)]
+# 
+v0.4.8#9250452310961910608
+0x0
+0x6b74f03291620
+0x6
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x10000000000000
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x10000000000000
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
