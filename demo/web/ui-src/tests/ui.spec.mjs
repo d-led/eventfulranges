@@ -33,35 +33,30 @@ test('two tabs converge on the same view', async ({ browser }) => {
   expect(lines).toHaveLength(6);
 });
 
-test('the chosen dimension survives a reload', async ({ page }) => {
+test('changing the dimension does not affect the current session', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  // Selecting a dimension is only a preference for the next session; the
+  // current (unfixed) session stays at its default 3D until a box fixes it.
+  await page.locator('#dims').selectOption('4');
+  await expect(page.locator('#slice')).toBeHidden();
+});
+
+test('a new session keeps its chosen dimension across reload', async ({ page }) => {
   await page.goto('/ui/');
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
   await page.locator('#dims').selectOption('4');
-  // The dimension is shared state: wait until the server records the change.
-  await expect(page.locator('#log li')).toContainText('dims');
+  await page.locator('#newSession').click();
+  await expect(page.locator('#slice')).toBeVisible(); // the new session is 4D
 
   await page.reload();
   await expect(page.locator('#status')).toContainText('connected');
   await expect(page.locator('#dims')).toHaveValue('4');
   await expect(page.locator('#slice')).toBeVisible();
-});
-
-test('new session starts fresh with an unfixed dimension', async ({ page }) => {
-  await page.goto('/ui/');
-  await page.waitForURL(/[?&]s=/);
-  await expect(page.locator('#status')).toContainText('connected');
-
-  await page.locator('#dims').selectOption('4');
-  await expect(page.locator('#log li')).toContainText('dims');
-  const before = page.url();
-
-  await page.locator('#newSession').click();
-  await expect(page).not.toHaveURL(before);
-  await expect(page.locator('#status')).toContainText('connected');
-  await expect(page.locator('#dims')).toHaveValue('3');
-  await expect(page.locator('#slice')).toBeHidden();
 });
 
 test('4D animate sweeps the w slice', async ({ page }) => {
@@ -70,6 +65,9 @@ test('4D animate sweeps the w slice', async ({ page }) => {
   await expect(page.locator('#status')).toContainText('connected');
 
   await page.locator('#dims').selectOption('4');
+  await page.locator('#newSession').click();
+  await expect(page.locator('#slice')).toBeVisible();
+
   await page.locator('#example').click();
 
   // The slice position readout moves while animate is checked.
@@ -78,4 +76,56 @@ test('4D animate sweeps the w slice', async ({ page }) => {
   await page.waitForTimeout(300);
   const after = await page.locator('#wval').textContent();
   expect(after).not.toBe(before);
+});
+
+test('the 4D sweep changes what is rendered', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#dims').selectOption('4');
+  await page.locator('#newSession').click();
+  await expect(page.locator('#slice')).toBeVisible();
+
+  await page.locator('#example').click();
+  await expect(page.locator('#result')).not.toHaveValue('');
+
+  // Freeze the sweep, then sample the canvas at two different w positions.
+  await page.locator('#animate').uncheck();
+
+  const setW = async (w) => {
+    await page.evaluate((val) => {
+      const input = document.getElementById('w');
+      input.value = String(val);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, w);
+    await page.waitForTimeout(150); // let a frame render
+  };
+
+  await setW(0.5);
+  const atLow = await page.locator('#canvas').screenshot();
+  await setW(3.5);
+  const atHigh = await page.locator('#canvas').screenshot();
+
+  expect(Buffer.compare(atLow, atHigh)).not.toBe(0);
+});
+
+test('random op drafts a valid command in the session dimension', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#random').click();
+  const text = await page.locator('#ops').inputValue();
+  const m = text.match(/^(add|remove),\(([^)]*)\),\(([^)]*)\)$/);
+  expect(m).toBeTruthy();
+  // The current (default) session is 3D, so each tuple carries 3 coordinates.
+  expect(m[2].split(',')).toHaveLength(3);
+  expect(m[3].split(',')).toHaveLength(3);
+  for (const coord of [...m[2].split(','), ...m[3].split(',')]) {
+    const n = Number(coord);
+    expect(Number.isFinite(n)).toBe(true);
+    expect(n).toBeGreaterThanOrEqual(-0.25);
+    expect(n).toBeLessThanOrEqual(4.25);
+  }
 });

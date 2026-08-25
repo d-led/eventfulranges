@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { fadeOpacity } from './slice.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -7,6 +8,7 @@ const dimsSel = $('dims');
 const opsEl = $('ops');
 const sendBtn = $('send');
 const exampleBtn = $('example');
+const randomBtn = $('random');
 const newSessionBtn = $('newSession');
 const sliceEl = $('slice');
 const wInput = $('w');
@@ -64,6 +66,7 @@ let currentBoxes = []; // [{min, max}] as returned by the server
 let currentDims = 3;
 let sliceW = 2;
 let sliceDir = 1; // animation sweep direction (ping-pong, no wrap teleport)
+let startDimsSent = false; // the ?dims= URL preference is applied once
 let needsFit = true;
 let clientID = '';
 let clients = 0;
@@ -106,9 +109,6 @@ function makeBox(lo, hi, color, alpha) {
 // slabs; 4D boxes are sliced at the current w value with a soft falloff near
 // their w-boundaries, so sweeping w fades boxes in and out instead of popping
 // them in at the hyperplane.
-const FADE_FRACTION = 0.3; // share of a box's w-span used for the fade
-const FADE_FLOOR = 0.05;   // absolute fade width, so thin boxes still fade
-
 function project(box, dims, w) {
   const { min, max } = box;
   let opacity = 1;
@@ -125,14 +125,6 @@ function project(box, dims, w) {
     hi.push(d === 1 ? 0.5 : 0.02);
   }
   return { lo, hi, opacity };
-}
-
-// fadeOpacity is 1 well inside a box's w-interval and ramps to 0 just outside
-// each edge, so the cross-section reads as a blurred slab rather than a hard
-// binary cut. Boxes are half-open in w: [minW, maxW).
-function fadeOpacity(minW, maxW, w) {
-  const fade = Math.max((maxW - minW) * FADE_FRACTION, FADE_FLOOR);
-  return Math.min(1, Math.max(0, (w - minW) / fade, (maxW - w) / fade));
 }
 
 function projectedBoxes() {
@@ -282,6 +274,46 @@ function exampleFor(dims) {
   return examples[dims] ?? examples[3];
 }
 
+// boundingBoxOf returns the axis-aligned box spanning every materialized box,
+// falling back to a default [0,4]^dims cube when the set is empty.
+function boundingBoxOf(dims) {
+  const lo = Array(dims).fill(Infinity);
+  const hi = Array(dims).fill(-Infinity);
+  for (const b of currentBoxes) {
+    for (let d = 0; d < dims; d++) {
+      if (b.min[d] < lo[d]) lo[d] = b.min[d];
+      if (b.max[d] > hi[d]) hi[d] = b.max[d];
+    }
+  }
+  for (let d = 0; d < dims; d++) {
+    if (!Number.isFinite(lo[d])) {
+      lo[d] = 0;
+      hi[d] = 4;
+    }
+  }
+  return { lo, hi };
+}
+
+// randomOp drafts one add or remove whose values fall inside a box 1.1x the
+// current set's bounding box, so random edits stay around the model.
+function randomOp(dims) {
+  const { lo, hi } = boundingBoxOf(dims);
+  const min = [];
+  const max = [];
+  for (let d = 0; d < dims; d++) {
+    const extent = hi[d] - lo[d];
+    const low = lo[d] - extent * 0.05;
+    const high = hi[d] + extent * 0.05;
+    const a = Math.round((low + Math.random() * (high - low)) * 100) / 100;
+    let b = Math.round((low + Math.random() * (high - low)) * 100) / 100;
+    if (a === b) b = Math.round((a + 0.01) * 100) / 100; // never degenerate
+    min.push(Math.min(a, b));
+    max.push(Math.max(a, b));
+  }
+  const kind = Math.random() < 0.5 ? 'add' : 'remove';
+  return `${kind},(${min.join(',')}),(${max.join(',')})`;
+}
+
 // ---------- websocket ----------
 let socket = null;
 
@@ -320,6 +352,7 @@ function applyState(state) {
     currentDims = dims;
     dimsSel.value = String(Math.min(dims, 4));
     sliceEl.hidden = dims !== 4;
+    opsEl.value = exampleFor(dims);
     setViewMode(dims);
   }
   resultEl.value = boxesToCSV(currentBoxes);
@@ -340,6 +373,11 @@ function connect() {
 
   ws.onopen = () => {
     setStatus('connected — edits are shared live');
+    const startDims = Number(new URLSearchParams(location.search).get('dims'));
+    if (!startDimsSent && startDims >= 1 && startDims <= 4) {
+      startDimsSent = true;
+      sendOp({ kind: 'dims', dims: startDims });
+    }
   };
   ws.onclose = () => {
     setStatus('disconnected — reconnecting…');
@@ -370,10 +408,6 @@ function connect() {
     if (msg.clients !== undefined) updatePresence(msg.clients);
     if (msg.type === 'error') {
       setStatus(`error: ${msg.error}`);
-      // A rejected dimension change leaves the dropdown out of sync; restore
-      // it to the session's actual dimension.
-      dimsSel.value = String(Math.min(currentDims, 4));
-      sliceEl.hidden = currentDims !== 4;
     }
   };
 }
@@ -407,9 +441,8 @@ function shareURL() {
 
 // ---------- events ----------
 sendBtn.addEventListener('click', () => {
-  const dims = Number(dimsSel.value);
   try {
-    const ops = parseOps(opsEl.value, dims);
+    const ops = parseOps(opsEl.value, currentDims);
     if (ops.length === 0) {
       setStatus('nothing to send');
       return;
@@ -422,25 +455,22 @@ sendBtn.addEventListener('click', () => {
 });
 
 exampleBtn.addEventListener('click', () => {
-  const dims = Number(dimsSel.value);
-  opsEl.value = exampleFor(dims);
-  applyScenario(dims, opsEl.value);
+  opsEl.value = exampleFor(currentDims);
+  applyScenario(currentDims, opsEl.value);
+});
+
+randomBtn.addEventListener('click', () => {
+  opsEl.value = randomOp(currentDims);
+  setStatus('drafted a random op — review and send');
 });
 
 newSessionBtn.addEventListener('click', () => {
-  // A session's dimension is fixed; start a fresh one to pick another.
-  location.replace('/ui/');
+  // A session's dimension is fixed; start a fresh one with the chosen dimension.
+  location.replace(`/ui/?dims=${Number(dimsSel.value)}`);
 });
 
 fitViewBtn.addEventListener('click', () => {
   needsFit = true;
-});
-
-dimsSel.addEventListener('change', () => {
-  const dims = Number(dimsSel.value);
-  sendOp({ kind: 'dims', dims }); // the session dimension is shared state
-  sliceEl.hidden = dims !== 4;
-  opsEl.value = exampleFor(dims);
 });
 
 wInput.addEventListener('input', () => {

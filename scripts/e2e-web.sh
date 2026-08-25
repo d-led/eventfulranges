@@ -6,5 +6,6 @@ cd "$(dirname "$0")/.."
 ./scripts/build-web.sh
 
 cd demo/web/ui-src
+npm run test:unit
 npx playwright install --with-deps chromium
 npx playwright test

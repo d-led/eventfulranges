@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -52,7 +53,11 @@ func newRouter(s *sessions, fs http.FileSystem) *gin.Engine {
 	// shareable URL so every collaborator who opens it joins the same model.
 	r.Use(func(c *gin.Context) {
 		if c.Request.URL.Path == "/ui/" && c.Query("s") == "" {
-			c.Redirect(http.StatusFound, "/ui/?s="+newSessionID())
+			target := "/ui/?s=" + newSessionID()
+			if d := c.Query("dims"); d != "" {
+				target += "&dims=" + url.QueryEscape(d)
+			}
+			c.Redirect(http.StatusFound, target)
 			c.Abort()
 			return
 		}

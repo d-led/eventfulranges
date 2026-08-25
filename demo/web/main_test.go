@@ -278,6 +278,22 @@ func TestRouterServesTheUI(t *testing.T) {
 	require.Contains(t, ui.Header.Get("Content-Type"), "text/html")
 }
 
+func TestRouterPreservesChosenDimension(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(newRouter(newSessions(time.Hour), GetFS()))
+	defer srv.Close()
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Get(srv.URL + "/ui/?dims=4")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	require.Regexp(t, `\?s=[A-Z2-7]+&dims=4`, resp.Header.Get("Location"))
+}
+
 func TestUIURL(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "http://localhost:8080/ui/", uiURL(":8080"))
