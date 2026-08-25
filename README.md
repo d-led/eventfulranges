@@ -150,6 +150,7 @@ Run it locally:
 ```bash
 ./scripts/test.sh        # fast: unit tests + coverage report
 ./scripts/quality-gate.sh # full: format, lint, tests, property, fuzz, mutation
+./scripts/update-dependencies.sh # bump every module to its latest deps
 ```
 
 ## KurrentDB
