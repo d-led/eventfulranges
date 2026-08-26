@@ -64,7 +64,7 @@ func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 	case strategy.AdditiveWins:
 		e.adds = snap.Adds
 		e.removes = snap.Removes
-		e.setView(space.Difference(e.adds, e.removes))
+		e.setView(space.DifferenceMerged(e.adds, e.removes, e.metaMerge))
 		for _, o := range delta {
 			e.applyToView(o)
 		}

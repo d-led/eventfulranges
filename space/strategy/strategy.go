@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/d-led/eventfulranges/meta"
 	"github.com/d-led/eventfulranges/space"
 	"github.com/d-led/eventfulranges/space/op"
 )
@@ -88,13 +89,20 @@ type Segment struct {
 
 // Materialize projects the operations into a canonical cover of boxes.
 func Materialize(s Strategy, ops []op.Op) []space.Box {
+	return MaterializeMerged(s, ops, meta.Union)
+}
+
+// MaterializeMerged is Materialize with a custom metadata join for the
+// union-based strategies (AdditiveWins and GrowOnly). LWW and FWW carry the
+// winning operation's metadata unchanged, so the join does not apply there.
+func MaterializeMerged(s Strategy, ops []op.Op, merge meta.Merge) []space.Box {
 	switch s {
 	case LWW, FWW:
 		return ToBoxes(Segments(s, ops))
 	case AdditiveWins:
-		return space.Difference(boxesOf(ops, op.KindAdd), boxesOf(ops, op.KindRemove))
+		return space.DifferenceMerged(boxesOf(ops, op.KindAdd, merge), boxesOf(ops, op.KindRemove, merge), merge)
 	case GrowOnly:
-		return boxesOf(ops, op.KindAdd)
+		return boxesOf(ops, op.KindAdd, merge)
 	}
 	return nil
 }
@@ -134,14 +142,14 @@ func ToBoxes(segs []Segment) []space.Box {
 	return space.Normalize(boxes)
 }
 
-func boxesOf(ops []op.Op, kind op.Kind) []space.Box {
+func boxesOf(ops []op.Op, kind op.Kind, merge meta.Merge) []space.Box {
 	boxes := make([]space.Box, 0, len(ops))
 	for _, o := range ops {
 		if o.Kind == kind {
 			boxes = append(boxes, o.Box)
 		}
 	}
-	return space.Normalize(boxes)
+	return space.NormalizeMerged(boxes, merge)
 }
 
 // normalize reduces overlapping regions to disjoint winner-annotated pieces

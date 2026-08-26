@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/d-led/eventfulranges/clock"
+	"github.com/d-led/eventfulranges/meta"
 	"github.com/d-led/eventfulranges/space"
 	"github.com/d-led/eventfulranges/space/op"
 	"github.com/d-led/eventfulranges/space/store"
@@ -23,6 +24,7 @@ type Config struct {
 	Clock         clock.Clock
 	SnapshotEvery int
 	Canonicalize  space.Canonicalizer
+	MetaMerge     meta.Merge
 }
 
 // Option customizes an engine.
@@ -46,6 +48,13 @@ func WithCanonicalizer(c space.Canonicalizer) Option {
 	return func(cfg *Config) { cfg.Canonicalize = c }
 }
 
+// WithMetaMerge sets the join used when boxes with metadata merge under the
+// union-based strategies (AdditiveWins and GrowOnly). The default is the
+// top-level key union in the meta package.
+func WithMetaMerge(m meta.Merge) Option {
+	return func(cfg *Config) { cfg.MetaMerge = m }
+}
+
 // Engine is a concurrency-safe CRDT over n-dimensional boxes backed by an
 // append-only event log.
 type Engine struct {
@@ -63,6 +72,7 @@ type Engine struct {
 	since        int
 	dims         int
 	canonicalize space.Canonicalizer
+	metaMerge    meta.Merge
 }
 
 // Open loads an existing log (and snapshot, when compatible) and returns a
@@ -81,8 +91,12 @@ func Open(ctx context.Context, st store.Log, s strategy.Strategy, opts ...Option
 		clock:         cfg.Clock,
 		snapshotEvery: cfg.SnapshotEvery,
 		canonicalize:  cfg.Canonicalize,
+		metaMerge:     cfg.MetaMerge,
 		ops:           make(map[string]op.Op),
 		dims:          -1,
+	}
+	if e.metaMerge == nil {
+		e.metaMerge = meta.Union
 	}
 	if err := e.reload(ctx); err != nil {
 		return nil, err
@@ -260,14 +274,14 @@ func (e *Engine) applyToView(o op.Op) {
 		e.setView(strategy.Materialize(e.strategy, e.opsList()))
 	case strategy.AdditiveWins:
 		if o.Kind == op.KindAdd {
-			e.adds = space.Union(e.adds, []space.Box{o.Box})
+			e.adds = space.UnionMerged(e.adds, []space.Box{o.Box}, e.metaMerge)
 		} else {
-			e.removes = space.Union(e.removes, []space.Box{o.Box})
+			e.removes = space.UnionMerged(e.removes, []space.Box{o.Box}, e.metaMerge)
 		}
-		e.setView(space.Difference(e.adds, e.removes))
+		e.setView(space.DifferenceMerged(e.adds, e.removes, e.metaMerge))
 	case strategy.GrowOnly:
 		if o.Kind == op.KindAdd {
-			e.adds = space.Union(e.adds, []space.Box{o.Box})
+			e.adds = space.UnionMerged(e.adds, []space.Box{o.Box}, e.metaMerge)
 			e.setView(e.adds)
 		}
 	}
@@ -289,11 +303,11 @@ func (e *Engine) materializeAll() {
 	case strategy.LWW, strategy.FWW:
 		e.setView(strategy.Materialize(e.strategy, ops))
 	case strategy.AdditiveWins:
-		e.adds = boxesOf(ops, op.KindAdd)
-		e.removes = boxesOf(ops, op.KindRemove)
-		e.setView(space.Difference(e.adds, e.removes))
+		e.adds = boxesOf(ops, op.KindAdd, e.metaMerge)
+		e.removes = boxesOf(ops, op.KindRemove, e.metaMerge)
+		e.setView(space.DifferenceMerged(e.adds, e.removes, e.metaMerge))
 	case strategy.GrowOnly:
-		e.adds = boxesOf(ops, op.KindAdd)
+		e.adds = boxesOf(ops, op.KindAdd, e.metaMerge)
 		e.setView(e.adds)
 	}
 }
@@ -308,14 +322,14 @@ func (e *Engine) deriveDims() {
 }
 
 // boxesOf returns the normalized boxes of the operations of one kind.
-func boxesOf(ops []op.Op, kind op.Kind) []space.Box {
+func boxesOf(ops []op.Op, kind op.Kind, merge meta.Merge) []space.Box {
 	boxes := make([]space.Box, 0, len(ops))
 	for _, o := range ops {
 		if o.Kind == kind {
 			boxes = append(boxes, o.Box)
 		}
 	}
-	return space.Normalize(boxes)
+	return space.NormalizeMerged(boxes, merge)
 }
 
 // opsList returns the known operations sorted by ID.

@@ -8,6 +8,7 @@
 package space
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -31,15 +32,24 @@ var (
 
 // Box is an axis-aligned, half-open n-dimensional rectangle. The zero value
 // has no dimensions and fails validation; build boxes with NewBox instead.
+// Meta carries arbitrary JSON-object metadata (for example a stroke color);
+// it is opaque to the geometry and merged by the engine when boxes combine.
 type Box struct {
-	Min []float64 `json:"min"`
-	Max []float64 `json:"max"`
+	Min  []float64       `json:"min"`
+	Max  []float64       `json:"max"`
+	Meta json.RawMessage `json:"meta,omitempty"`
 }
 
 // NewBox builds a box from the given lower and upper corners. Both slices are
 // copied, so the caller keeps ownership of the originals.
 func NewBox(min, max []float64) Box {
 	return Box{Min: append([]float64(nil), min...), Max: append([]float64(nil), max...)}
+}
+
+// WithMeta returns a copy of b carrying the given metadata.
+func (b Box) WithMeta(meta json.RawMessage) Box {
+	b.Meta = append(json.RawMessage(nil), meta...)
+	return b
 }
 
 // Dims returns the number of dimensions.

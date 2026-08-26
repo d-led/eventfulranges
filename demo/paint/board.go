@@ -40,7 +40,7 @@ func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	events, err := b.fold(cmd.Kind, rect)
+	events, err := b.fold(cmd.Kind, rect, cmd.Meta)
 	if err != nil {
 		return nil, err
 	}
@@ -62,12 +62,12 @@ func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
 }
 
 // fold dispatches a command to the canvas.
-func (b *board) fold(kind string, rect Rect) ([]Event, error) {
+func (b *board) fold(kind string, rect Rect, meta json.RawMessage) ([]Event, error) {
 	switch kind {
 	case "paint":
-		return b.canvas.Paint(rect)
+		return b.canvas.Paint(rect, meta)
 	case "erase":
-		return b.canvas.Erase(rect)
+		return b.canvas.Erase(rect, meta)
 	default:
 		return nil, fmt.Errorf("paint: unknown command %q", kind)
 	}

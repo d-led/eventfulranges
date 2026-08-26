@@ -24,9 +24,11 @@ type Event struct {
 
 // Canvas is the swappable CRDT backend of the whiteboard: it folds paint and
 // erase strokes into an event-sourced range set and returns the events they
-// produced. How cells are encoded is an implementation detail, which is what
-// keeps the board and the transport agnostic of the underlying CRDT shape.
+// produced. Meta is arbitrary JSON-object metadata (for example a stroke
+// color) carried by the folded ranges. How cells are encoded is an
+// implementation detail, which is what keeps the board and the transport
+// agnostic of the underlying CRDT shape.
 type Canvas interface {
-	Paint(r Rect) ([]Event, error)
-	Erase(r Rect) ([]Event, error)
+	Paint(r Rect, meta json.RawMessage) ([]Event, error)
+	Erase(r Rect, meta json.RawMessage) ([]Event, error)
 }

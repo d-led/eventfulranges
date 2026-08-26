@@ -32,21 +32,23 @@ func newBoxCanvas() *boxCanvas {
 	return &boxCanvas{set: set}
 }
 
-// Paint adds a rectangle of cells to the whiteboard.
-func (c *boxCanvas) Paint(r Rect) ([]Event, error) {
-	return c.fold("paint", r)
+// Paint adds a rectangle of cells to the whiteboard, carrying meta on the
+// underlying box.
+func (c *boxCanvas) Paint(r Rect, meta json.RawMessage) ([]Event, error) {
+	return c.fold("paint", r, meta)
 }
 
-// Erase removes a rectangle of cells from the whiteboard.
-func (c *boxCanvas) Erase(r Rect) ([]Event, error) {
-	return c.fold("erase", r)
+// Erase removes a rectangle of cells from the whiteboard, carrying meta on the
+// underlying box.
+func (c *boxCanvas) Erase(r Rect, meta json.RawMessage) ([]Event, error) {
+	return c.fold("erase", r, meta)
 }
 
 // fold appends one half-open box operation and reports the event it produced.
-func (c *boxCanvas) fold(kind string, r Rect) ([]Event, error) {
+func (c *boxCanvas) fold(kind string, r Rect, meta json.RawMessage) ([]Event, error) {
 	min := []float64{r.X0, r.Y0}
 	max := []float64{r.X1, r.Y1}
-	o, err := c.apply(kind, min, max)
+	o, err := c.apply(kind, min, max, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -58,13 +60,13 @@ func (c *boxCanvas) fold(kind string, r Rect) ([]Event, error) {
 	}}, nil
 }
 
-// apply appends one box under the given command kind.
-func (c *boxCanvas) apply(kind string, min, max []float64) (sop.Op, error) {
+// apply appends one box under the given command kind, carrying meta.
+func (c *boxCanvas) apply(kind string, min, max []float64, meta json.RawMessage) (sop.Op, error) {
 	switch kind {
 	case "paint":
-		return c.set.Add(context.Background(), min, max)
+		return c.set.AddWithMeta(context.Background(), min, max, meta)
 	case "erase":
-		return c.set.Remove(context.Background(), min, max)
+		return c.set.RemoveWithMeta(context.Background(), min, max, meta)
 	default:
 		return sop.Op{}, fmt.Errorf("paint: unknown command %q", kind)
 	}

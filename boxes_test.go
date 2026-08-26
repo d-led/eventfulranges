@@ -2,6 +2,7 @@ package eventfulranges_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/d-led/eventfulranges"
 	"github.com/d-led/eventfulranges/clock"
+	"github.com/d-led/eventfulranges/meta"
 	"github.com/d-led/eventfulranges/space"
 	sop "github.com/d-led/eventfulranges/space/op"
 	"github.com/d-led/eventfulranges/space/store/memory"
@@ -137,4 +139,61 @@ func TestBoxSetCanonicalizer(t *testing.T) {
 	_, err = bs.Add(ctx, []float64{0, 0}, []float64{2, 2})
 	require.NoError(t, err)
 	require.Len(t, bs.Boxes(), 2, "the canonicalizer splits the box along x")
+}
+
+func TestBoxSetStoresAndMergesMetadata(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins)
+	require.NoError(t, err)
+
+	red := json.RawMessage(`{"color":"#ff0000"}`)
+	alice := json.RawMessage(`{"author":"alice"}`)
+
+	applied, err := bs.AddWithMeta(ctx, []float64{0, 0}, []float64{4, 4}, red)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"color":"#ff0000"}`, string(applied.Box.Meta))
+
+	_, err = bs.AddWithMeta(ctx, []float64{0, 0}, []float64{8, 8}, alice)
+	require.NoError(t, err)
+
+	boxes := bs.Boxes()
+	require.Len(t, boxes, 1, "the larger box subsumes the smaller and folds in its metadata")
+	require.JSONEq(t, `{"color":"#ff0000","author":"alice"}`, string(boxes[0].Meta))
+}
+
+func TestBoxSetRemoveWithMeta(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins)
+	require.NoError(t, err)
+
+	_, err = bs.Add(ctx, []float64{0, 0}, []float64{4, 4})
+	require.NoError(t, err)
+
+	removed, err := bs.RemoveWithMeta(ctx, []float64{1, 1}, []float64{3, 3}, json.RawMessage(`{"tool":"erase"}`))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tool":"erase"}`, string(removed.Box.Meta))
+
+	require.False(t, bs.Contains([]float64{2, 2}), "the erased hole is empty")
+	require.True(t, bs.Contains([]float64{0.5, 2}), "the shell around the hole survives")
+}
+
+func TestBoxSetCustomMetaMerge(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	constant := meta.Merge(func(_, _ json.RawMessage) json.RawMessage {
+		return json.RawMessage(`{"merged":true}`)
+	})
+
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins,
+		eventfulranges.WithBoxMetaMerge(constant))
+	require.NoError(t, err)
+
+	_, err = bs.AddWithMeta(ctx, []float64{0, 0}, []float64{4, 4}, json.RawMessage(`{"color":"#ff0000"}`))
+	require.NoError(t, err)
+	_, err = bs.AddWithMeta(ctx, []float64{0, 0}, []float64{8, 8}, json.RawMessage(`{"author":"alice"}`))
+	require.NoError(t, err)
+
+	require.JSONEq(t, `{"merged":true}`, string(bs.Boxes()[0].Meta), "the custom join decides the merged metadata")
 }

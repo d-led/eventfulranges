@@ -1,23 +1,41 @@
 package space
 
-import "sort"
+import (
+	"encoding/json"
+	"sort"
+
+	"github.com/d-led/eventfulranges/meta"
+)
 
 // Normalize returns a canonical cover of the boxes: empty boxes and boxes
 // subsumed by another are dropped, and the survivors are sorted by their
-// lower corner. Coverage is preserved exactly. All boxes must share the same
-// dimensionality.
+// lower corner. Coverage is preserved exactly. Metadata of a dropped box is
+// merged into the box that subsumes it under the default union join.
 func Normalize(boxes []Box) []Box {
+	return NormalizeMerged(boxes, meta.Union)
+}
+
+// NormalizeMerged is Normalize with a custom metadata join. When a box is
+// dropped because another subsumes it, its metadata is folded into the
+// survivor using merge.
+func NormalizeMerged(boxes []Box, merge meta.Merge) []Box {
 	kept := make([]Box, 0, len(boxes))
 	for _, b := range boxes {
 		if b.Empty() {
 			continue
 		}
+		subsumed := false
 		for i := len(kept) - 1; i >= 0; i-- {
-			if subsumes(b, kept[i]) {
+			switch {
+			case subsumes(b, kept[i]):
+				b.Meta = merge(b.Meta, kept[i].Meta)
 				kept = append(kept[:i], kept[i+1:]...)
+			case subsumes(kept[i], b):
+				kept[i].Meta = merge(kept[i].Meta, b.Meta)
+				subsumed = true
 			}
 		}
-		if subsumedByAny(kept, b) {
+		if subsumed {
 			continue
 		}
 		kept = append(kept, b)
@@ -28,20 +46,30 @@ func Normalize(boxes []Box) []Box {
 
 // Union returns the canonical cover of the boxes of both sets.
 func Union(a, b []Box) []Box {
-	return Normalize(append(append([]Box(nil), a...), b...))
+	return UnionMerged(a, b, meta.Union)
+}
+
+// UnionMerged is Union with a custom metadata join.
+func UnionMerged(a, b []Box, merge meta.Merge) []Box {
+	return NormalizeMerged(append(append([]Box(nil), a...), b...), merge)
 }
 
 // Difference returns the canonical cover of every point in a that is not in
 // b. The result is exact: a point belongs to it if and only if it belongs to
-// a and not to b.
+// a and not to b. Pieces carved out of a keep a's metadata.
 func Difference(a, b []Box) []Box {
-	result := Normalize(a)
-	for _, q := range Normalize(b) {
+	return DifferenceMerged(a, b, meta.Union)
+}
+
+// DifferenceMerged is Difference with a custom metadata join.
+func DifferenceMerged(a, b []Box, merge meta.Merge) []Box {
+	result := NormalizeMerged(a, merge)
+	for _, q := range NormalizeMerged(b, merge) {
 		var next []Box
 		for _, p := range result {
 			next = append(next, subtractBox(p, q)...)
 		}
-		result = Normalize(next)
+		result = NormalizeMerged(next, merge)
 	}
 	return result
 }
@@ -124,17 +152,12 @@ func sliceOutside(p, q Box, d int) []Box {
 	return out
 }
 
-func subsumedByAny(set []Box, b Box) bool {
-	for _, o := range set {
-		if subsumes(o, b) {
-			return true
-		}
-	}
-	return false
-}
-
 func cloneBox(b Box) Box {
-	return Box{Min: append([]float64(nil), b.Min...), Max: append([]float64(nil), b.Max...)}
+	return Box{
+		Min:  append([]float64(nil), b.Min...),
+		Max:  append([]float64(nil), b.Max...),
+		Meta: append(json.RawMessage(nil), b.Meta...),
+	}
 }
 
 func equalBox(a, b Box) bool {

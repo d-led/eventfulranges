@@ -2,8 +2,10 @@ package eventfulranges
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/d-led/eventfulranges/clock"
+	"github.com/d-led/eventfulranges/meta"
 	"github.com/d-led/eventfulranges/space"
 	sengine "github.com/d-led/eventfulranges/space/engine"
 	sop "github.com/d-led/eventfulranges/space/op"
@@ -30,6 +32,13 @@ func WithBoxSnapshotEvery(n int) BoxOption {
 // materialized view.
 func WithBoxCanonicalizer(c space.Canonicalizer) BoxOption {
 	return sengine.WithCanonicalizer(c)
+}
+
+// WithBoxMetaMerge sets the join used when boxes carrying metadata merge under
+// AdditiveWins or GrowOnly. The default is the top-level key union in the meta
+// package.
+func WithBoxMetaMerge(m meta.Merge) BoxOption {
+	return sengine.WithMetaMerge(m)
 }
 
 // BoxSet is the high-level n-dimensional API over an n-D engine.
@@ -72,10 +81,26 @@ func (b *BoxSet) Add(ctx context.Context, min, max []float64) (sop.Op, error) {
 	return o, b.engine.Apply(ctx, o)
 }
 
+// AddWithMeta applies an addition over the half-open box [min, max) carrying
+// JSON-object metadata, and returns the applied op.
+func (b *BoxSet) AddWithMeta(ctx context.Context, min, max []float64, m json.RawMessage) (sop.Op, error) {
+	o := sop.Add(min, max)
+	o.Box = o.Box.WithMeta(m)
+	return o, b.engine.Apply(ctx, o)
+}
+
 // Remove applies a removal over the half-open box [min, max) and returns the
 // applied op.
 func (b *BoxSet) Remove(ctx context.Context, min, max []float64) (sop.Op, error) {
 	o := sop.Remove(min, max)
+	return o, b.engine.Apply(ctx, o)
+}
+
+// RemoveWithMeta applies a removal over the half-open box [min, max) carrying
+// JSON-object metadata, and returns the applied op.
+func (b *BoxSet) RemoveWithMeta(ctx context.Context, min, max []float64, m json.RawMessage) (sop.Op, error) {
+	o := sop.Remove(min, max)
+	o.Box = o.Box.WithMeta(m)
 	return o, b.engine.Apply(ctx, o)
 }
 
