@@ -42,15 +42,25 @@ func TestBoardRejectsInvertedRect(t *testing.T) {
 	require.Error(t, err)
 }
 
-func paintCmd(x0, y0, x1, y1 int64) collab.Cmd {
+func TestBoardAcceptsSubdividedCell(t *testing.T) {
+	t.Parallel()
+	b := newBoard()
+
+	entries, err := b.Apply("alice", paintCmd(0, 0, 0.5, 0.5))
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "one subdivided cell is one box event")
+	require.Equal(t, "add", entries[0].Kind)
+}
+
+func paintCmd(x0, y0, x1, y1 float64) collab.Cmd {
 	return cellCmd("paint", x0, y0, x1, y1)
 }
 
-func eraseCmd(x0, y0, x1, y1 int64) collab.Cmd {
+func eraseCmd(x0, y0, x1, y1 float64) collab.Cmd {
 	return cellCmd("erase", x0, y0, x1, y1)
 }
 
-func cellCmd(kind string, x0, y0, x1, y1 int64) collab.Cmd {
-	data, _ := json.Marshal(map[string]int64{"x0": x0, "y0": y0, "x1": x1, "y1": y1})
+func cellCmd(kind string, x0, y0, x1, y1 float64) collab.Cmd {
+	data, _ := json.Marshal(map[string]float64{"x0": x0, "y0": y0, "x1": x1, "y1": y1})
 	return collab.Cmd{Kind: kind, Data: data}
 }

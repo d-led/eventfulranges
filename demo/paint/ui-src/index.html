@@ -12,11 +12,11 @@
         <h1>eventfulranges · whiteboard</h1>
         <p id="presence" class="presence">connecting…</p>
         <p class="lede">
-          An infinite, shared pixel whiteboard. Every stroke is an
-          <em>add</em> or <em>remove</em> box in an event log, every browser
-          materializes the view itself, and a filled rectangle of cells is one
-          operation. Drag to draw, scroll to zoom, hold the middle button to
-          pan. Share the link and everyone who opens it joins the same board.
+          An infinite, shared whiteboard on a fractal grid: every cell
+          subdivides into four squares as you zoom, and a stroke fills the
+          cells at the current level as one <em>add</em> or <em>remove</em>
+          box. Scroll to zoom without limits, hold the middle button to pan,
+          and share the link so everyone joins the same board.
         </p>
 
         <div class="field">
@@ -29,9 +29,35 @@
           <p class="hint">Active tool: <strong id="toolLabel">Paint</strong></p>
         </div>
 
+        <div class="field">
+          <label>Grid</label>
+          <div class="row">
+            <button id="gridMinus" title="one level coarser">−</button>
+            <button id="gridDefault" title="back to the zoom-chosen level">
+              Default
+            </button>
+            <button id="gridPlus" title="one level finer">+</button>
+          </div>
+          <p class="hint">
+            Cell: <strong id="gridLabel">1 × 1</strong>
+          </p>
+          <p class="hint">
+            The grid subdivides into four squares as you zoom in; − / + shift
+            one subdivision level from the zoom-chosen default.
+          </p>
+        </div>
+
         <div class="row">
           <button id="newSession" class="primary">New session</button>
           <button id="copyShare">Copy share link</button>
+        </div>
+
+        <div class="field">
+          <button id="fitAll">Fit all</button>
+          <p class="hint">
+            Zoom and centre so every painted cell is in view — the plane is
+            infinite, so fitting is always available.
+          </p>
         </div>
 
         <div class="field">

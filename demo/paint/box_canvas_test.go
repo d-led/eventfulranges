@@ -60,3 +60,15 @@ func TestBoxCanvasRejectsEmptyBox(t *testing.T) {
 	_, err := c.Paint(Rect{1, 1, 1, 2})
 	require.Error(t, err)
 }
+
+func TestBoxCanvasPaintsSubdividedCell(t *testing.T) {
+	t.Parallel()
+	c := newBoxCanvas()
+
+	events, err := c.Paint(Rect{0, 0, 0.5, 0.5})
+	require.NoError(t, err)
+	require.Len(t, events, 1, "one subdivided cell is one box event")
+
+	require.True(t, c.set.Contains([]float64{0.25, 0.25}))
+	require.False(t, c.set.Contains([]float64{0.5, 0.5}), "the cell is half-open")
+}

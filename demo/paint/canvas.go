@@ -3,11 +3,13 @@ package main
 import "encoding/json"
 
 // Rect is a half-open cell rectangle [X0,X1) x [Y0,Y1) in board coordinates.
+// Cells lie on a fractal grid: at subdivision level n a cell has side 2^-n,
+// so strokes at finer zoom levels produce fractional bounds.
 type Rect struct {
-	X0 int64 `json:"x0"`
-	Y0 int64 `json:"y0"`
-	X1 int64 `json:"x1"`
-	Y1 int64 `json:"y1"`
+	X0 float64 `json:"x0"`
+	Y0 float64 `json:"y0"`
+	X1 float64 `json:"x1"`
+	Y1 float64 `json:"y1"`
 }
 
 // Event is one entry a Canvas produces when it folds a stroke. Kind is the

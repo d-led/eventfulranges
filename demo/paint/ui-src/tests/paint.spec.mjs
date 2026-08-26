@@ -69,6 +69,24 @@ test("presence separates this session from all connected", async ({
   await expect.poll(() => connected(bob)).toBeGreaterThanOrEqual(2);
 });
 
+test("grid controls shift the subdivision level", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const levelOf = async () => {
+    const text = await page.locator("#gridLabel").textContent();
+    const m = text.match(/level (\d+)/);
+    return m ? Number(m[1]) : NaN;
+  };
+
+  const before = await levelOf();
+  await page.locator("#gridPlus").click();
+  await expect.poll(() => levelOf()).toBe(before + 1);
+  await page.locator("#gridDefault").click();
+  await expect.poll(() => levelOf()).toBe(before);
+});
+
 // drawRect drags a 4x4 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 12 px per cell).
 async function drawRect(page) {

@@ -44,8 +44,8 @@ func (c *boxCanvas) Erase(r Rect) ([]Event, error) {
 
 // fold appends one half-open box operation and reports the event it produced.
 func (c *boxCanvas) fold(kind string, r Rect) ([]Event, error) {
-	min := []float64{float64(r.X0), float64(r.Y0)}
-	max := []float64{float64(r.X1), float64(r.Y1)}
+	min := []float64{r.X0, r.Y0}
+	max := []float64{r.X1, r.Y1}
 	o, err := c.apply(kind, min, max)
 	if err != nil {
 		return nil, err
