@@ -95,6 +95,32 @@ It checks:
    `scenario_test.go` pattern).
 4. **Oracle agreement** — where a sequential reference semantics exists.
 
+## 4. Region queries and connected components
+
+**Connected components — *implemented*.** `space.ConnectedComponents` groups a
+cover into maximal sets whose union is connected: two boxes join a component
+when they overlap or touch along a face of positive measure (adjacent in one
+dimension, overlapping in every other). This is the primitive behind "how many
+contiguous regions" questions — e.g. the number of continuous free slots in a
+calendar.
+
+**Region query — *proposed*.** Two distinct query shapes are worth separating,
+because a path in n dimensions can enter and leave ranges repeatedly:
+
+1. **Set query** — which boxes does a polygon cross? An unordered answer
+   (possibly grouped with `ConnectedComponents`).
+2. **Traversal query** — the *ordered* sequence of ranges a path passes
+   through, **including the empty gaps between them** (entered range A,
+   exited into empty space, entered range B, …). This is the query the user
+   means by "in and out".
+
+The traversal query is the harder one: it needs path/box intersection along
+the path's parameterization plus an ordering of crossings, and it is exactly
+where point-in-polygon (`pnpoly`) and simulation of simplicity earn their
+keep — a path grazing a box corner or running along an edge must be resolved
+deterministically, which the axis-aligned cover algebra never needs on its
+own.
+
 ## Non-breaking guarantee
 
 - Default options reproduce current behavior exactly.
