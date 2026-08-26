@@ -1,5 +1,12 @@
 import { union, normalize, subtractAll } from "./boxes.js";
-import { gridLevel, gridSize, gridRect, gridLine, fitCamera } from "./grid.js";
+import {
+  gridLevel,
+  gridSize,
+  gridStep,
+  gridRect,
+  gridLine,
+  fitCamera,
+} from "./grid.js";
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -126,20 +133,41 @@ function drawBoxes(w, h) {
 
 function drawGrid(w, h) {
   const cell = gridSize(cam.scale, gridOffset);
-  const px = cell * cam.scale;
-  if (px < 6) return; // too dense to read
+  // Draw the coarsest power-of-two multiple of the cell that is still readable;
+  // strokes still snap to the fine cell, but the grid never vanishes.
+  const step = gridStep(cell, cam.scale);
   const left = cam.x - w / 2 / cam.scale;
   const right = cam.x + w / 2 / cam.scale;
   const top = cam.y - h / 2 / cam.scale;
   const bottom = cam.y + h / 2 / cam.scale;
-  const first = Math.floor(left / cell);
-  const last = Math.ceil(right / cell);
-  const rowTop = Math.floor(top / cell);
-  const rowBottom = Math.ceil(bottom / cell);
+  const first = Math.floor(left / step);
+  const last = Math.ceil(right / step);
+  const rowTop = Math.floor(top / step);
+  const rowBottom = Math.ceil(bottom / step);
   // Dark halo first, so the grid stays legible over white painted cells.
-  strokeGrid(cell, first, last, rowTop, rowBottom, w, h, "rgba(9, 11, 16, 0.6)", 2);
+  strokeGrid(
+    step,
+    first,
+    last,
+    rowTop,
+    rowBottom,
+    w,
+    h,
+    "rgba(9, 11, 16, 0.6)",
+    2,
+  );
   // Light core on top, so the grid stays legible over the dark background.
-  strokeGrid(cell, first, last, rowTop, rowBottom, w, h, "rgba(232, 236, 244, 0.25)", 1);
+  strokeGrid(
+    step,
+    first,
+    last,
+    rowTop,
+    rowBottom,
+    w,
+    h,
+    "rgba(232, 236, 244, 0.25)",
+    1,
+  );
 }
 
 function strokeGrid(cell, first, last, rowTop, rowBottom, w, h, style, width) {
@@ -287,7 +315,12 @@ function setTool(name) {
   eraseBtn.classList.toggle("active", name === "erase");
   panBtn.classList.toggle("active", name === "pan");
   boardEl.style.cursor = name === "pan" ? "grab" : "crosshair";
-  toolLabel.textContent = { rect: "Rect", pen: "Pen", erase: "Erase", pan: "Pan" }[name];
+  toolLabel.textContent = {
+    rect: "Rect",
+    pen: "Pen",
+    erase: "Erase",
+    pan: "Pan",
+  }[name];
 }
 
 function updateGridLabel() {
@@ -426,6 +459,7 @@ async function importJSONL(input) {
   const text = await file.text();
   let imported = 0;
   let skipped = 0;
+  const boxes = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     let entry;
@@ -440,6 +474,9 @@ async function importJSONL(input) {
       skipped++;
       continue;
     }
+    if (entry.kind === "add") {
+      boxes.push({ min: entry.data.min, max: entry.data.max });
+    }
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(cmd));
       imported++;
@@ -447,8 +484,19 @@ async function importJSONL(input) {
       skipped++;
     }
   }
+  if (boxes.length) {
+    const { w, h } = resizeCanvas();
+    const view = fitCamera(boxes, w, h);
+    if (view) {
+      cam.x = view.x;
+      cam.y = view.y;
+      cam.scale = view.scale;
+      updateGridLabel();
+    }
+  }
   setStatus(`imported ${imported} ops${skipped ? `, skipped ${skipped}` : ""}`);
   input.value = "";
+  draw();
 }
 
 function entryToCmd(entry) {
@@ -476,7 +524,9 @@ strokeColorEl.addEventListener("input", () => {
 });
 
 importJsonlBtn.addEventListener("click", () => importJsonlInput.click());
-importJsonlInput.addEventListener("change", () => importJSONL(importJsonlInput));
+importJsonlInput.addEventListener("change", () =>
+  importJSONL(importJsonlInput),
+);
 
 gridPlus.addEventListener("click", () => {
   gridOffset += 1;

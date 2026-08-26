@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   MIN_CELL_PX,
   MAX_LEVEL,
+  MIN_LEVEL,
   autoLevel,
   gridLevel,
   gridSize,
+  gridStep,
   gridRect,
   gridLine,
   bounds,
@@ -25,8 +27,20 @@ describe("grid", () => {
 
   it("clamps the user offset to representable levels", () => {
     expect(gridLevel(MIN_CELL_PX, 1)).toBe(1);
-    expect(gridLevel(MIN_CELL_PX, -5)).toBe(0);
+    expect(gridLevel(MIN_CELL_PX, -5)).toBe(-5);
     expect(gridLevel(Number.MAX_VALUE, 0)).toBe(MAX_LEVEL);
+    expect(gridLevel(MIN_CELL_PX, -1000)).toBe(MIN_LEVEL);
+  });
+
+  it("lets a negative offset coarsen below the automatic level", () => {
+    expect(gridSize(MIN_CELL_PX, -1)).toBe(2);
+    expect(gridSize(MIN_CELL_PX, -2)).toBe(4);
+  });
+
+  it("keeps the grid readable by stepping to a visible multiple", () => {
+    expect(gridStep(1, 12)).toBe(1); // 12px is already readable
+    expect(gridStep(0.125, 12)).toBe(0.5); // 1.5px steps up to 6px
+    expect(gridStep(0.125, 96)).toBe(0.125); // 12px is already readable
   });
 
   it("derives the cell side as an exact power of two", () => {

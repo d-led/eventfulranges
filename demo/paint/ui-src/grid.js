@@ -5,6 +5,8 @@
 
 export const MIN_CELL_PX = 24; // a cell subdivides once its quarters would be this size
 export const MAX_LEVEL = 48; // 2^-48 is still exact in a float64
+export const MIN_LEVEL = -16; // 2^16-unit cells are coarse enough for any view
+export const MIN_GRID_PX = 6; // below this the lines blur into noise
 
 // autoLevel picks the subdivision level whose on-screen cell is at least
 // MIN_CELL_PX and less than 2 * MIN_CELL_PX.
@@ -15,12 +17,21 @@ export function autoLevel(scale) {
 
 // gridLevel clamps the automatic level plus the user offset.
 export function gridLevel(scale, offset = 0) {
-  return Math.max(0, Math.min(MAX_LEVEL, autoLevel(scale) + offset));
+  return Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, autoLevel(scale) + offset));
 }
 
 // gridSize is the side length, in board units, of the current cell.
 export function gridSize(scale, offset = 0) {
   return 2 ** -gridLevel(scale, offset);
+}
+
+// gridStep returns the coarsest power-of-two multiple of cell whose on-screen
+// side is at least minPx. Strokes still snap to cell, but the grid is drawn at
+// step so fine cells never vanish into sub-pixel noise.
+export function gridStep(cell, scale, minPx = MIN_GRID_PX) {
+  let step = cell;
+  while (step * scale < minPx) step *= 2;
+  return step;
 }
 
 // gridRect snaps two board points onto the current grid and returns the

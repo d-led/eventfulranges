@@ -146,6 +146,135 @@ test("imports a JSONL log onto the board", async ({ page }) => {
   await expect(page.locator("#log li.add").first()).toContainText("add");
 });
 
+test("grid offset snaps painting to the chosen level", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#gridPlus").click(); // level 1 → half-unit cells
+  await expect(page.locator("#gridLabel")).toContainText("level 1");
+
+  // A single click paints one cell of the current grid.
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  await page.mouse.click(box.x + box.width / 2 + 3, box.y + box.height / 2 + 3);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const first = JSON.parse(content.trim().split("\n")[0]);
+  expect(first.data.min).toEqual([0, 0]);
+  expect(first.data.max).toEqual([0.5, 0.5]);
+});
+
+test("grid plus to level three still paints at the fine level", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#gridPlus").click();
+  await page.locator("#gridPlus").click();
+  await page.locator("#gridPlus").click(); // level 3 → eighth-unit cells
+  await expect(page.locator("#gridLabel")).toContainText("level 3");
+
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const first = JSON.parse(content.trim().split("\n")[0]);
+  expect(first.data.min).toEqual([0, 0]);
+  expect(first.data.max).toEqual([0.125, 0.125]);
+});
+
+test("grid minus coarsens painting beyond the automatic level", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#gridMinus").click(); // level -1 → two-unit cells
+  await expect(page.locator("#gridLabel")).toContainText("level -1");
+
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const first = JSON.parse(content.trim().split("\n")[0]);
+  expect(first.data.min).toEqual([0, 0]);
+  expect(first.data.max).toEqual([2, 2]);
+});
+
+test("import fits the loaded picture into view", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+  await expect(page.locator("#gridLabel")).toContainText("level 0");
+
+  await page.locator("#importJsonlInput").setInputFiles({
+    name: "far.jsonl",
+    mimeType: "application/x-ndjson",
+    buffer: Buffer.from(
+      JSON.stringify({
+        kind: "add",
+        data: { min: [1000, 1000], max: [1002, 1002] },
+      }) + "\n",
+    ),
+  });
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+  await expect(page.locator("#gridLabel")).not.toContainText("level 0");
+});
+
+test("round-trips a picture through JSONL export and import", async ({
+  browser,
+}) => {
+  const alice = await browser.newPage();
+  await alice.goto("/ui/");
+  await alice.waitForURL(/[?&]s=/);
+  await expect(alice.locator("#status")).toContainText("connected");
+
+  await drawRect(alice);
+  await expect(alice.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    alice.waitForEvent("download"),
+    alice.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+
+  const bob = await browser.newPage();
+  await bob.goto("/ui/");
+  await bob.waitForURL(/[?&]s=/);
+  await expect(bob.locator("#status")).toContainText("connected");
+
+  await bob.locator("#importJsonlInput").setInputFiles({
+    name: "board.jsonl",
+    mimeType: "application/x-ndjson",
+    buffer: Buffer.from(content),
+  });
+
+  await expect(bob.locator("#log li.add").first()).toContainText("add");
+  await expect(bob.locator("#log li.add")).toHaveCount(1);
+});
+
 // drawRect drags a 4x4 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 12 px per cell).
 async function drawRect(page) {
