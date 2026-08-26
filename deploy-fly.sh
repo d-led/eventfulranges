@@ -56,7 +56,7 @@ fi
 # Private, Flycast-only app: allocate a private IPv6 and no public IPs, per
 # https://fly.io/docs/blueprints/autostart-internal-apps/
 echo "deploying backend: $BACKEND_APP"
-fly deploy --app "$BACKEND_APP" --flycast --no-public-ips
+fly deploy --app "$BACKEND_APP" --flycast --no-public-ips --ha=false
 
 # --- proxy -----------------------------------------------------------------
 echo "deploying proxy: $PROXY_APP"

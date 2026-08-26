@@ -21,9 +21,9 @@ primary_region = "ams"
   auto_stop_machines = "stop"
   # Fly Proxy starts Machines based on traffic
   auto_start_machines = true
-  # Number of Machines to keep running in primary region
+  # At most one machine per region (idle floor is zero).
   min_machines_running = 0
-  max_machines_running = 1
+  max_machines_per_region = 1
   processes = ["app"]
   [http_service.concurrency]
     # the whiteboard is websocket-first: count connections, not requests
