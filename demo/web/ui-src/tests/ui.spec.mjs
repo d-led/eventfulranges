@@ -40,6 +40,7 @@ test('changing the dimension does not affect the current session', async ({ page
 
   // Selecting a dimension is only a preference for the next session; the
   // current (unfixed) session stays at its default 3D until a box fixes it.
+  await page.locator('#newSession').click();
   await page.locator('#dims').selectOption('4');
   await expect(page.locator('#slice')).toBeHidden();
 });
@@ -49,12 +50,14 @@ test('a new session keeps its chosen dimension across reload', async ({ page }) 
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
-  await page.locator('#dims').selectOption('4');
   await page.locator('#newSession').click();
+  await page.locator('#dims').selectOption('4');
+  await page.locator('#startSession').click();
   await expect(page.locator('#slice')).toBeVisible(); // the new session is 4D
 
   await page.reload();
   await expect(page.locator('#status')).toContainText('connected');
+  await page.locator('#newSession').click();
   await expect(page.locator('#dims')).toHaveValue('4');
   await expect(page.locator('#slice')).toBeVisible();
 });
@@ -64,8 +67,9 @@ test('4D animate sweeps the w slice', async ({ page }) => {
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
-  await page.locator('#dims').selectOption('4');
   await page.locator('#newSession').click();
+  await page.locator('#dims').selectOption('4');
+  await page.locator('#startSession').click();
   await expect(page.locator('#slice')).toBeVisible();
 
   await page.locator('#example').click();
@@ -83,8 +87,9 @@ test('the 4D sweep changes what is rendered', async ({ page }) => {
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
-  await page.locator('#dims').selectOption('4');
   await page.locator('#newSession').click();
+  await page.locator('#dims').selectOption('4');
+  await page.locator('#startSession').click();
   await expect(page.locator('#slice')).toBeVisible();
 
   await page.locator('#example').click();
@@ -169,4 +174,19 @@ test('presence separates this session from all connected', async ({ browser }) =
   };
   await expect.poll(() => connected(alice)).toBeGreaterThanOrEqual(2);
   await expect.poll(() => connected(bob)).toBeGreaterThanOrEqual(2);
+});
+
+test('merge compaction merges adjacent boxes', async ({ page }) => {
+  await page.goto('/ui/?compact=merge');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#ops').fill('add,(0,0),(2,4)\nadd,(2,0),(4,4)');
+  await page.locator('#send').click();
+
+  // Two adjacent boxes merge into one under merge compaction.
+  await expect(async () => {
+    const lines = (await page.locator('#result').inputValue()).trim().split('\n');
+    expect(lines).toHaveLength(1);
+  }).toPass({ timeout: 10_000 });
 });

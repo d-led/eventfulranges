@@ -5,6 +5,10 @@ import { fadeOpacity } from './slice.js';
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
 const dimsSel = $('dims');
+const compactSel = $('compact');
+const modal = $('modal');
+const startSessionBtn = $('startSession');
+const cancelSessionBtn = $('cancelSession');
 const opsEl = $('ops');
 const sendBtn = $('send');
 const exampleBtn = $('example');
@@ -418,19 +422,24 @@ function applyState(state) {
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const session = new URLSearchParams(location.search).get('s');
+  const params = new URLSearchParams(location.search);
+  const session = params.get('s');
   if (!session) {
     // A page without a session id (e.g. an old bookmark) mints one instead of
     // opening a socket the server would have to reject.
     location.replace('/ui/');
     return;
   }
-  const ws = new WebSocket(`${proto}://${location.host}/ws?s=${encodeURIComponent(session)}`);
+  const compact = params.get('compact') || '';
+  const compactQuery = compact ? `&compact=${encodeURIComponent(compact)}` : '';
+  const ws = new WebSocket(
+    `${proto}://${location.host}/ws?s=${encodeURIComponent(session)}${compactQuery}`,
+  );
   socket = ws;
 
   ws.onopen = () => {
     setStatus('connected — edits are shared live');
-    const startDims = Number(new URLSearchParams(location.search).get('dims'));
+    const startDims = Number(params.get('dims'));
     if (!startDimsSent && startDims >= 1 && startDims <= 4) {
       startDimsSent = true;
       sendOp({ kind: 'dims', dims: startDims });
@@ -524,8 +533,20 @@ randomBtn.addEventListener('click', () => {
 });
 
 newSessionBtn.addEventListener('click', () => {
-  // A session's dimension is fixed; start a fresh one with the chosen dimension.
-  location.replace(`/ui/?dims=${Number(dimsSel.value)}`);
+  modal.hidden = false;
+});
+
+cancelSessionBtn.addEventListener('click', () => {
+  modal.hidden = true;
+});
+
+startSessionBtn.addEventListener('click', () => {
+  const dims = Number(dimsSel.value);
+  const compact = compactSel.value;
+  const url = compact
+    ? `/ui/?dims=${dims}&compact=${encodeURIComponent(compact)}`
+    : `/ui/?dims=${dims}`;
+  location.replace(url);
 });
 
 fitViewBtn.addEventListener('click', () => {

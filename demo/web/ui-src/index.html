@@ -18,20 +18,8 @@
       </p>
 
       <div class="field">
-        <div class="dims-row">
-          <label for="dims">Dimensions</label>
-          <select id="dims">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3" selected>3</option>
-            <option value="4">4</option>
-          </select>
-          <button id="newSession" title="Start a new session with the chosen dimension">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-            New session
-          </button>
-        </div>
-        <p class="hint">Pick a dimension, then start a new session — the dimension is fixed per session.</p>
+        <button id="newSession" class="primary">New session</button>
+        <p class="hint">Start a fresh session and choose its dimension and compaction.</p>
       </div>
 
       <div class="field">
@@ -83,6 +71,33 @@
       <ol id="log"></ol>
     </section>
   </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-box">
+      <h2>New session</h2>
+      <div class="field">
+        <label for="dims">Dimensions</label>
+        <select id="dims">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="compact">Compaction</label>
+        <select id="compact">
+          <option value="">Canonical — keep every box</option>
+          <option value="merge">Merge adjacent boxes</option>
+        </select>
+        <p class="hint">Merge adjacent joins touching boxes into larger ones.</p>
+      </div>
+      <div class="row">
+        <button id="startSession" class="primary">Start session</button>
+        <button id="cancelSession">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>

@@ -190,3 +190,26 @@ details summary { cursor: pointer; margin-bottom: 8px; color: var(--muted); }
   #canvas { min-height: 320px; }
   #activity { max-height: 160px; }
 }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 10;
+}
+
+.modal[hidden] { display: none; }
+
+.modal-box {
+  width: min(360px, calc(100vw - 40px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-box h2 { margin: 0 0 14px; font-size: 16px; }
