@@ -80,6 +80,7 @@ func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 // snapshot writes the current view and version to the store. Backends without
 // snapshot support skip it.
 func (e *Engine) snapshot(ctx context.Context) error {
+	e.ensureView()
 	sn, ok := e.store.(store.Snapshotter)
 	if !ok {
 		return nil

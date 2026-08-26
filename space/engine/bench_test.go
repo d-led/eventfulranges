@@ -3,7 +3,6 @@ package engine_test
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/d-led/eventfulranges/space"
@@ -13,47 +12,93 @@ import (
 	"github.com/d-led/eventfulranges/space/strategy"
 )
 
-// benchOps returns n overlapping 2D additions with deterministic pseudo-random
-// corners and sequential timestamps.
-func benchOps(n int) []op.Op {
-	rng := rand.New(rand.NewSource(42))
+// overlappingOps returns n 2D additions that heavily overlap, the worst case
+// for priority-resolved materialization.
+func overlappingOps(n int) []op.Op {
 	ops := make([]op.Op, n)
 	for i := range ops {
-		x0 := rng.Intn(100)
-		y0 := rng.Intn(100)
-		x1 := x0 + 1 + rng.Intn(20)
-		y1 := y0 + 1 + rng.Intn(20)
 		ops[i] = op.Op{
 			ID:   fmt.Sprintf("op-%d", i),
 			Kind: op.KindAdd,
 			TS:   int64(i),
-			Box:  space.NewBox([]float64{float64(x0), float64(y0)}, []float64{float64(x1), float64(y1)}),
+			Box:  space.NewBox([]float64{0, 0}, []float64{float64(20 + i), float64(20 + i)}),
 		}
 	}
 	return ops
 }
 
-// BenchmarkApplyIncremental measures the total cost of folding n operations
-// one at a time. LWW and AdditiveWinsLWW materialize the whole history after
-// every apply, so their total cost grows super-linearly with n.
+// disjointOps returns n 2D additions that never overlap, the common case for a
+// whiteboard: separate strokes in separate places.
+func disjointOps(n int) []op.Op {
+	ops := make([]op.Op, n)
+	for i := range ops {
+		x := float64((i % 100) * 10)
+		y := float64((i / 100) * 10)
+		ops[i] = op.Op{
+			ID:   fmt.Sprintf("op-%d", i),
+			Kind: op.KindAdd,
+			TS:   int64(i),
+			Box:  space.NewBox([]float64{x, y}, []float64{x + 5, y + 5}),
+		}
+	}
+	return ops
+}
+
+// BenchmarkApplyIncremental measures folding n operations one at a time. The
+// engine defers materialization, so this is the cost of the append path alone.
 func BenchmarkApplyIncremental(b *testing.B) {
 	ctx := context.Background()
 	for _, s := range []strategy.Strategy{strategy.LWW, strategy.AdditiveWins, strategy.AdditiveWinsLWW} {
-		for _, n := range []int{50, 200, 500} {
-			ops := benchOps(n)
-			b.Run(fmt.Sprintf("%s/n=%d", s, n), func(b *testing.B) {
-				b.ReportAllocs()
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					e, err := engine.Open(ctx, memory.New(), s)
-					if err != nil {
-						b.Fatal(err)
+		for _, tc := range []struct {
+			name string
+			gen  func(int) []op.Op
+		}{{"overlap", overlappingOps}, {"disjoint", disjointOps}} {
+			for _, n := range []int{100, 1000} {
+				ops := tc.gen(n)
+				b.Run(fmt.Sprintf("%s/%s/n=%d", s, tc.name, n), func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						e, err := engine.Open(ctx, memory.New(), s, engine.WithSnapshotEvery(0))
+						if err != nil {
+							b.Fatal(err)
+						}
+						for _, o := range ops {
+							_ = e.Apply(ctx, o)
+						}
 					}
-					for _, o := range ops {
-						_ = e.Apply(ctx, o)
+				})
+			}
+		}
+	}
+}
+
+// BenchmarkApplyThenMaterialize measures folding n operations and then
+// materializing once — the realistic total cost under lazy materialization.
+func BenchmarkApplyThenMaterialize(b *testing.B) {
+	ctx := context.Background()
+	for _, s := range []strategy.Strategy{strategy.LWW, strategy.AdditiveWins, strategy.AdditiveWinsLWW} {
+		for _, tc := range []struct {
+			name string
+			gen  func(int) []op.Op
+		}{{"overlap", overlappingOps}, {"disjoint", disjointOps}} {
+			for _, n := range []int{100, 1000} {
+				ops := tc.gen(n)
+				b.Run(fmt.Sprintf("%s/%s/n=%d", s, tc.name, n), func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						e, err := engine.Open(ctx, memory.New(), s, engine.WithSnapshotEvery(0))
+						if err != nil {
+							b.Fatal(err)
+						}
+						for _, o := range ops {
+							_ = e.Apply(ctx, o)
+						}
+						_ = e.Materialize()
 					}
-				}
-			})
+				})
+			}
 		}
 	}
 }

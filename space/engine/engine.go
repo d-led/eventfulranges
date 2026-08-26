@@ -9,7 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
+
+	"github.com/Arceliar/phony"
 
 	"github.com/d-led/eventfulranges/clock"
 	"github.com/d-led/eventfulranges/meta"
@@ -56,9 +57,12 @@ func WithMetaMerge(m meta.Merge) Option {
 }
 
 // Engine is a concurrency-safe CRDT over n-dimensional boxes backed by an
-// append-only event log.
+// append-only event log. Its mutable state is owned by a single actor
+// goroutine (see the phony package); public methods run on that goroutine and
+// return results synchronously.
 type Engine struct {
-	mu            sync.RWMutex
+	phony.Inbox
+
 	store         store.Log
 	strategy      strategy.Strategy
 	clock         clock.Clock
@@ -71,6 +75,7 @@ type Engine struct {
 	version      int64
 	since        int
 	dims         int
+	dirty        bool
 	canonicalize space.Canonicalizer
 	metaMerge    meta.Merge
 }
@@ -106,7 +111,9 @@ func Open(ctx context.Context, st store.Log, s strategy.Strategy, opts ...Option
 
 // Apply applies a single operation, ignoring duplicates by ID.
 func (e *Engine) Apply(ctx context.Context, o op.Op) error {
-	return e.apply(ctx, []op.Op{o})
+	var err error
+	phony.Block(e, func() { err = e.apply(ctx, []op.Op{o}) })
+	return err
 }
 
 // ApplyAll applies a batch of operations, ignoring duplicates by ID.
@@ -114,55 +121,68 @@ func (e *Engine) ApplyAll(ctx context.Context, ops []op.Op) error {
 	if len(ops) == 0 {
 		return nil
 	}
-	return e.apply(ctx, ops)
+	var err error
+	phony.Block(e, func() { err = e.apply(ctx, ops) })
+	return err
 }
 
 // Materialize returns a copy of the current canonical box cover.
 func (e *Engine) Materialize() []space.Box {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return append([]space.Box(nil), e.view...)
+	var out []space.Box
+	phony.Block(e, func() {
+		e.ensureView()
+		out = append([]space.Box(nil), e.view...)
+	})
+	return out
 }
 
 // Contains reports whether the point belongs to the materialized set.
 func (e *Engine) Contains(p []float64) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return space.Contains(e.view, p)
+	var got bool
+	phony.Block(e, func() {
+		e.ensureView()
+		got = space.Contains(e.view, p)
+	})
+	return got
 }
 
 // Overlaps reports whether any materialized box shares a point with b.
 func (e *Engine) Overlaps(b space.Box) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return space.OverlapsSet(e.view, b)
+	var got bool
+	phony.Block(e, func() {
+		e.ensureView()
+		got = space.OverlapsSet(e.view, b)
+	})
+	return got
 }
 
 // Ops returns the known operations sorted by ID for deterministic exchange.
 func (e *Engine) Ops() []op.Op {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	out := make([]op.Op, 0, len(e.ops))
-	for _, o := range e.ops {
-		out = append(out, o)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	var out []op.Op
+	phony.Block(e, func() {
+		out = make([]op.Op, 0, len(e.ops))
+		for _, o := range e.ops {
+			out = append(out, o)
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	})
 	return out
 }
 
 // Snapshot persists the current materialized view and log version.
 func (e *Engine) Snapshot(ctx context.Context) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.snapshot(ctx)
+	var err error
+	phony.Block(e, func() {
+		e.ensureView()
+		err = e.snapshot(ctx)
+	})
+	return err
 }
 
 func (e *Engine) apply(ctx context.Context, ops []op.Op) error {
 	if err := validateOps(ops); err != nil {
 		return err
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	if err := e.ensureDims(ops); err != nil {
 		return err
 	}
@@ -271,7 +291,9 @@ func (e *Engine) catchUp(ctx context.Context) error {
 func (e *Engine) applyToView(o op.Op) {
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
-		e.setView(strategy.Materialize(e.strategy, e.opsList()))
+		// A single op can reorder the whole priority-resolved cover, so defer
+		// the rebuild until the view is actually requested.
+		e.dirty = true
 	case strategy.AdditiveWins:
 		if o.Kind == op.KindAdd {
 			e.adds = space.UnionMerged(e.adds, []space.Box{o.Box}, e.metaMerge)
@@ -293,6 +315,15 @@ func (e *Engine) setView(boxes []space.Box) {
 		boxes = e.canonicalize(boxes)
 	}
 	e.view = boxes
+}
+
+// ensureView rebuilds the cached view when a deferred materialization is
+// pending.
+func (e *Engine) ensureView() {
+	if e.dirty {
+		e.materializeAll()
+		e.dirty = false
+	}
 }
 
 // materializeAll rebuilds the view, segments and add/remove sets from the full

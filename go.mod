@@ -3,6 +3,7 @@ module github.com/d-led/eventfulranges
 go 1.27.0
 
 require (
+	github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d
 	github.com/EventStore/EventStore-Client-Go/v4 v4.2.0
 	github.com/biogo/store v0.0.0-20201120204734-aad293a2328f
 	github.com/google/uuid v1.6.0

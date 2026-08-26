@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d // indirect
 	github.com/EventStore/EventStore-Client-Go/v4 v4.2.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.2 // indirect
