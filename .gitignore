@@ -294,3 +294,12 @@ demo/web/dist/*
 # Playwright artifacts
 demo/web/ui-src/test-results/
 demo/web/ui-src/playwright-report/
+
+# The paint demo builds its UI from ui-src into dist/ for go:embed, exactly
+# like the web demo. Only the directory marker is committed.
+demo/paint/dist/*
+!demo/paint/dist/.gitkeep
+
+# Paint demo test artifacts
+demo/paint/ui-src/test-results/
+demo/paint/ui-src/playwright-report/

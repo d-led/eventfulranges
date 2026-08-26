@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>eventfulranges — infinite shared whiteboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <aside id="panel">
+      <h1>eventfulranges · whiteboard</h1>
+      <p id="presence" class="presence">connecting…</p>
+      <p class="lede">
+        An infinite, shared pixel whiteboard. Cells are Morton-encoded onto the
+        library's 1-D range CRDT: every stroke is an <em>add</em> or
+        <em>remove</em> in an event log, every browser materializes the view
+        itself, and a filled rectangle of cells is one operation. Drag to draw,
+        scroll to zoom, hold the middle button to pan.
+      </p>
+
+      <div class="field">
+        <label>Tool</label>
+        <div class="row">
+          <button id="toolPaint" class="active">Paint</button>
+          <button id="toolErase">Erase</button>
+          <button id="toolPan">Pan</button>
+        </div>
+        <p class="hint">Active tool: <strong id="toolLabel">Paint</strong></p>
+      </div>
+
+      <div class="row">
+        <button id="newSession" class="primary">New session</button>
+        <button id="copyShare">Copy share link</button>
+      </div>
+
+      <div class="field">
+        <label for="share">Share link (gzip + base 36 snapshot)</label>
+        <textarea id="share" readonly spellcheck="false"></textarea>
+        <p id="blobStats" class="hint"></p>
+      </div>
+
+      <div class="field">
+        <button id="downloadJsonl">Download JSONL log</button>
+        <p class="hint">
+          The append-only operation log, one JSON object per line — the raw
+          event source behind the board.
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="status">Status</label>
+        <div id="status">connecting…</div>
+      </div>
+    </aside>
+
+    <section id="canvas"><canvas id="board"></canvas></section>
+
+    <section id="activity" aria-label="Activity log">
+      <ol id="log"></ol>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

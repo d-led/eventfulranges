@@ -204,6 +204,27 @@ Each demo has a smoke test; run them with `go test ./demo/...`.
 
 ![web demo 2d](./docs/img/eventfulranges-2d-demo.gif)
 
+### paint
+
+```shell
+go run ./demo/paint
+```
+
+`demo/paint` is an infinite, shared pixel whiteboard built on the library's
+1-D range CRDT. Each cell is Morton-encoded onto the curve, so a filled
+rectangle of cells folds into one (or a few) `add`/`remove` operations.
+Browsers receive the operation log and materialize the view themselves — pure
+event sourcing — and concurrent strokes converge regardless of arrival order.
+A share link carries the whole board as a gzip + base-36 snapshot, and the raw
+operation log is one click away as JSONL. Open `http://localhost:8081/ui/`.
+
+```bash
+./scripts/demo-paint.sh     # start the whiteboard (open the printed URL)
+./scripts/build-paint.sh    # (re)build the embedded UI (npm install + esbuild)
+./scripts/itest-paint.sh    # smoke test: Go tests + server serves the UI
+./scripts/e2e-paint.sh      # vitest unit tests + Playwright end-to-end tests
+```
+
 ## Quality
 
 Everything is checked by `scripts/quality-gate.sh` and on CI:
