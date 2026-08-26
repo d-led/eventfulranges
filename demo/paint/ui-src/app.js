@@ -5,8 +5,10 @@ import {
   gridStep,
   gridRect,
   gridLine,
+  diskCells,
   fitCamera,
 } from "./grid.js";
+import { delayFor } from "./backoff.js";
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -22,6 +24,7 @@ const newSessionBtn = $("newSession");
 const rectBtn = $("toolRect");
 const penBtn = $("toolPen");
 const eraseBtn = $("toolErase");
+const eraserBtn = $("toolEraser");
 const panBtn = $("toolPan");
 const toolLabel = $("toolLabel");
 const strokeColorEl = $("strokeColor");
@@ -30,6 +33,13 @@ const gridPlus = $("gridPlus");
 const gridMinus = $("gridMinus");
 const gridDefault = $("gridDefault");
 const fitAllBtn = $("fitAll");
+const zoomInBtn = $("zoomIn");
+const zoomOutBtn = $("zoomOut");
+const zoomResetBtn = $("zoomReset");
+const zoomLabel = $("zoomLabel");
+const reconnectBanner = $("reconnectBanner");
+const reconnectBtn = $("reconnectBtn");
+const reconnectText = $("reconnectText");
 
 const ctx = boardEl.getContext("2d");
 
@@ -42,9 +52,19 @@ let clientID = "";
 let clients = 0;
 let total = 0;
 let socket = null;
+let connected = false; // true once a socket has opened, false after it closes
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+const LOG_MAX = 100; // scrolling window: at most this many rendered log items
+const LOG_DEBOUNCE_MS = 150; // coalesce a burst of ops into one summary line
+let logPending = []; // ops waiting for the debounced render
+let logTimer = null; // debounce handle
 
 const DEFAULT_COLOR = "#e6e8ee";
-const cam = { x: 0, y: 0, scale: 12 }; // board units at the canvas centre, px per unit
+const INITIAL_SCALE = 24; // pixels per board unit at 100% zoom, matching MIN_CELL_PX
+const ERASER_RADIUS = 1.5; // circular brush radius, in grid cells
+const cam = { x: 0, y: 0, scale: INITIAL_SCALE }; // board units at the canvas centre, px per unit
 
 let gridOffset = 0; // user shift over the zoom-chosen subdivision level
 let strokeColor = DEFAULT_COLOR; // metadata attached to every painted box
@@ -53,8 +73,11 @@ let dragging = false;
 let dragStart = null;
 let dragCur = null;
 let penLast = null; // last painted pen cell, as {ix, iy}
+let eraserLast = null; // last erased cell, as {ix, iy}
+let eraserDrawn = new Set(); // cells already erased by the current stroke
 let panning = false;
 let panLast = null;
+let pinch = null; // two-finger gesture: {dist, cx, cy}
 
 // ---------- materialization ----------
 // The browser is a replica: it folds the operation log with additive-wins
@@ -86,8 +109,8 @@ function applyEntries(entries) {
       newRemoves.push(e.data);
     }
     logEntries.push(e);
-    appendLog(e);
   }
+  queueLog(entries);
   adds.push(...newAdds); // keep stroke order and one color per box
   removes = union(removes, newRemoves);
   materialize();
@@ -189,6 +212,17 @@ function strokeGrid(cell, first, last, rowTop, rowBottom, w, h, style, width) {
 
 function drawPreview(w, h) {
   if (!dragging || tool === "pen") return;
+  if (tool === "eraser") {
+    const cell = gridSize(cam.scale, gridOffset);
+    const sx = (dragCur.x - cam.x) * cam.scale + w / 2;
+    const sy = (dragCur.y - cam.y) * cam.scale + h / 2;
+    ctx.strokeStyle = "#ff6b6b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, ERASER_RADIUS * cell * cam.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
   const r = gridRect(dragStart, dragCur, gridSize(cam.scale, gridOffset));
   const sx = (r.x0 - cam.x) * cam.scale + w / 2;
   const sy = (r.y0 - cam.y) * cam.scale + h / 2;
@@ -198,11 +232,27 @@ function drawPreview(w, h) {
 }
 
 function pointAt(e) {
+  return boardPoint(e.offsetX, e.offsetY);
+}
+
+// boardPoint maps canvas-local pixels to board units.
+function boardPoint(x, y) {
   const { w, h } = resizeCanvas();
   return {
-    x: (e.offsetX - w / 2) / cam.scale + cam.x,
-    y: (e.offsetY - h / 2) / cam.scale + cam.y,
+    x: (x - w / 2) / cam.scale + cam.x,
+    y: (y - h / 2) / cam.scale + cam.y,
   };
+}
+
+// touchPoint maps a touch event to canvas-local pixels.
+function touchPoint(t) {
+  const rect = boardEl.getBoundingClientRect();
+  return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+}
+
+function boardPointAtTouch(t) {
+  const p = touchPoint(t);
+  return boardPoint(p.x, p.y);
 }
 
 function penCell(p) {
@@ -235,53 +285,222 @@ function sendErase(r) {
   });
 }
 
-// ---------- interaction ----------
-boardEl.addEventListener("mousedown", (e) => {
-  if (e.button === 1 || tool === "pan") {
-    panning = true;
-    panLast = { x: e.clientX, y: e.clientY };
-    return;
+// stampEraser erases the circular brush around cell (ix, iy), skipping cells
+// the current stroke has already covered.
+function stampEraser(ix, iy) {
+  const cell = gridSize(cam.scale, gridOffset);
+  for (const r of diskCells(ix, iy, cell, ERASER_RADIUS)) {
+    const key = `${Math.round(r.x0 / cell)},${Math.round(r.y0 / cell)}`;
+    if (eraserDrawn.has(key)) continue;
+    eraserDrawn.add(key);
+    sendErase(r);
   }
-  if (e.button !== 0) return;
+}
+
+// ---------- interaction ----------
+function startDraw(boardPt) {
   dragging = true;
   if (tool === "pen") {
-    penLast = penCell(pointAt(e));
+    penLast = penCell(boardPt);
     sendPaint(penRect(penLast));
     return;
   }
-  dragStart = pointAt(e);
-  dragCur = dragStart;
-});
-
-window.addEventListener("mousemove", (e) => {
-  if (panning) {
-    cam.x -= (e.clientX - panLast.x) / cam.scale;
-    cam.y -= (e.clientY - panLast.y) / cam.scale;
-    panLast = { x: e.clientX, y: e.clientY };
-    draw();
+  if (tool === "eraser") {
+    dragStart = boardPt;
+    dragCur = boardPt;
+    eraserDrawn = new Set();
+    eraserLast = penCell(boardPt);
+    stampEraser(eraserLast.ix, eraserLast.iy);
     return;
   }
-  if (!dragging) return;
+  dragStart = boardPt;
+  dragCur = boardPt;
+}
+
+function moveDraw(boardPt) {
   if (tool === "pen") {
-    const cur = penCell(pointAt(e));
+    const cur = penCell(boardPt);
     const cell = gridSize(cam.scale, gridOffset);
     for (const r of gridLine(penLast, cur, cell)) sendPaint(r);
     penLast = cur;
     return;
   }
-  dragCur = pointAt(e);
+  if (tool === "eraser") {
+    dragCur = boardPt;
+    const cell = gridSize(cam.scale, gridOffset);
+    const cur = penCell(boardPt);
+    for (const r of gridLine(eraserLast, cur, cell)) {
+      stampEraser(Math.round(r.x0 / cell), Math.round(r.y0 / cell));
+    }
+    eraserLast = cur;
+    return;
+  }
+  dragCur = boardPt;
+}
+
+function endDraw() {
+  if (!dragging) return;
+  dragging = false;
+  if (tool !== "pen" && tool !== "eraser") commitStroke();
+}
+
+function startPan(clientX, clientY) {
+  panning = true;
+  panLast = { x: clientX, y: clientY };
+}
+
+function movePan(clientX, clientY) {
+  cam.x -= (clientX - panLast.x) / cam.scale;
+  cam.y -= (clientY - panLast.y) / cam.scale;
+  panLast = { x: clientX, y: clientY };
+  draw();
+}
+
+function endPan() {
+  panning = false;
+}
+
+boardEl.addEventListener("mousedown", (e) => {
+  // Middle button, right button, and the pan tool all pan.
+  if (e.button === 1 || e.button === 2 || tool === "pan") {
+    startPan(e.clientX, e.clientY);
+    return;
+  }
+  if (e.button !== 0) return;
+  startDraw(pointAt(e));
+});
+
+window.addEventListener("mousemove", (e) => {
+  if (panning) {
+    movePan(e.clientX, e.clientY);
+    return;
+  }
+  if (!dragging) return;
+  moveDraw(pointAt(e));
   draw();
 });
 
 window.addEventListener("mouseup", () => {
   if (panning) {
-    panning = false;
+    endPan();
     return;
   }
-  if (!dragging) return;
-  dragging = false;
-  if (tool !== "pen") commitStroke();
+  endDraw();
 });
+
+// A right-drag is a pan, not a context menu.
+boardEl.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// Two-finger pinch pans and zooms; one finger draws with the active tool.
+boardEl.addEventListener(
+  "touchstart",
+  (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      if (dragging) endDraw();
+      if (panning) endPan();
+      pinch = beginPinch(e.touches);
+      return;
+    }
+    if (e.touches.length === 1 && !pinch) {
+      const t = e.touches[0];
+      if (tool === "pan") startPan(t.clientX, t.clientY);
+      else startDraw(boardPointAtTouch(t));
+    }
+  },
+  { passive: false },
+);
+
+boardEl.addEventListener(
+  "touchmove",
+  (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2 && pinch) {
+      movePinch(e.touches);
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      if (panning) movePan(t.clientX, t.clientY);
+      else if (dragging) {
+        moveDraw(boardPointAtTouch(t));
+        draw();
+      }
+    }
+  },
+  { passive: false },
+);
+
+boardEl.addEventListener(
+  "touchend",
+  (e) => {
+    e.preventDefault();
+    if (e.touches.length < 2) pinch = null;
+    if (e.touches.length === 0) {
+      if (dragging) endDraw();
+      if (panning) endPan();
+    }
+  },
+  { passive: false },
+);
+
+boardEl.addEventListener("touchcancel", () => {
+  pinch = null;
+  if (dragging) endDraw();
+  if (panning) endPan();
+});
+
+function beginPinch(touches) {
+  const a = touchPoint(touches[0]);
+  const b = touchPoint(touches[1]);
+  return {
+    dist: Math.hypot(b.x - a.x, b.y - a.y),
+    cx: (a.x + b.x) / 2,
+    cy: (a.y + b.y) / 2,
+  };
+}
+
+function movePinch(touches) {
+  const a = touchPoint(touches[0]);
+  const b = touchPoint(touches[1]);
+  const dist = Math.hypot(b.x - a.x, b.y - a.y);
+  const cx = (a.x + b.x) / 2;
+  const cy = (a.y + b.y) / 2;
+  // Pan by the midpoint movement, then zoom around the new midpoint.
+  cam.x -= (cx - pinch.cx) / cam.scale;
+  cam.y -= (cy - pinch.cy) / cam.scale;
+  if (pinch.dist > 0 && dist > 0) {
+    const before = boardPoint(cx, cy);
+    const next = cam.scale * (dist / pinch.dist);
+    if (Number.isFinite(next) && next > 0) {
+      cam.scale = next;
+      cam.x = before.x - (cx - resizeCanvas().w / 2) / cam.scale;
+      cam.y = before.y - (cy - resizeCanvas().h / 2) / cam.scale;
+    }
+  }
+  pinch.dist = dist;
+  pinch.cx = cx;
+  pinch.cy = cy;
+  updateGridLabel();
+  draw();
+}
+
+// zoomBy scales the camera around the canvas centre by the given factor.
+function zoomBy(factor) {
+  const next = cam.scale * factor;
+  if (!Number.isFinite(next) || next <= 0) return;
+  cam.scale = next;
+  updateGridLabel();
+  draw();
+}
+
+function zoomReset() {
+  cam.x = 0;
+  cam.y = 0;
+  cam.scale = INITIAL_SCALE;
+  updateGridLabel();
+  draw();
+}
 
 boardEl.addEventListener(
   "wheel",
@@ -313,12 +532,14 @@ function setTool(name) {
   rectBtn.classList.toggle("active", name === "rect");
   penBtn.classList.toggle("active", name === "pen");
   eraseBtn.classList.toggle("active", name === "erase");
+  eraserBtn.classList.toggle("active", name === "eraser");
   panBtn.classList.toggle("active", name === "pan");
   boardEl.style.cursor = name === "pan" ? "grab" : "crosshair";
   toolLabel.textContent = {
     rect: "Rect",
     pen: "Pen",
     erase: "Erase",
+    eraser: "Eraser",
     pan: "Pan",
   }[name];
 }
@@ -331,6 +552,8 @@ function updateGridLabel() {
       ? ""
       : ` · offset ${gridOffset > 0 ? "+" : ""}${gridOffset}`;
   gridLabel.textContent = `${cell} × ${cell} · level ${n}${offset}`;
+  const pct = Math.round((cam.scale / INITIAL_SCALE) * 100);
+  zoomLabel.textContent = `${pct}%`;
 }
 
 function fitAll() {
@@ -348,7 +571,61 @@ function fitAll() {
 }
 
 // ---------- websocket ----------
+function setConnected(online) {
+  connected = online;
+  document.body.classList.toggle("disconnected", !online);
+  reconnectBanner.hidden = online;
+  rectBtn.disabled = !online;
+  penBtn.disabled = !online;
+  eraseBtn.disabled = !online;
+  eraserBtn.disabled = !online;
+  importJsonlBtn.disabled = !online;
+  if (online) {
+    reconnectAttempts = 0;
+    clearReconnectTimer();
+  }
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+// scheduleReconnect queues one retry with exponential back-off: 1s, 2s, 4s,
+// … capped at 30s, so a dead server is retried at most twice a minute once
+// the cap is reached.
+function scheduleReconnect() {
+  if (reconnectTimer !== null) return;
+  const delay = delayFor(reconnectAttempts);
+  reconnectAttempts += 1;
+  const secs = Math.round(delay / 1000);
+  setStatus(`disconnected — retrying in ${secs}s`);
+  reconnectText.textContent = `Disconnected — retrying in ${secs}s`;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delay);
+}
+
+// reconnectNow skips the back-off: the banner button forces an immediate
+// fresh connection attempt.
+function reconnectNow() {
+  clearReconnectTimer();
+  reconnectAttempts = 0;
+  setStatus("reconnecting…");
+  reconnectText.textContent = "Reconnecting…";
+  if (socket && socket.readyState !== WebSocket.CLOSED) {
+    socket.onclose = null; // this close is ours; connect() below opens a fresh socket
+    socket.close();
+  }
+  socket = null;
+  connect();
+}
+
 function connect() {
+  if (socket && socket.readyState === WebSocket.CONNECTING) return;
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const session = new URLSearchParams(location.search).get("s");
   if (!session) {
@@ -359,10 +636,13 @@ function connect() {
     `${proto}://${location.host}/ws?s=${encodeURIComponent(session)}`,
   );
   socket = ws;
-  ws.onopen = () => setStatus("connected — strokes are shared live");
+  ws.onopen = () => {
+    setConnected(true);
+    setStatus("connected — strokes are shared live");
+  };
   ws.onclose = () => {
-    setStatus("disconnected — reconnecting…");
-    setTimeout(connect, 1000);
+    setConnected(false);
+    scheduleReconnect();
   };
   ws.onerror = () => setStatus("connection error");
   ws.onmessage = (ev) => {
@@ -388,6 +668,11 @@ function handleMessage(msg) {
     adds = [];
     removes = [];
     logEntries = [];
+    logPending = [];
+    if (logTimer !== null) {
+      clearTimeout(logTimer);
+      logTimer = null;
+    }
     logEl.innerHTML = "";
     const full = msg.ops || [];
     if (full.length) applyEntries(full);
@@ -401,11 +686,11 @@ function handleMessage(msg) {
 }
 
 function sendCmd(cmd) {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(cmd));
-  } else {
-    setStatus("not connected — cannot send");
+  if (!connected || !socket || socket.readyState !== WebSocket.OPEN) {
+    setStatus("disconnected — reconnect to paint");
+    return;
   }
+  socket.send(JSON.stringify(cmd));
 }
 
 function setStatus(text) {
@@ -419,15 +704,62 @@ function updatePresence(n, t) {
   presenceEl.textContent = `${clients} here · ${total} connected${me}`;
 }
 
-function appendLog(entry) {
+// queueLog batches incoming ops and renders them after a short quiet period:
+// a single op keeps its full line, a burst collapses into one summary line.
+function queueLog(entries) {
+  logPending.push(...entries);
+  if (logTimer !== null) clearTimeout(logTimer);
+  logTimer = setTimeout(flushLog, LOG_DEBOUNCE_MS);
+}
+
+function flushLog() {
+  logTimer = null;
+  const batch = logPending;
+  logPending = [];
+  if (batch.length === 0) return;
+  appendLog(batch.length === 1 ? entryLine(batch[0]) : summaryLine(batch));
+}
+
+function entryLine(entry) {
   const li = document.createElement("li");
   li.className = entry.kind;
   const when = new Date(entry.at).toLocaleTimeString();
   li.textContent = `${when}  ${entry.client}  ${entry.kind} ${entry.detail ?? ""}`;
   if (entry.client === clientID) li.classList.add("me");
+  return li;
+}
+
+function summaryLine(batch) {
+  const groups = new Map(); // `${client}\u0000${kind}` -> {client, kind, n}
+  for (const e of batch) {
+    const key = `${e.client}\u0000${e.kind}`;
+    const g = groups.get(key) ?? { client: e.client, kind: e.kind, n: 0 };
+    g.n += 1;
+    groups.set(key, g);
+  }
+  const byClient = new Map();
+  for (const g of groups.values()) {
+    const parts = byClient.get(g.client) ?? [];
+    parts.push(`${g.kind} ×${g.n}`);
+    byClient.set(g.client, parts);
+  }
+  const when = new Date(batch[batch.length - 1].at).toLocaleTimeString();
+  const text = [...byClient.entries()]
+    .map(([client, parts]) =>
+      byClient.size === 1 ? parts.join(", ") : `${client}: ${parts.join(", ")}`,
+    )
+    .join(" · ");
+  const li = document.createElement("li");
+  li.className = "summary";
+  if (batch.every((e) => e.client === clientID)) li.classList.add("me");
+  li.textContent = `${when}  ${text}`;
+  return li;
+}
+
+function appendLog(li) {
   logEl.appendChild(li);
   logEl.scrollTop = logEl.scrollHeight;
-  while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+  while (logEl.children.length > LOG_MAX) logEl.removeChild(logEl.firstChild);
 }
 
 function downloadJSONL() {
@@ -454,6 +786,11 @@ function downloadJSONL() {
 }
 
 async function importJSONL(input) {
+  if (!connected) {
+    setStatus("disconnected — reconnect to import");
+    input.value = "";
+    return;
+  }
   const file = input.files && input.files[0];
   if (!file) return;
   const text = await file.text();
@@ -517,6 +854,7 @@ function entryToCmd(entry) {
 rectBtn.addEventListener("click", () => setTool("rect"));
 penBtn.addEventListener("click", () => setTool("pen"));
 eraseBtn.addEventListener("click", () => setTool("erase"));
+eraserBtn.addEventListener("click", () => setTool("eraser"));
 panBtn.addEventListener("click", () => setTool("pan"));
 
 strokeColorEl.addEventListener("input", () => {
@@ -545,6 +883,10 @@ gridDefault.addEventListener("click", () => {
 });
 fitAllBtn.addEventListener("click", fitAll);
 
+zoomInBtn.addEventListener("click", () => zoomBy(2));
+zoomOutBtn.addEventListener("click", () => zoomBy(0.5));
+zoomResetBtn.addEventListener("click", zoomReset);
+
 copyShareBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(location.href);
@@ -563,6 +905,8 @@ newSessionBtn.addEventListener("click", () => location.replace("/ui/"));
 
 window.addEventListener("resize", draw);
 
+reconnectBtn.addEventListener("click", reconnectNow);
+
 // ---------- boot ----------
 function boot() {
   resizeCanvas();
@@ -573,3 +917,7 @@ function boot() {
 }
 
 boot();
+
+// Test seam: Playwright closes the live socket through this to exercise the
+// reconnection flow. It is inert in normal use.
+window.__eventfulranges = { closeSocket: () => socket && socket.close() };

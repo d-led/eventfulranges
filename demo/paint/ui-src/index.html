@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <div id="reconnectBanner" hidden>
+      <span id="reconnectText">Disconnected — waiting for the server…</span>
+      <button id="reconnectBtn" type="button">Reconnect now</button>
+    </div>
     <main>
       <aside id="panel">
         <h1>eventfulranges · whiteboard</h1>
@@ -15,8 +19,9 @@
           An infinite, shared whiteboard on a fractal grid: every cell
           subdivides into four squares as you zoom, and a stroke fills the cells
           at the current level as one <em>add</em> or <em>remove</em>
-          box. Scroll to zoom without limits, hold the middle button to pan, and
-          share the link so everyone joins the same board.
+          box. Scroll or pinch to zoom without limits, drag with the middle or
+          right mouse button to pan, and share the link so everyone joins the
+          same board.
         </p>
 
         <div class="field">
@@ -25,6 +30,7 @@
             <button id="toolRect" class="active">Rect</button>
             <button id="toolPen">Pen</button>
             <button id="toolErase">Erase</button>
+            <button id="toolEraser">Eraser</button>
             <button id="toolPan">Pan</button>
           </div>
           <p class="hint">Active tool: <strong id="toolLabel">Rect</strong></p>
@@ -52,6 +58,16 @@
             The grid subdivides into four squares as you zoom in; − / + shift
             one subdivision level from the zoom-chosen default.
           </p>
+        </div>
+
+        <div class="field">
+          <label>Zoom</label>
+          <div class="row">
+            <button id="zoomOut" title="zoom out">−</button>
+            <button id="zoomReset" title="back to 100%">100%</button>
+            <button id="zoomIn" title="zoom in">+</button>
+          </div>
+          <p class="hint">Zoom: <strong id="zoomLabel">100%</strong></p>
         </div>
 
         <div class="row">

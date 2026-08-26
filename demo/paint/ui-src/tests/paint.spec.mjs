@@ -102,7 +102,8 @@ test("pen paints cells along a sweep", async ({ page }) => {
   await page.mouse.move(cx + 24, cy, { steps: 3 });
   await page.mouse.up();
 
-  await expect(page.locator("#log li.add").first()).toContainText("add");
+  // The swept cells arrive as a burst and collapse into one summary line.
+  await expect(page.locator("#log li.summary").first()).toContainText("add");
 });
 
 test("a stroke carries its color as metadata", async ({ page }) => {
@@ -144,6 +145,28 @@ test("imports a JSONL log onto the board", async ({ page }) => {
   });
 
   await expect(page.locator("#log li.add").first()).toContainText("add");
+});
+
+test("coalesces a burst of ops into one summary line", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const lines = Array.from({ length: 5 }, (_, i) =>
+    JSON.stringify({
+      kind: "add",
+      data: { min: [i, 0], max: [i + 1, 1] },
+      meta: { color: "#00ff00" },
+    }),
+  ).join("\n");
+  await page.locator("#importJsonlInput").setInputFiles({
+    name: "burst.jsonl",
+    mimeType: "application/x-ndjson",
+    buffer: Buffer.from(lines + "\n"),
+  });
+
+  await expect(page.locator("#log li.summary").first()).toContainText("add ×5");
+  await expect(page.locator("#log li.add")).toHaveCount(0);
 });
 
 test("grid offset snaps painting to the chosen level", async ({ page }) => {
@@ -275,8 +298,118 @@ test("round-trips a picture through JSONL export and import", async ({
   await expect(bob.locator("#log li.add")).toHaveCount(1);
 });
 
-// drawRect drags a 4x4 cell rectangle starting from the board centre, which is
-// cell (0,0) at the initial camera (scale 12 px per cell).
+test("freezes mutations while disconnected but keeps local download", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page); // paint while connected so the log has a real entry
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  // Drop the connection as if the server vanished: the board freezes, mutation
+  // tools disable, and the local JSONL export stays available.
+  await page.evaluate(() => window.__eventfulranges.closeSocket());
+  await expect(page.locator("#reconnectBanner")).toBeVisible();
+  await expect(page.locator("#toolRect")).toBeDisabled();
+  await expect(page.locator("#downloadJsonl")).toBeEnabled();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const first = JSON.parse(content.trim().split("\n")[0]);
+  expect(first.kind).toBe("add");
+});
+
+test("reconnect button reconnects immediately", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.evaluate(() => window.__eventfulranges.closeSocket());
+  await expect(page.locator("#reconnectBanner")).toBeVisible();
+
+  await page.locator("#reconnectBtn").click();
+  await expect(page.locator("#status")).toContainText("connected");
+  await expect(page.locator("#reconnectBanner")).toBeHidden();
+});
+
+test("eraser brush removes a 3x3 block of cells", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#toolEraser").click();
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  // A single click stamps the 1.5-cell-radius disk: nine erased cells.
+  await expect(page.locator("#log li.summary").first()).toContainText(
+    "remove ×9",
+  );
+});
+
+test("zoom buttons zoom in, out, and reset", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await expect(page.locator("#zoomLabel")).toHaveText("100%");
+  await page.locator("#zoomIn").click();
+  await expect(page.locator("#zoomLabel")).toHaveText("200%");
+  await page.locator("#zoomOut").click();
+  await expect(page.locator("#zoomLabel")).toHaveText("100%");
+  await page.locator("#zoomIn").click();
+  await page.locator("#zoomIn").click(); // 400%
+  await expect(page.locator("#zoomLabel")).toHaveText("400%");
+  await page.locator("#zoomReset").click();
+  await expect(page.locator("#zoomLabel")).toHaveText("100%");
+});
+
+test("right-drag pans without drawing", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(cx + 40, cy + 40, { steps: 3 });
+  await page.mouse.up({ button: "right" });
+
+  // A right-drag pans the camera: nothing is painted.
+  await expect(page.locator("#log li")).toHaveCount(0);
+});
+
+test("draws with a single touch on touch devices", async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true });
+  const page = await context.newPage();
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#toolPen").click();
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+  await context.close();
+});
+
+// drawRect drags a 2x2 cell rectangle starting from the board centre, which is
+// cell (0,0) at the initial camera (scale 24 px per cell).
 async function drawRect(page) {
   const canvas = page.locator("#board");
   const box = await canvas.boundingBox();

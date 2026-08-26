@@ -5,14 +5,16 @@
 
 export const MIN_CELL_PX = 24; // a cell subdivides once its quarters would be this size
 export const MAX_LEVEL = 48; // 2^-48 is still exact in a float64
-export const MIN_LEVEL = -16; // 2^16-unit cells are coarse enough for any view
+export const MIN_LEVEL = -48; // 2^48-unit cells are exact too; coarser is off any view
 export const MIN_GRID_PX = 6; // below this the lines blur into noise
 
 // autoLevel picks the subdivision level whose on-screen cell is at least
-// MIN_CELL_PX and less than 2 * MIN_CELL_PX.
+// MIN_CELL_PX and less than 2 * MIN_CELL_PX. Negative levels are fine: as the
+// camera zooms out, cells merge into fours, so the grid keeps coarsening
+// instead of pinning at the 1 × 1 unit cell.
 export function autoLevel(scale) {
   if (!Number.isFinite(scale) || scale <= 0) return 0;
-  return Math.max(0, Math.floor(Math.log2(scale / MIN_CELL_PX)));
+  return Math.floor(Math.log2(scale / MIN_CELL_PX));
 }
 
 // gridLevel clamps the automatic level plus the user offset.
@@ -51,6 +53,27 @@ export function gridRect(a, b, cell) {
     x1: (hiX + 1) * cell,
     y1: (hiY + 1) * cell,
   };
+}
+
+// diskCells returns the half-open cell rectangles covered by a circular brush
+// of the given radius (in cells) centred on cell (cx, cy). A cell is covered
+// when its centre lies within radius cells of the brush centre.
+export function diskCells(cx, cy, cell, radius = 1.5) {
+  const rects = [];
+  const n = Math.ceil(radius);
+  const r2 = radius * radius;
+  for (let dy = -n; dy <= n; dy++) {
+    for (let dx = -n; dx <= n; dx++) {
+      if (dx * dx + dy * dy > r2) continue;
+      rects.push({
+        x0: (cx + dx) * cell,
+        y0: (cy + dy) * cell,
+        x1: (cx + dx + 1) * cell,
+        y1: (cy + dy + 1) * cell,
+      });
+    }
+  }
+  return rects;
 }
 
 // gridLine returns the half-open cell rectangles, in board units, of the cells
