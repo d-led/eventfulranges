@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/d-led/eventfulranges/demo/internal/collab"
-	"github.com/d-led/eventfulranges/demo/internal/morton"
 )
 
 func TestBoardPaintAndEraseProduceEntries(t *testing.T) {
@@ -16,7 +15,7 @@ func TestBoardPaintAndEraseProduceEntries(t *testing.T) {
 
 	entries, err := b.Apply("alice", paintCmd(0, 0, 4, 4))
 	require.NoError(t, err)
-	require.Len(t, entries, 1, "an aligned 4x4 block is one event")
+	require.Len(t, entries, 1, "one rectangle is one box event")
 	require.Equal(t, "add", entries[0].Kind)
 	require.Equal(t, "alice", entries[0].Client)
 
@@ -24,9 +23,9 @@ func TestBoardPaintAndEraseProduceEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	log := b.Log()
-	require.Len(t, log, 5, "one paint plus four erased cells")
-	require.Equal(t, "bob", log[len(log)-1].Client)
-	require.Equal(t, "remove", log[len(log)-1].Kind)
+	require.Len(t, log, 2, "one paint plus one erase")
+	require.Equal(t, "bob", log[1].Client)
+	require.Equal(t, "remove", log[1].Kind)
 }
 
 func TestBoardRejectsUnknownCommand(t *testing.T) {
@@ -36,11 +35,11 @@ func TestBoardRejectsUnknownCommand(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestBoardRejectsOutOfRange(t *testing.T) {
+func TestBoardRejectsInvertedRect(t *testing.T) {
 	t.Parallel()
 	b := newBoard()
-	_, err := b.Apply("x", paintCmd(morton.Limit, 0, morton.Limit+1, 1))
-	require.ErrorIs(t, err, morton.ErrOutOfRange)
+	_, err := b.Apply("x", paintCmd(4, 0, 2, 2))
+	require.Error(t, err)
 }
 
 func paintCmd(x0, y0, x1, y1 int64) collab.Cmd {

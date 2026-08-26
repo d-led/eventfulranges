@@ -21,7 +21,7 @@ func main() {
 	sessions := collab.NewSessions(collab.SessionTTL, func() collab.Model { return newBoard() })
 	log.Printf("eventfulranges whiteboard listening on %s", *addr)
 	log.Printf("open %s", collab.UIURL(*addr))
-	if err := collab.NewRouter(sessions, GetFS(), []string{"d"}).Run(*addr); err != nil {
+	if err := collab.NewRouter(sessions, GetFS(), nil).Run(*addr); err != nil {
 		log.Fatal(err)
 	}
 }

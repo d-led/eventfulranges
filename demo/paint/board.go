@@ -1,9 +1,9 @@
 // Command paint serves an infinite shared whiteboard: a pixel grid whose cells
-// are folded into the library's range CRDT. Every share link is one session;
-// browsers that open the same link receive the operation log and materialize
-// the view themselves, so concurrent strokes converge no matter their arrival
-// order. A filled rectangle of cells becomes one (or a few) operations,
-// demonstrating the region compression the library provides.
+// are folded into the library's n-dimensional range CRDT. Every share link is
+// one session; browsers that open the same link receive the operation log and
+// materialize the view themselves, so concurrent strokes converge no matter
+// their arrival order. A filled rectangle of cells is one half-open box
+// operation, demonstrating the region compression the library provides.
 package main
 
 import (
@@ -26,7 +26,7 @@ type board struct {
 
 // newBoard opens a board backed by the current Canvas implementation.
 func newBoard() *board {
-	return &board{canvas: newMortonCanvas()}
+	return &board{canvas: newBoxCanvas()}
 }
 
 // Apply folds one paint or erase command into the canvas and returns the

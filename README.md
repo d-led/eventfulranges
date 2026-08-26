@@ -211,12 +211,12 @@ go run ./demo/paint
 ```
 
 `demo/paint` is an infinite, shared pixel whiteboard built on the library's
-1-D range CRDT. Each cell is Morton-encoded onto the curve, so a filled
-rectangle of cells folds into one (or a few) `add`/`remove` operations.
-Browsers receive the operation log and materialize the view themselves — pure
-event sourcing — and concurrent strokes converge regardless of arrival order.
-A share link carries the whole board as a gzip + base-36 snapshot, and the raw
-operation log is one click away as JSONL. Open `http://localhost:8081/ui/`.
+n-dimensional range CRDT. Each stroke is one half-open `add`/`remove` box, so
+a filled rectangle of cells is a single operation. Browsers receive the
+operation log and materialize the view themselves — pure event sourcing — and
+concurrent strokes converge regardless of arrival order. The share link is the
+session URL, and the raw operation log is one click away as JSONL. Open
+`http://localhost:8081/ui/`.
 
 ```bash
 ./scripts/demo-paint.sh     # start the whiteboard (open the printed URL)

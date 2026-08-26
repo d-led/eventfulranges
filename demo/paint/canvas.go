@@ -11,9 +11,8 @@ type Rect struct {
 }
 
 // Event is one entry a Canvas produces when it folds a stroke. Kind is the
-// library operation kind ("add" or "remove"); Data is the payload a client
-// materializes — an interval today, a box once the library grows an n-D
-// engine.
+// library operation kind ("add" or "remove"); Data is the half-open box the
+// client materializes.
 type Event struct {
 	ID     string
 	Kind   string
