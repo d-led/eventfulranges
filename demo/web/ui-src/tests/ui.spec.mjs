@@ -190,3 +190,29 @@ test('merge compaction merges adjacent boxes', async ({ page }) => {
     expect(lines).toHaveLength(1);
   }).toPass({ timeout: 10_000 });
 });
+
+test('fit view frames material far from the origin', async ({ page }) => {
+  await page.goto('/ui/?dims=2');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  // A box far from the origin: the orthographic fit must centre the camera on
+  // the material, not offset the frustum by its centre (which clips it away).
+  await page.locator('#ops').fill('add,(100,100),(104,104)');
+  await page.locator('#send').click();
+  await expect(page.locator('#result')).not.toHaveValue('');
+  await page.waitForTimeout(250); // let the fit and a render frame settle
+
+  const withBox = await page.locator('#canvas canvas').screenshot();
+
+  // Removing the same box leaves the camera where the fit put it (empty views
+  // do not refit), so the only difference between these two frames is the box.
+  await page.locator('#ops').fill('remove,(100,100),(104,104)');
+  await page.locator('#send').click();
+  await expect.poll(() => page.locator('#result').inputValue()).toBe('');
+  await page.waitForTimeout(250);
+
+  const withoutBox = await page.locator('#canvas canvas').screenshot();
+
+  expect(Buffer.compare(withBox, withoutBox)).not.toBe(0);
+});

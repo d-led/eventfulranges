@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fadeOpacity } from './slice.js';
+import { orthoHalf, orthoFrustum, perspDistance } from './camera.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -161,13 +162,16 @@ function setViewMode(dims) {
   needsFit = true;
 }
 
-// setOrthoFrustum frames the orthographic camera around a centered box.
-function setOrthoFrustum(center, half) {
+// applyOrthoFrustum frames the orthographic camera around its own local
+// origin: the camera is positioned above the material's centre, so the
+// frustum planes are symmetric around (0,0) in camera space.
+function applyOrthoFrustum(half) {
   const aspect = (canvasHost.clientWidth / canvasHost.clientHeight) || 1;
-  orthoCamera.left = center[0] - half * aspect;
-  orthoCamera.right = center[0] + half * aspect;
-  orthoCamera.top = center[1] + half;
-  orthoCamera.bottom = center[1] - half;
+  const { left, right, top, bottom } = orthoFrustum(half, aspect);
+  orthoCamera.left = left;
+  orthoCamera.right = right;
+  orthoCamera.top = top;
+  orthoCamera.bottom = bottom;
   orthoCamera.updateProjectionMatrix();
 }
 
@@ -217,13 +221,11 @@ function fitCamera() {
     const center = bounds
       ? [(bounds.min[0] + bounds.max[0]) / 2, (bounds.min[1] + bounds.max[1]) / 2, 0]
       : [0, 0, 0];
-    const half = bounds
-      ? Math.max(1, (bounds.max[1] - bounds.min[1]) / 2, (bounds.max[0] - bounds.min[0]) / (2 * aspect))
-      : 4;
+    const half = orthoHalf(bounds, aspect);
     controls.target.set(center[0], center[1], 0);
     orthoCamera.near = 0.1;
     orthoCamera.far = 100;
-    setOrthoFrustum(center, half);
+    applyOrthoFrustum(half);
     orthoCamera.position.set(center[0], center[1], 10);
   } else {
     // Perspective views orbit the barycenter and step back far enough that the
@@ -245,10 +247,7 @@ function fitCamera() {
       radius = Math.max(1, Math.sqrt(r2));
     }
     camera.aspect = (canvasHost.clientWidth / canvasHost.clientHeight) || 1;
-    const fov = (camera.fov * Math.PI) / 180;
-    const hFov = 2 * Math.atan(Math.tan(fov / 2) * camera.aspect);
-    const halfFov = Math.min(fov, hFov) / 2;
-    const dist = (radius / Math.sin(halfFov)) * 1.15; // a little breathing room
+    const dist = perspDistance(radius, camera.fov, camera.aspect);
     const dir = norm3(0.8, 0.8, 1.1);
     controls.target.set(...center);
     camera.position.set(
