@@ -33,8 +33,8 @@ func benchOps(n int) []op.Op {
 var sink []space.Box
 
 // BenchmarkMaterialize measures one full materialization over an increasing
-// operation set. LWW and AdditiveWinsLWW re-sort the winners on every call,
-// so this is the cost the engine pays per apply under those strategies.
+// operation set. LWW and AdditiveWinsLWW partition the winners, so this is the
+// cost of a single view rebuild.
 func BenchmarkMaterialize(b *testing.B) {
 	for _, s := range []strategy.Strategy{strategy.LWW, strategy.AdditiveWins, strategy.AdditiveWinsLWW} {
 		for _, n := range []int{100, 1000, 5000} {
@@ -45,6 +45,7 @@ func BenchmarkMaterialize(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					sink = strategy.Materialize(s, ops)
 				}
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "materializes/s")
 			})
 		}
 	}

@@ -67,6 +67,7 @@ func BenchmarkApplyIncremental(b *testing.B) {
 							_ = e.Apply(ctx, o)
 						}
 					}
+					b.ReportMetric(float64(n)*float64(b.N)/b.Elapsed().Seconds(), "merges/s")
 				})
 			}
 		}
@@ -97,6 +98,7 @@ func BenchmarkApplyThenMaterialize(b *testing.B) {
 						}
 						_ = e.Materialize()
 					}
+					b.ReportMetric(float64(n)*float64(b.N)/b.Elapsed().Seconds(), "merges/s")
 				})
 			}
 		}

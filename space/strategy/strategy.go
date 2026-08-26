@@ -184,8 +184,8 @@ func normalize(s Strategy, segs []Segment) []Segment {
 	var claimed []space.Box
 	out := make([]Segment, 0, len(segs))
 	for _, seg := range segs {
-		free := space.Difference([]space.Box{seg.Box}, claimed)
-		claimed = space.Union(claimed, []space.Box{seg.Box})
+		free := space.DifferenceSorted([]space.Box{seg.Box}, claimed)
+		claimed = space.InsertNormalized(claimed, seg.Box)
 		for _, piece := range free {
 			out = append(out, Segment{Box: piece, Winner: seg.Winner})
 		}

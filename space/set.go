@@ -61,10 +61,21 @@ func Difference(a, b []Box) []Box {
 	return DifferenceMerged(a, b, meta.Union)
 }
 
+// DifferenceSorted is Difference with b already normalized (sorted and
+// subsumption-free), so it skips re-normalizing b.
+func DifferenceSorted(a, b []Box) []Box {
+	return DifferenceSortedMerged(a, b, meta.Union)
+}
+
 // DifferenceMerged is Difference with a custom metadata join.
 func DifferenceMerged(a, b []Box, merge meta.Merge) []Box {
+	return DifferenceSortedMerged(a, NormalizeMerged(b, merge), merge)
+}
+
+// DifferenceSortedMerged is DifferenceMerged with b already normalized.
+func DifferenceSortedMerged(a, b []Box, merge meta.Merge) []Box {
 	result := NormalizeMerged(a, merge)
-	for _, q := range NormalizeMerged(b, merge) {
+	for _, q := range b {
 		var next []Box
 		for _, p := range result {
 			next = append(next, subtractBox(p, q)...)
@@ -72,6 +83,45 @@ func DifferenceMerged(a, b []Box, merge meta.Merge) []Box {
 		result = NormalizeMerged(next, merge)
 	}
 	return result
+}
+
+// InsertNormalized returns the normalized union of a sorted, subsumption-free
+// set and one box, without re-normalizing the whole set. It is the incremental
+// form of Normalize(append(set, box)): boxes the new box subsumes are dropped,
+// and the new box is inserted in order unless an existing box subsumes it.
+// Metadata is not joined, because the geometry callers use it for does not read
+// the metadata of the set.
+func InsertNormalized(set []Box, box Box) []Box {
+	if box.Empty() {
+		return set
+	}
+	kept := make([]Box, 0, len(set)+1)
+	subsumed := false
+	for _, b := range set {
+		switch {
+		case subsumes(box, b):
+			// box covers b: drop b.
+		case subsumes(b, box):
+			// b covers box: drop box, keep b.
+			subsumed = true
+			kept = append(kept, b)
+		default:
+			kept = append(kept, b)
+		}
+	}
+	if !subsumed {
+		kept = insertSortedBox(kept, box)
+	}
+	return kept
+}
+
+// insertSortedBox inserts b into a box-sorted slice, keeping the order.
+func insertSortedBox(set []Box, b Box) []Box {
+	i := sort.Search(len(set), func(i int) bool { return !Less(set[i], b) })
+	set = append(set, Box{})
+	copy(set[i+1:], set[i:])
+	set[i] = b
+	return set
 }
 
 // Contains reports whether any box contains the point p.
