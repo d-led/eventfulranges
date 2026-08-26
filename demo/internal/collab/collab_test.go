@@ -133,19 +133,19 @@ func TestSessionTracksPresenceAndLog(t *testing.T) {
 	reg := NewSessions(time.Hour, func() Model { return &counter{} })
 	sess := reg.Model("x")
 
-	log, clients := sess.Join()
+	log, clients := sess.Join("")
 	require.Empty(t, log)
 	require.Equal(t, 1, clients)
 	require.Equal(t, 1, reg.Total())
 
 	require.NoError(t, sess.Apply("alice", Cmd{Kind: "inc", Data: json.RawMessage(`{"delta":1}`)}))
 
-	log, clients = sess.Join()
+	log, clients = sess.Join("")
 	require.Len(t, log, 1)
 	require.Equal(t, 2, clients)
 	require.Equal(t, 2, reg.Total())
 
-	sess.Leave()
+	sess.Leave("")
 	require.Equal(t, 1, reg.Total())
 }
 
@@ -236,7 +236,7 @@ func TestPersistentSessionsReplayLogAfterRestart(t *testing.T) {
 	second := NewPersistentSessions(time.Hour, dir, func() Model { return &counter{} })
 	restored := second.Model("s1")
 
-	log, clients := restored.Join()
+	log, clients := restored.Join("")
 	require.Equal(t, 1, clients)
 	require.Len(t, log, 1)
 	require.Equal(t, "alice", log[0].Client)

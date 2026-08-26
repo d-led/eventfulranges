@@ -427,6 +427,48 @@ test("keeps a local reserve copy of the log in the browser", async ({
   expect(reserve[0].kind).toBe("add");
 });
 
+test("clicking here vs connected filters the roster", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const session = new URL(page.url()).searchParams.get("s");
+  await expect(page.locator("#presence")).toContainText(`you are ${session}`);
+
+  // "connected" lists everyone across all sessions, with their session ids.
+  await page.locator("#connectedLink").click();
+  const list = page.locator("#rosterList");
+  await expect(list).toBeVisible();
+  await expect(page.locator("#rosterTitle")).toHaveText("all sessions");
+  await expect(list).toContainText(session);
+
+  // "here" narrows the same roster to the current session.
+  await page.locator("#hereLink").click();
+  await expect(page.locator("#rosterTitle")).toHaveText("in this session");
+  await expect(list).toContainText(session);
+});
+
+test("roster groups one user's sessions together", async ({ context }) => {
+  const a = await context.newPage();
+  await a.goto("/ui/");
+  await a.waitForURL(/[?&]s=/);
+  await expect(a.locator("#status")).toContainText("connected");
+
+  const b = await context.newPage();
+  await b.goto("/ui/");
+  await b.waitForURL(/[?&]s=/);
+  await expect(b.locator("#status")).toContainText("connected");
+
+  const idA = new URL(a.url()).searchParams.get("s");
+  const idB = new URL(b.url()).searchParams.get("s");
+
+  await a.locator("#connectedLink").click();
+  const list = a.locator("#rosterList");
+  await expect(list).toBeVisible();
+  await expect(list).toContainText(idA);
+  await expect(list).toContainText(idB);
+});
+
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 24 px per cell).
 async function drawRect(page) {

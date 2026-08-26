@@ -61,6 +61,7 @@ type Message struct {
 	Clients  int             `json:"clients,omitempty"`
 	Total    int             `json:"total,omitempty"`
 	ClientID string          `json:"clientID,omitempty"`
+	Roster   []RosterEntry   `json:"roster,omitempty"`
 	Error    string          `json:"error,omitempty"`
 }
 
@@ -70,6 +71,7 @@ const (
 	TypeState    = "state"
 	TypeOp       = "op"
 	TypePresence = "presence"
+	TypeRoster   = "roster"
 	TypeError    = "error"
 )
 
@@ -93,6 +95,7 @@ type Sessions struct {
 	models   *cache.Cache
 	total    atomic.Int64
 	presence *pubsub.PubSub[string, Message]
+	roster   *roster
 	factory  func() Model
 	dir      string
 }
@@ -117,6 +120,7 @@ func newSessions(ttl time.Duration, dir string, factory func() Model) *Sessions 
 	return &Sessions{
 		models:   cache.New(ttl, cleanup),
 		presence: pubsub.New[string, Message](1024),
+		roster:   newRoster(),
 		factory:  factory,
 		dir:      dir,
 	}
@@ -148,7 +152,7 @@ func (s *Sessions) Model(id string) *Session {
 			persist = store.append
 		}
 	}
-	sess := newSession(m, &s.total, s.presence, persist)
+	sess := newSession(id, m, &s.total, s.presence, s.roster, persist)
 	s.models.SetDefault(id, sess)
 	return sess
 }
@@ -170,21 +174,25 @@ func (s *Sessions) UnsubscribePresence(ch chan Message) {
 
 // Session binds one Model to connection bookkeeping and a broadcast topic.
 type Session struct {
+	id       string
 	model    Model
 	mu       sync.Mutex
 	clients  int
 	events   *pubsub.PubSub[string, Message]
 	total    *atomic.Int64
 	presence *pubsub.PubSub[string, Message]
+	roster   *roster
 	persist  func([]Entry) error
 }
 
-func newSession(m Model, total *atomic.Int64, presence *pubsub.PubSub[string, Message], persist func([]Entry) error) *Session {
+func newSession(id string, m Model, total *atomic.Int64, presence *pubsub.PubSub[string, Message], roster *roster, persist func([]Entry) error) *Session {
 	return &Session{
+		id:       id,
 		model:    m,
 		events:   pubsub.New[string, Message](1024),
 		total:    total,
 		presence: presence,
+		roster:   roster,
 		persist:  persist,
 	}
 }
@@ -243,18 +251,20 @@ func (s *Session) Unsubscribe(ch chan Message) {
 
 // Join registers a watcher, returns the session's activity log and the new
 // watcher count, and publishes the updated presence.
-func (s *Session) Join() (log []Entry, clients int) {
+func (s *Session) Join(email string) (log []Entry, clients int) {
 	s.mu.Lock()
 	s.clients++
 	clients = s.clients
 	s.mu.Unlock()
 	s.total.Add(1)
+	s.roster.connect(email, s.id)
 	s.publishPresence(clients)
+	s.publishRoster()
 	return s.model.Log(), clients
 }
 
 // Leave unregisters a watcher and publishes the updated presence.
-func (s *Session) Leave() {
+func (s *Session) Leave(email string) {
 	s.mu.Lock()
 	if s.clients > 0 {
 		s.clients--
@@ -262,12 +272,19 @@ func (s *Session) Leave() {
 	}
 	clients := s.clients
 	s.mu.Unlock()
+	s.roster.disconnect(email, s.id)
 	s.publishPresence(clients)
+	s.publishRoster()
 }
 
 func (s *Session) publishPresence(clients int) {
 	s.events.Pub(Message{Type: TypePresence, Clients: clients}, sessionTopic)
 	s.presence.Pub(Message{Type: TypePresence, Total: int(s.total.Load())}, presenceTopic)
+}
+
+// publishRoster broadcasts the current global "who's here" list.
+func (s *Session) publishRoster() {
+	s.presence.Pub(Message{Type: TypeRoster, Roster: s.roster.snapshot()}, presenceTopic)
 }
 
 // NewSessionID mints a short, URL-safe, unguessable identifier for a fresh

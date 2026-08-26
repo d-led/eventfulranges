@@ -13,6 +13,22 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
+// emailOf resolves the connected user's identity. Behind oauth2-proxy it
+// arrives as X-Auth-Request-Email; without a proxy the browser sends its local,
+// self-chosen identity as the "u" query parameter, and as a last resort a
+// random guest address keeps the roster working.
+func emailOf(c *gin.Context) string {
+	for _, name := range []string{"X-Auth-Request-Email", "X-Forwarded-Email"} {
+		if e := c.GetHeader(name); e != "" {
+			return e
+		}
+	}
+	if u := c.Query("u"); u != "" {
+		return u
+	}
+	return "guest-" + NewClientID() + "@local"
+}
+
 // NewRouter builds the gin engine for a demo: the UI filesystem at /ui/, a
 // bare /ui/ redirect that mints a shareable session URL (preserving the named
 // query parameters), and the /ws upgrade that keeps one browser in sync.
@@ -57,6 +73,7 @@ func handleWS(c *gin.Context, s *Sessions) {
 	}
 	sess := s.Model(id)
 	clientID := NewClientID()
+	email := emailOf(c)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -70,8 +87,8 @@ func handleWS(c *gin.Context, s *Sessions) {
 	presence := s.SubscribePresence()
 	defer s.UnsubscribePresence(presence)
 
-	ops, clients := sess.Join()
-	defer sess.Leave()
+	ops, clients := sess.Join(email)
+	defer sess.Leave(email)
 
 	if err := conn.WriteJSON(Message{
 		Type:     TypeState,

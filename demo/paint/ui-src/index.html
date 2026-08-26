@@ -14,100 +14,114 @@
     <main>
       <aside id="panel">
         <h1>eventfulranges · whiteboard</h1>
-        <p id="presence" class="presence">connecting…</p>
-        <p class="lede">
-          An infinite, shared whiteboard on a fractal grid: every cell
-          subdivides into four squares as you zoom, and a stroke fills the cells
-          at the current level as one <em>add</em> or <em>remove</em>
-          box. Scroll or pinch to zoom without limits, drag with the middle or
-          right mouse button to pan, and share the link so everyone joins the
-          same board.
+
+        <p id="presence" class="presence">
+          <span id="hereLink" class="presence-link">… here</span>
+          ·
+          <span id="connectedLink" class="presence-link">… connected</span><span id="meLabel"></span>
         </p>
 
-        <div class="field">
-          <label>Tool</label>
-          <div class="row">
-            <button id="toolRect" class="active">Rect</button>
-            <button id="toolPen">Pen</button>
-            <button id="toolErase">Erase</button>
-            <button id="toolEraser">Eraser</button>
-            <button id="toolPan">Pan</button>
-          </div>
-          <p class="hint">Active tool: <strong id="toolLabel">Rect</strong></p>
+        <div id="rosterPanel" class="roster" hidden>
+          <p id="rosterTitle" class="roster-title"></p>
+          <ul id="rosterList"></ul>
+          <p id="rosterMore" class="roster-more" hidden></p>
         </div>
 
-        <div class="field">
-          <label for="strokeColor">Color</label>
-          <input type="color" id="strokeColor" value="#e6e8ee" />
-          <p class="hint">
-            Every painted box carries its color as metadata in the log.
-          </p>
-        </div>
+        <div id="status" title="Click to see who's here">connecting…</div>
 
-        <div class="field">
-          <label>Grid</label>
-          <div class="row">
-            <button id="gridMinus" title="one level coarser">−</button>
-            <button id="gridDefault" title="back to the zoom-chosen level">
-              Default
-            </button>
-            <button id="gridPlus" title="one level finer">+</button>
-          </div>
-          <p class="hint">Cell: <strong id="gridLabel">1 × 1</strong></p>
-          <p class="hint">
-            The grid subdivides into four squares as you zoom in; − / + shift
-            one subdivision level from the zoom-chosen default.
-          </p>
+        <div class="row file-row">
+          <button id="importJsonl" title="Load a board from a JSONL log">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+            <span class="btn-text">Load</span>
+          </button>
+          <button id="downloadJsonl" title="Save the board as a JSONL log">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            <span class="btn-text">Save</span>
+          </button>
         </div>
+        <input type="file" id="importJsonlInput" accept=".jsonl,application/x-ndjson,application/json" hidden />
 
-        <div class="field">
-          <label>Zoom</label>
-          <div class="row">
-            <button id="zoomOut" title="zoom out">−</button>
-            <button id="zoomReset" title="back to 100%">100%</button>
-            <button id="zoomIn" title="zoom in">+</button>
-          </div>
-          <p class="hint">Zoom: <strong id="zoomLabel">100%</strong></p>
-        </div>
-
-        <div class="row">
-          <button id="newSession" class="primary">New session</button>
-          <button id="copyShare">Copy share link</button>
-        </div>
-
-        <div class="field">
-          <button id="fitAll">Fit all</button>
-          <p class="hint">
-            Zoom and centre so every painted cell is in view — the plane is
-            infinite, so fitting is always available.
-          </p>
-        </div>
-
-        <div class="field">
-          <button id="downloadJsonl">Download JSONL log</button>
-          <p class="hint">
-            The append-only operation log, one JSON object per line — the raw
-            event source behind the board.
-          </p>
-          <button id="importJsonl">Import JSONL</button>
-          <input
-            type="file"
-            id="importJsonlInput"
-            accept=".jsonl,application/x-ndjson,application/json"
-            hidden
-          />
-          <p class="hint">
-            Load a picture by replaying a downloaded log back onto the board.
-          </p>
-        </div>
-
-        <div class="field">
-          <label for="status">Status</label>
-          <div id="status">connecting…</div>
-        </div>
+        <p class="lede">
+          A shared whiteboard on a fractal grid. Scroll or pinch to zoom, drag
+          to pan, and share the link so everyone joins the same board.
+        </p>
       </aside>
 
-      <section id="canvas"><canvas id="board"></canvas></section>
+      <section id="canvas">
+        <div id="toolbar">
+          <div class="toolbar-group">
+            <button id="toolRect" class="active" title="Rectangle tool">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6Z" /></svg>
+              <span class="btn-text">Rect</span>
+            </button>
+            <button id="toolPen" title="Pen tool">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>
+              <span class="btn-text">Pen</span>
+            </button>
+            <button id="toolErase" title="Erase a rectangle">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75 14.25 12m0 0 2.25 2.25M14.25 12l2.25-2.25M14.25 12 12 14.25m-2.58 4.92-6.374-6.375a1.125 1.125 0 0 1 0-1.59L9.42 4.83c.21-.211.497-.33.795-.33H19.5a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25h-9.284c-.298 0-.585-.119-.795-.33Z" /></svg>
+              <span class="btn-text">Erase</span>
+            </button>
+            <button id="toolEraser" title="Eraser brush">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+              <span class="btn-text">Eraser</span>
+            </button>
+            <button id="toolPan" title="Pan tool">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+              <span class="btn-text">Pan</span>
+            </button>
+            <span id="toolLabel" class="toolbar-label">Rect</span>
+          </div>
+
+          <label class="color-control" title="Stroke color">
+            <input type="color" id="strokeColor" value="#e6e8ee" />
+          </label>
+
+          <div class="toolbar-group">
+            <button id="gridMinus" title="one level coarser">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14" /></svg>
+            </button>
+            <button id="gridDefault" title="back to the zoom-chosen level">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+              <span class="btn-text">Grid</span>
+            </button>
+            <button id="gridPlus" title="one level finer">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            </button>
+            <span id="gridLabel" class="toolbar-label">1 × 1</span>
+          </div>
+
+          <div class="toolbar-group">
+            <button id="zoomOut" title="zoom out">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM13.5 10.5h-6" /></svg>
+            </button>
+            <button id="zoomReset" title="back to 100%">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+              <span class="btn-text">100%</span>
+            </button>
+            <button id="zoomIn" title="zoom in">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg>
+            </button>
+            <span id="zoomLabel" class="toolbar-label">100%</span>
+          </div>
+
+          <div class="toolbar-group">
+            <button id="fitAll" title="Fit all painted cells">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3.75v4.5m0-4.5H4.5m4.5 0L3.75 9M9 20.25v-4.5m0 4.5H4.5m4.5 0L3.75 15M15 3.75v4.5m0-4.5h4.5m-4.5 0L20.25 9M15 20.25v-4.5m0 4.5h4.5m-4.5 0L20.25 15" /></svg>
+              <span class="btn-text">Fit all</span>
+            </button>
+            <button id="newSession" class="primary" title="Start a fresh session">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              <span class="btn-text">New</span>
+            </button>
+            <button id="copyShare" title="Copy the share link">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
+              <span class="btn-text">Share</span>
+            </button>
+          </div>
+        </div>
+        <canvas id="board"></canvas>
+      </section>
 
       <section id="activity" aria-label="Activity log">
         <ol id="log"></ol>

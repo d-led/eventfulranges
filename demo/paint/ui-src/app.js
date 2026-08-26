@@ -14,7 +14,6 @@ import { delayFor } from "./backoff.js";
 const $ = (id) => document.getElementById(id);
 const boardEl = $("board");
 const statusEl = $("status");
-const presenceEl = $("presence");
 const logEl = $("log");
 const copyShareBtn = $("copyShare");
 const downloadJsonlBtn = $("downloadJsonl");
@@ -40,6 +39,13 @@ const zoomLabel = $("zoomLabel");
 const reconnectBanner = $("reconnectBanner");
 const reconnectBtn = $("reconnectBtn");
 const reconnectText = $("reconnectText");
+const rosterPanelEl = $("rosterPanel");
+const rosterListEl = $("rosterList");
+const rosterMoreEl = $("rosterMore");
+const rosterTitleEl = $("rosterTitle");
+const hereLink = $("hereLink");
+const connectedLink = $("connectedLink");
+const meLabel = $("meLabel");
 
 const ctx = boardEl.getContext("2d");
 
@@ -55,6 +61,8 @@ let socket = null;
 let connected = false; // true once a socket has opened, false after it closes
 let reconnectAttempts = 0;
 let reconnectTimer = null;
+let roster = []; // [{user, sessions}] broadcast by the server
+let rosterView = "connected"; // "here" (this session) or "connected" (all)
 
 const LOG_MAX = 100; // scrolling window: at most this many rendered log items
 const LOG_DEBOUNCE_MS = 150; // coalesce a burst of ops into one summary line
@@ -634,7 +642,7 @@ function connect() {
     return;
   }
   const ws = new WebSocket(
-    `${proto}://${location.host}/ws?s=${encodeURIComponent(session)}`,
+    `${proto}://${location.host}/ws?s=${encodeURIComponent(session)}&u=${encodeURIComponent(localIdentity())}`,
   );
   socket = ws;
   ws.onopen = () => {
@@ -682,6 +690,9 @@ function handleMessage(msg) {
   } else if (msg.type === "op") {
     if (msg.op) applyEntries([msg.op]);
     if (msg.ops) applyEntries(msg.ops);
+  } else if (msg.type === "roster") {
+    roster = msg.roster || [];
+    renderRoster();
   } else if (msg.type === "error") {
     setStatus(`error: ${msg.error}`);
   }
@@ -751,9 +762,95 @@ function setStatus(text) {
 function updatePresence(n, t) {
   if (n !== undefined) clients = n;
   if (t !== undefined) total = t;
-  const me = clientID ? ` · you are ${clientID}` : "";
-  presenceEl.textContent = `${clients} here · ${total} connected${me}`;
+  hereLink.textContent = `${clients} here`;
+  connectedLink.textContent = `${total} connected`;
+  const session = currentSession();
+  meLabel.textContent = session ? ` · you are ${session}` : "";
 }
+
+// currentSession returns the session id from the share URL, the identifier the
+// roster lists, so "you are …" matches what collaborators see.
+function currentSession() {
+  return new URLSearchParams(location.search).get("s");
+}
+
+// ---------- who's here ----------
+const ROSTER_CAP = 20; // at most this many users are listed
+const IDENTITY_KEY = "eventfulranges:paint:me";
+
+// localIdentity is a stable, self-chosen guest email kept in localStorage, so
+// runs without oauth2-proxy still group one browser's sessions together.
+function localIdentity() {
+  let me = null;
+  try {
+    me = localStorage.getItem(IDENTITY_KEY);
+  } catch {
+    // storage unavailable: fall through and mint an in-memory one
+  }
+  if (!me) {
+    me = `anon-${randomToken()}@local`;
+    try {
+      localStorage.setItem(IDENTITY_KEY, me);
+    } catch {
+      // best effort; the in-memory value still keeps this page coherent
+    }
+  }
+  return me;
+}
+
+// randomToken mints a short, URL-safe hex token for the local guest identity.
+function randomToken() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// renderRoster draws the capped "who's here" list for the active view.
+function renderRoster() {
+  const entries = rosterEntries();
+  rosterTitleEl.textContent =
+    rosterView === "here" ? "in this session" : "all sessions";
+  rosterListEl.innerHTML = "";
+  if (entries.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "nobody else";
+    rosterListEl.appendChild(li);
+    return;
+  }
+  const shown = entries.slice(0, ROSTER_CAP);
+  for (const entry of shown) {
+    const li = document.createElement("li");
+    li.textContent = `${entry.user} — ${entry.sessions.join(", ")}`;
+    rosterListEl.appendChild(li);
+  }
+  const more = entries.length - shown.length;
+  rosterMoreEl.hidden = more <= 0;
+  if (more > 0) rosterMoreEl.textContent = `and ${more} more…`;
+}
+
+// rosterEntries filters the global roster for the active view: the current
+// session for "here", everything for "connected".
+function rosterEntries() {
+  const session = currentSession();
+  if (rosterView === "here" && session) {
+    return roster.filter((e) => e.sessions.includes(session));
+  }
+  return roster;
+}
+
+function showRoster(view) {
+  if (!rosterPanelEl.hidden && rosterView === view) {
+    rosterPanelEl.hidden = true; // clicking the active badge closes it
+    return;
+  }
+  rosterView = view;
+  rosterPanelEl.hidden = false;
+  renderRoster();
+}
+
+hereLink.addEventListener("click", () => showRoster("here"));
+connectedLink.addEventListener("click", () => showRoster("connected"));
+statusEl.addEventListener("click", () => showRoster("connected"));
 
 // queueLog batches incoming ops and renders them after a short quiet period:
 // a single op keeps its full line, a burst collapses into one summary line.
