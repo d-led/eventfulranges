@@ -22,6 +22,7 @@ import (
 type Config struct {
 	Clock         clock.Clock
 	SnapshotEvery int
+	Canonicalize  space.Canonicalizer
 }
 
 // Option customizes an engine.
@@ -38,6 +39,13 @@ func WithSnapshotEvery(n int) Option {
 	return func(cfg *Config) { cfg.SnapshotEvery = n }
 }
 
+// WithCanonicalizer sets the final canonicalization applied to every
+// materialized view. The default (nil) keeps the library's canonical cover
+// unchanged.
+func WithCanonicalizer(c space.Canonicalizer) Option {
+	return func(cfg *Config) { cfg.Canonicalize = c }
+}
+
 // Engine is a concurrency-safe CRDT over n-dimensional boxes backed by an
 // append-only event log.
 type Engine struct {
@@ -47,13 +55,14 @@ type Engine struct {
 	clock         clock.Clock
 	snapshotEvery int
 
-	ops     map[string]op.Op
-	view    []space.Box
-	adds    []space.Box
-	removes []space.Box
-	version int64
-	since   int
-	dims    int
+	ops          map[string]op.Op
+	view         []space.Box
+	adds         []space.Box
+	removes      []space.Box
+	version      int64
+	since        int
+	dims         int
+	canonicalize space.Canonicalizer
 }
 
 // Open loads an existing log (and snapshot, when compatible) and returns a
@@ -71,6 +80,7 @@ func Open(ctx context.Context, st store.Log, s strategy.Strategy, opts ...Option
 		strategy:      s,
 		clock:         cfg.Clock,
 		snapshotEvery: cfg.SnapshotEvery,
+		canonicalize:  cfg.Canonicalize,
 		ops:           make(map[string]op.Op),
 		dims:          -1,
 	}
@@ -247,20 +257,28 @@ func (e *Engine) catchUp(ctx context.Context) error {
 func (e *Engine) applyToView(o op.Op) {
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW:
-		e.view = strategy.Materialize(e.strategy, e.opsList())
+		e.setView(strategy.Materialize(e.strategy, e.opsList()))
 	case strategy.AdditiveWins:
 		if o.Kind == op.KindAdd {
 			e.adds = space.Union(e.adds, []space.Box{o.Box})
 		} else {
 			e.removes = space.Union(e.removes, []space.Box{o.Box})
 		}
-		e.view = space.Difference(e.adds, e.removes)
+		e.setView(space.Difference(e.adds, e.removes))
 	case strategy.GrowOnly:
 		if o.Kind == op.KindAdd {
 			e.adds = space.Union(e.adds, []space.Box{o.Box})
-			e.view = e.adds
+			e.setView(e.adds)
 		}
 	}
+}
+
+// setView canonicalizes the freshly materialized cover and caches it.
+func (e *Engine) setView(boxes []space.Box) {
+	if e.canonicalize != nil {
+		boxes = e.canonicalize(boxes)
+	}
+	e.view = boxes
 }
 
 // materializeAll rebuilds the view, segments and add/remove sets from the full
@@ -269,14 +287,14 @@ func (e *Engine) materializeAll() {
 	ops := e.opsList()
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW:
-		e.view = strategy.Materialize(e.strategy, ops)
+		e.setView(strategy.Materialize(e.strategy, ops))
 	case strategy.AdditiveWins:
 		e.adds = boxesOf(ops, op.KindAdd)
 		e.removes = boxesOf(ops, op.KindRemove)
-		e.view = space.Difference(e.adds, e.removes)
+		e.setView(space.Difference(e.adds, e.removes))
 	case strategy.GrowOnly:
 		e.adds = boxesOf(ops, op.KindAdd)
-		e.view = e.adds
+		e.setView(e.adds)
 	}
 }
 

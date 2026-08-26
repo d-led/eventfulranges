@@ -64,13 +64,13 @@ func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 	case strategy.AdditiveWins:
 		e.adds = snap.Adds
 		e.removes = snap.Removes
-		e.view = space.Difference(e.adds, e.removes)
+		e.setView(space.Difference(e.adds, e.removes))
 		for _, o := range delta {
 			e.applyToView(o)
 		}
 	case strategy.GrowOnly:
 		e.adds = snap.Boxes
-		e.view = e.adds
+		e.setView(e.adds)
 		for _, o := range delta {
 			e.applyToView(o)
 		}

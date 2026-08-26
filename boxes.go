@@ -26,6 +26,12 @@ func WithBoxSnapshotEvery(n int) BoxOption {
 	return sengine.WithSnapshotEvery(n)
 }
 
+// WithBoxCanonicalizer sets the final canonicalization applied to every
+// materialized view.
+func WithBoxCanonicalizer(c space.Canonicalizer) BoxOption {
+	return sengine.WithCanonicalizer(c)
+}
+
 // BoxSet is the high-level n-dimensional API over an n-D engine.
 type BoxSet struct {
 	engine *sengine.Engine

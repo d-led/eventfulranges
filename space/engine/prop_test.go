@@ -75,3 +75,43 @@ func TestPropertyConvergence(t *testing.T) {
 		})
 	}
 }
+
+func TestPropertyCanonicalizerPreservesConvergence(t *testing.T) {
+	t.Parallel()
+	strategies := []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly}
+	for _, s := range strategies {
+		t.Run(s.String(), func(t *testing.T) {
+			t.Parallel()
+			rapid.Check(t, func(t *rapid.T) {
+				ops := genOps(t)
+				perm := rapid.Permutation(ops).Draw(t, "perm")
+				half := len(perm) / 2
+
+				ctx := context.Background()
+				a, err := engine.Open(ctx, memory.New(), s, engine.WithCanonicalizer(splitCanonicalizer))
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := engine.Open(ctx, memory.New(), s, engine.WithCanonicalizer(splitCanonicalizer))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := a.ApplyAll(ctx, perm[:half]); err != nil {
+					t.Fatal(err)
+				}
+				if err := b.ApplyAll(ctx, perm[half:]); err != nil {
+					t.Fatal(err)
+				}
+				if err := a.ApplyAll(ctx, b.Ops()); err != nil {
+					t.Fatal(err)
+				}
+				if err := b.ApplyAll(ctx, a.Ops()); err != nil {
+					t.Fatal(err)
+				}
+				if !space.Equal(a.Materialize(), b.Materialize()) {
+					t.Fatalf("%v did not converge under canonicalization: %v vs %v (ops %v)", s, a.Materialize(), b.Materialize(), ops)
+				}
+			})
+		})
+	}
+}

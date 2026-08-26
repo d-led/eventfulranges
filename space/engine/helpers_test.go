@@ -71,3 +71,24 @@ func reverseOps(ops []op.Op) []op.Op {
 	}
 	return out
 }
+
+// splitCanonicalizer halves every box along its first axis. It is a
+// cover-preserving, deterministic canonicalizer used to exercise the engine's
+// canonicalization seam: the default cover is replaced by an observably
+// different but point-equivalent one.
+func splitCanonicalizer(boxes []space.Box) []space.Box {
+	out := make([]space.Box, 0, 2*len(boxes))
+	for _, b := range boxes {
+		if len(b.Min) == 0 || b.Max[0]-b.Min[0] < 2 {
+			out = append(out, b)
+			continue
+		}
+		mid := (b.Min[0] + b.Max[0]) / 2
+		left := space.NewBox(append([]float64(nil), b.Min...), append([]float64(nil), b.Max...))
+		right := space.NewBox(append([]float64(nil), b.Min...), append([]float64(nil), b.Max...))
+		left.Max[0] = mid
+		right.Min[0] = mid
+		out = append(out, left, right)
+	}
+	return out
+}

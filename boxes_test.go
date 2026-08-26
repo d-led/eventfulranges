@@ -85,3 +85,31 @@ func TestOpenBoxesUnwritableDir(t *testing.T) {
 	_, err := eventfulranges.OpenBoxes(context.Background(), filepath.Join(blocker, "sub"), strategy.LWW)
 	require.Error(t, err)
 }
+
+func TestBoxSetCanonicalizer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	split := func(boxes []space.Box) []space.Box {
+		out := make([]space.Box, 0, 2*len(boxes))
+		for _, b := range boxes {
+			if len(b.Min) == 0 || b.Max[0]-b.Min[0] < 2 {
+				out = append(out, b)
+				continue
+			}
+			mid := (b.Min[0] + b.Max[0]) / 2
+			left := space.NewBox(append([]float64(nil), b.Min...), append([]float64(nil), b.Max...))
+			right := space.NewBox(append([]float64(nil), b.Min...), append([]float64(nil), b.Max...))
+			left.Max[0] = mid
+			right.Min[0] = mid
+			out = append(out, left, right)
+		}
+		return out
+	}
+
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.GrowOnly,
+		eventfulranges.WithBoxCanonicalizer(split))
+	require.NoError(t, err)
+	_, err = bs.Add(ctx, []float64{0, 0}, []float64{2, 2})
+	require.NoError(t, err)
+	require.Len(t, bs.Boxes(), 2, "the canonicalizer splits the box along x")
+}

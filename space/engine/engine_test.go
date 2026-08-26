@@ -242,3 +242,18 @@ func TestCorruptSnapshot(t *testing.T) {
 	_, err = engine.Open(context.Background(), st, strategy.LWW)
 	require.Error(t, err)
 }
+
+func TestCanonicalizerApplied(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	e, err := engine.Open(ctx, memory.New(), strategy.AdditiveWins,
+		engine.WithCanonicalizer(splitCanonicalizer))
+	require.NoError(t, err)
+
+	require.NoError(t, e.Apply(ctx, op.Op{ID: "a", Kind: op.KindAdd, Box: box(0, 0, 2, 2)}))
+
+	require.Len(t, e.Materialize(), 2, "the canonicalizer splits the box along x")
+	require.True(t, e.Contains([]float64{0.5, 1}), "coverage must be preserved")
+	require.True(t, e.Contains([]float64{1.5, 1}))
+	require.False(t, e.Contains([]float64{3, 3}))
+}
