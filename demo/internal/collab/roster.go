@@ -80,7 +80,7 @@ func (r *roster) snapshot() []RosterEntry {
 }
 
 // anonymizeEmail masks an address for display: the local part keeps its first
-// quarter (at least two characters), the domain its first half, and the rest
+// quarter (at least three characters), the domain its first half, and the rest
 // collapses to a single "…".
 func anonymizeEmail(email string) string {
 	if email == "" {
@@ -90,7 +90,7 @@ func anonymizeEmail(email string) string {
 	if at := strings.IndexByte(email, '@'); at >= 0 {
 		local, domain = email[:at], email[at+1:]
 	}
-	return maskPrefix(local, 4, 2) + "@" + maskPrefix(domain, 2, 1)
+	return maskPrefix(local, 4, 3) + "@" + maskPrefix(domain, 2, 1)
 }
 
 // maskPrefix keeps the first len(s)/divisor characters (at least minKeep) and

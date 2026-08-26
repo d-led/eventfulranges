@@ -14,12 +14,12 @@ func TestAnonymizeEmail(t *testing.T) {
 		want string
 	}{
 		{"", "anonymous"},
-		{"dmitry@gmail.com", "dm…@gmai…"},
-		{"alice@example.com", "al…@examp…"},
-		{"bob@corp.io", "bo…@cor…"},
-		{"jane@x.co", "ja…@x.…"},
+		{"dmitry@gmail.com", "dmi…@gmai…"},
+		{"alice@example.com", "ali…@examp…"},
+		{"bob@corp.io", "bob@cor…"},
+		{"jane@x.co", "jan…@x.…"},
 		{"a@bc.de", "a@bc…"},
-		{"no-at-sign", "no…@…"},
+		{"no-at-sign", "no-…@…"},
 	}
 	for _, c := range cases {
 		require.Equal(t, c.want, anonymizeEmail(c.in), "anonymizeEmail(%q)", c.in)
@@ -36,25 +36,25 @@ func TestRosterTracksUsersAndSessions(t *testing.T) {
 	sessB := reg.Model("s2")
 
 	_, _ = sessA.Join("alice@example.com")
-	require.Equal(t, []RosterEntry{{User: "al…@examp…", Sessions: []string{"s1"}}}, rosterOf(t, presence))
+	require.Equal(t, []RosterEntry{{User: "ali…@examp…", Sessions: []string{"s1"}}}, rosterOf(t, presence))
 
 	_, _ = sessB.Join("alice@example.com")
-	require.Equal(t, []RosterEntry{{User: "al…@examp…", Sessions: []string{"s1", "s2"}}}, rosterOf(t, presence))
+	require.Equal(t, []RosterEntry{{User: "ali…@examp…", Sessions: []string{"s1", "s2"}}}, rosterOf(t, presence))
 
 	_, _ = reg.Model("s3").Join("bob@corp.io")
 	require.Equal(t, []RosterEntry{
-		{User: "al…@examp…", Sessions: []string{"s1", "s2"}},
-		{User: "bo…@cor…", Sessions: []string{"s3"}},
+		{User: "ali…@examp…", Sessions: []string{"s1", "s2"}},
+		{User: "bob@cor…", Sessions: []string{"s3"}},
 	}, rosterOf(t, presence))
 
 	sessA.Leave("alice@example.com")
 	require.Equal(t, []RosterEntry{
-		{User: "al…@examp…", Sessions: []string{"s2"}},
-		{User: "bo…@cor…", Sessions: []string{"s3"}},
+		{User: "ali…@examp…", Sessions: []string{"s2"}},
+		{User: "bob@cor…", Sessions: []string{"s3"}},
 	}, rosterOf(t, presence))
 
 	sessB.Leave("alice@example.com")
-	require.Equal(t, []RosterEntry{{User: "bo…@cor…", Sessions: []string{"s3"}}}, rosterOf(t, presence))
+	require.Equal(t, []RosterEntry{{User: "bob@cor…", Sessions: []string{"s3"}}}, rosterOf(t, presence))
 }
 
 // rosterOf drains the presence channel until it sees the next roster snapshot.

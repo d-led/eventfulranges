@@ -46,6 +46,8 @@ const rosterTitleEl = $("rosterTitle");
 const hereLink = $("hereLink");
 const connectedLink = $("connectedLink");
 const meLabel = $("meLabel");
+const undoBtn = $("undoBtn");
+const redoBtn = $("redoBtn");
 
 const ctx = boardEl.getContext("2d");
 
@@ -55,8 +57,6 @@ let removes = []; // normalized boxes {min, max} of erased cells
 let boxes = []; // materialized view: [{min, max}]
 let logEntries = []; // the full operation log, for JSONL export
 let clientID = "";
-let clients = 0;
-let total = 0;
 let socket = null;
 let connected = false; // true once a socket has opened, false after it closes
 let reconnectAttempts = 0;
@@ -280,18 +280,22 @@ function penRect(c) {
 }
 
 function sendPaint(r) {
-  sendCmd({
+  const cmd = {
     kind: "paint",
     data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
     meta: { color: strokeColor },
-  });
+  };
+  trackStroke(cmd);
+  sendCmd(cmd);
 }
 
 function sendErase(r) {
-  sendCmd({
+  const cmd = {
     kind: "erase",
     data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
-  });
+  };
+  trackStroke(cmd);
+  sendCmd(cmd);
 }
 
 // stampEraser erases the circular brush around cell (ix, iy), skipping cells
@@ -309,6 +313,7 @@ function stampEraser(ix, iy) {
 // ---------- interaction ----------
 function startDraw(boardPt) {
   dragging = true;
+  beginStroke();
   if (tool === "pen") {
     penLast = penCell(boardPt);
     sendPaint(penRect(penLast));
@@ -351,6 +356,7 @@ function endDraw() {
   if (!dragging) return;
   dragging = false;
   if (tool !== "pen" && tool !== "eraser") commitStroke();
+  endStroke();
 }
 
 function startPan(clientX, clientY) {
@@ -668,10 +674,7 @@ function connect() {
 function handleMessage(msg) {
   if (msg.clientID) {
     clientID = msg.clientID;
-    updatePresence();
   }
-  if (msg.clients !== undefined || msg.total !== undefined)
-    updatePresence(msg.clients, msg.total);
 
   if (msg.type === "state") {
     // A live server re-sends the full log; an empty one means the session was
@@ -693,6 +696,7 @@ function handleMessage(msg) {
   } else if (msg.type === "roster") {
     roster = msg.roster || [];
     renderRoster();
+    updatePresence();
   } else if (msg.type === "error") {
     setStatus(`error: ${msg.error}`);
   }
@@ -759,12 +763,16 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function updatePresence(n, t) {
-  if (n !== undefined) clients = n;
-  if (t !== undefined) total = t;
-  hereLink.textContent = `${clients} here`;
-  connectedLink.textContent = `${total} connected`;
+// updatePresence derives the "here" and "connected" counts from the roster, so
+// one user with several tabs counts once, not once per connection.
+function updatePresence() {
   const session = currentSession();
+  const here = session
+    ? roster.filter((e) => e.sessions.includes(session)).length
+    : 0;
+  const connected = roster.length;
+  hereLink.textContent = `${here} here`;
+  connectedLink.textContent = `${connected} connected`;
   meLabel.textContent = session ? ` · you are ${session}` : "";
 }
 
@@ -851,6 +859,62 @@ function showRoster(view) {
 hereLink.addEventListener("click", () => showRoster("here"));
 connectedLink.addEventListener("click", () => showRoster("connected"));
 statusEl.addEventListener("click", () => showRoster("connected"));
+
+// ---------- undo / redo ----------
+const UNDO_LIMIT = 100; // at most this many strokes can be undone
+let undoStack = []; // each entry is one stroke: an array of paint/erase commands
+let redoStack = [];
+let stroke = []; // the commands of the stroke currently being drawn
+
+// beginStroke starts collecting a stroke; endStroke commits it to the undo
+// stack once the pointer is lifted.
+function beginStroke() {
+  stroke = [];
+}
+
+function trackStroke(cmd) {
+  stroke.push(cmd);
+}
+
+function endStroke() {
+  if (stroke.length === 0) return;
+  undoStack.push(stroke);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack = [];
+  updateUndoRedo();
+  stroke = [];
+}
+
+// inverseCmd is the compensating event: painting is undone by erasing the same
+// box and vice versa.
+function inverseCmd(cmd) {
+  if (cmd.kind === "paint") return { kind: "erase", data: cmd.data };
+  return { kind: "paint", data: cmd.data, meta: { color: strokeColor } };
+}
+
+function undo() {
+  const s = undoStack.pop();
+  if (!s) return;
+  redoStack.push(s);
+  for (let i = s.length - 1; i >= 0; i--) sendCmd(inverseCmd(s[i]));
+  updateUndoRedo();
+}
+
+function redo() {
+  const s = redoStack.pop();
+  if (!s) return;
+  undoStack.push(s);
+  for (const cmd of s) sendCmd(cmd);
+  updateUndoRedo();
+}
+
+function updateUndoRedo() {
+  undoBtn.disabled = undoStack.length === 0;
+  redoBtn.disabled = redoStack.length === 0;
+}
+
+undoBtn.addEventListener("click", undo);
+redoBtn.addEventListener("click", redo);
 
 // queueLog batches incoming ops and renders them after a short quiet period:
 // a single op keeps its full line, a burst collapses into one summary line.

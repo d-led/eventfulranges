@@ -337,6 +337,14 @@ button:disabled:hover {
   white-space: nowrap;
 }
 
+.group-label {
+  margin-right: 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
 .color-control {
   display: inline-flex;
   align-items: center;

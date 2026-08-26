@@ -467,6 +467,25 @@ test("roster groups one user's sessions together", async ({ context }) => {
   await expect(list).toBeVisible();
   await expect(list).toContainText(idA);
   await expect(list).toContainText(idB);
+
+  // One user with two sessions appears in a single entry.
+  await expect(a.locator("#rosterList li", { hasText: idA })).toHaveCount(1);
+  await expect(a.locator("#rosterList li", { hasText: idA })).toContainText(idB);
+});
+
+test("undo erases the last stroke and redo restores it", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#undoBtn").click();
+  await expect(page.locator("#log li.remove").first()).toContainText("remove");
+
+  await page.locator("#redoBtn").click();
+  await expect(page.locator("#log li.add").last()).toContainText("add");
 });
 
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is
