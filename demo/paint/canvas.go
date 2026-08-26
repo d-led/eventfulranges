@@ -2,6 +2,13 @@ package main
 
 import "encoding/json"
 
+// Command kinds the board and canvas speak, mirrored by the browser UI. They
+// name the half-open box operations a client submits.
+const (
+	cmdPaint = "paint"
+	cmdErase = "erase"
+)
+
 // Rect is a half-open cell rectangle [X0,X1) x [Y0,Y1) in board coordinates.
 // Cells lie on a fractal grid: at subdivision level n a cell has side 2^-n,
 // so strokes at finer zoom levels produce fractional bounds.

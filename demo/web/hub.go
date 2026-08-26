@@ -140,6 +140,21 @@ func (h *hub) persistRecord(rec opRecord) {
 	}
 }
 
+// replay folds a persisted activity log back into a fresh view, in order, and
+// appends each record to the in-memory log.
+func (h *hub) replay(records []opRecord) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, rec := range records {
+		if rec.Kind == string(opDims) {
+			_, _ = h.foldDimsLocked(rec.Dims)
+		} else {
+			_, _ = h.foldLocked(opKind(rec.Kind), rec.Min, rec.Max)
+		}
+		h.ops = append(h.ops, rec)
+	}
+}
+
 // join registers a watcher and reports the new count together with the
 // session's activity log so a late joiner can catch up.
 func (h *hub) join() (log []opRecord, clients int) {

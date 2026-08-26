@@ -36,13 +36,13 @@ func newBoxCanvas() *boxCanvas {
 // Paint adds a rectangle of cells to the whiteboard, carrying meta on the
 // underlying box.
 func (c *boxCanvas) Paint(r Rect, meta json.RawMessage) ([]Event, error) {
-	return c.fold("paint", r, meta)
+	return c.fold(cmdPaint, r, meta)
 }
 
 // Erase removes a rectangle of cells from the whiteboard, carrying meta on the
 // underlying box.
 func (c *boxCanvas) Erase(r Rect, meta json.RawMessage) ([]Event, error) {
-	return c.fold("erase", r, meta)
+	return c.fold(cmdErase, r, meta)
 }
 
 // fold appends one half-open box operation and reports the event it produced.
@@ -64,9 +64,9 @@ func (c *boxCanvas) fold(kind string, r Rect, meta json.RawMessage) ([]Event, er
 // apply appends one box under the given command kind, carrying meta.
 func (c *boxCanvas) apply(kind string, min, max []float64, meta json.RawMessage) (sop.Op, error) {
 	switch kind {
-	case "paint":
+	case cmdPaint:
 		return c.set.AddWithMeta(context.Background(), min, max, meta)
-	case "erase":
+	case cmdErase:
 		return c.set.RemoveWithMeta(context.Background(), min, max, meta)
 	default:
 		return sop.Op{}, fmt.Errorf("paint: unknown command %q", kind)

@@ -117,9 +117,9 @@ func replayRect(data json.RawMessage) (Rect, error) {
 func commandKind(kind string) (string, error) {
 	switch kind {
 	case "add":
-		return "paint", nil
+		return cmdPaint, nil
 	case "remove":
-		return "erase", nil
+		return cmdErase, nil
 	default:
 		return "", fmt.Errorf("paint: replay: unknown entry kind %q", kind)
 	}
@@ -128,9 +128,9 @@ func commandKind(kind string) (string, error) {
 // fold dispatches a command to the canvas.
 func (b *board) fold(kind string, rect Rect, meta json.RawMessage) ([]Event, error) {
 	switch kind {
-	case "paint":
+	case cmdPaint:
 		return b.canvas.Paint(rect, meta)
-	case "erase":
+	case cmdErase:
 		return b.canvas.Erase(rect, meta)
 	default:
 		return nil, fmt.Errorf("paint: unknown command %q", kind)

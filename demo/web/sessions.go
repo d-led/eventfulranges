@@ -64,31 +64,29 @@ func (s *sessions) model(id string, compact bool) *hub {
 	h := newHub(compact)
 	h.total = &s.total
 	h.presence = s.presence
-	if s.dir != "" {
-		store, err := openHubStore(s.dir, id)
-		if err != nil {
-			log.Printf("persist: %v", err)
-		} else {
-			if records, lerr := store.load(); lerr != nil {
-				log.Printf("persist load: %v", lerr)
-			} else {
-				h.mu.Lock()
-				for _, rec := range records {
-					switch opKind(rec.Kind) {
-					case opDims:
-						_, _ = h.foldDimsLocked(rec.Dims)
-					default:
-						_, _ = h.foldLocked(opKind(rec.Kind), rec.Min, rec.Max)
-					}
-					h.ops = append(h.ops, rec)
-				}
-				h.mu.Unlock()
-			}
-			h.persist = store.append
-		}
-	}
+	s.restore(h, id)
 	s.models.SetDefault(id, h)
 	return h
+}
+
+// restore replays a persisted session log into a fresh view and hooks up the
+// store so later records are appended back to disk.
+func (s *sessions) restore(h *hub, id string) {
+	if s.dir == "" {
+		return
+	}
+	store, err := openHubStore(s.dir, id)
+	if err != nil {
+		log.Printf("persist: %v", err)
+		return
+	}
+	records, err := store.load()
+	if err != nil {
+		log.Printf("persist load: %v", err)
+	} else {
+		h.replay(records)
+	}
+	h.persist = store.append
 }
 
 // subscribePresence returns a channel receiving every global presence update.
