@@ -1,6 +1,7 @@
 package strategy_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,7 @@ func TestStrategyString(t *testing.T) {
 	require.Equal(t, "fww", strategy.FWW.String())
 	require.Equal(t, "additive-wins", strategy.AdditiveWins.String())
 	require.Equal(t, "grow-only", strategy.GrowOnly.String())
+	require.Equal(t, "additive-wins-lww", strategy.AdditiveWinsLWW.String())
 	require.Equal(t, "unknown(7)", strategy.Strategy(7).String())
 }
 
@@ -23,7 +25,7 @@ func TestStrategyText(t *testing.T) {
 	t.Parallel()
 	t.Run("marshal", func(t *testing.T) {
 		t.Parallel()
-		for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly} {
+		for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly, strategy.AdditiveWinsLWW} {
 			data, err := s.MarshalText()
 			require.NoError(t, err)
 			require.Equal(t, s.String(), string(data))
@@ -33,7 +35,7 @@ func TestStrategyText(t *testing.T) {
 	})
 	t.Run("unmarshal", func(t *testing.T) {
 		t.Parallel()
-		for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly} {
+		for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly, strategy.AdditiveWinsLWW} {
 			var got strategy.Strategy
 			require.NoError(t, got.UnmarshalText([]byte(s.String())))
 			require.Equal(t, s, got)
@@ -45,7 +47,7 @@ func TestStrategyText(t *testing.T) {
 
 func TestParse(t *testing.T) {
 	t.Parallel()
-	for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly} {
+	for _, s := range []strategy.Strategy{strategy.LWW, strategy.FWW, strategy.AdditiveWins, strategy.GrowOnly, strategy.AdditiveWinsLWW} {
 		got, err := strategy.Parse(s.String())
 		require.NoError(t, err)
 		require.Equal(t, s, got)
@@ -112,6 +114,30 @@ func TestMaterializeAdditiveWins(t *testing.T) {
 	got := strategy.Materialize(strategy.AdditiveWins, ops)
 	require.False(t, space.Contains(got, []float64{2, 2}))
 	require.True(t, space.Contains(got, []float64{0.5, 2}))
+}
+
+func TestMaterializeAdditiveWinsLWWResolvesColorPerPoint(t *testing.T) {
+	t.Parallel()
+	red := box(0, 0, 4, 4).WithMeta(json.RawMessage(`{"color":"#ff0000"}`))
+	blue := box(2, 2, 6, 6).WithMeta(json.RawMessage(`{"color":"#0000ff"}`))
+	ops := []op.Op{
+		{ID: "a", Kind: op.KindAdd, TS: 1, Box: red},
+		{ID: "b", Kind: op.KindAdd, TS: 2, Box: blue},
+		{ID: "c", Kind: op.KindRemove, TS: 3, Box: box(5, 0, 6, 6)},
+	}
+	got := strategy.Materialize(strategy.AdditiveWinsLWW, ops)
+
+	metaAt := func(p []float64) string {
+		for _, b := range got {
+			if b.Contains(p) {
+				return string(b.Meta)
+			}
+		}
+		return ""
+	}
+	require.JSONEq(t, `{"color":"#0000ff"}`, metaAt([]float64{3, 3}), "the later stroke wins the overlap")
+	require.JSONEq(t, `{"color":"#ff0000"}`, metaAt([]float64{1, 1}), "red survives where blue never reached")
+	require.False(t, space.Contains(got, []float64{5.5, 3}), "removals still carve the union")
 }
 
 func TestMaterializeGrowOnlyIgnoresRemoves(t *testing.T) {

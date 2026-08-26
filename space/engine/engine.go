@@ -270,7 +270,7 @@ func (e *Engine) catchUp(ctx context.Context) error {
 // add/remove sets.
 func (e *Engine) applyToView(o op.Op) {
 	switch e.strategy {
-	case strategy.LWW, strategy.FWW:
+	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
 		e.setView(strategy.Materialize(e.strategy, e.opsList()))
 	case strategy.AdditiveWins:
 		if o.Kind == op.KindAdd {
@@ -300,7 +300,7 @@ func (e *Engine) setView(boxes []space.Box) {
 func (e *Engine) materializeAll() {
 	ops := e.opsList()
 	switch e.strategy {
-	case strategy.LWW, strategy.FWW:
+	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
 		e.setView(strategy.Materialize(e.strategy, ops))
 	case strategy.AdditiveWins:
 		e.adds = boxesOf(ops, op.KindAdd, e.metaMerge)
@@ -344,5 +344,6 @@ func (e *Engine) opsList() []op.Op {
 
 func isDefined(s strategy.Strategy) bool {
 	return s == strategy.LWW || s == strategy.FWW ||
-		s == strategy.AdditiveWins || s == strategy.GrowOnly
+		s == strategy.AdditiveWins || s == strategy.GrowOnly ||
+		s == strategy.AdditiveWinsLWW
 }

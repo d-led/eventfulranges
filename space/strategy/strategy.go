@@ -26,16 +26,21 @@ const (
 	AdditiveWins
 	// GrowOnly unions all additions and ignores removals.
 	GrowOnly
+	// AdditiveWinsLWW unions all additions and subtracts all removals, but
+	// resolves each point's metadata by last-write-wins among the additions
+	// covering it, so the latest stroke paints over earlier ones.
+	AdditiveWinsLWW
 )
 
 // ErrUnknownStrategy is returned when parsing an unknown strategy name.
 var ErrUnknownStrategy = errors.New("unknown strategy")
 
 var names = map[Strategy]string{
-	LWW:          "lww",
-	FWW:          "fww",
-	AdditiveWins: "additive-wins",
-	GrowOnly:     "grow-only",
+	LWW:             "lww",
+	FWW:             "fww",
+	AdditiveWins:    "additive-wins",
+	GrowOnly:        "grow-only",
+	AdditiveWinsLWW: "additive-wins-lww",
 }
 
 // String returns the canonical name of the strategy.
@@ -93,14 +98,21 @@ func Materialize(s Strategy, ops []op.Op) []space.Box {
 }
 
 // MaterializeMerged is Materialize with a custom metadata join for the
-// union-based strategies (AdditiveWins and GrowOnly). LWW and FWW carry the
-// winning operation's metadata unchanged, so the join does not apply there.
+// union-based strategies (AdditiveWins and GrowOnly). LWW, FWW, and
+// AdditiveWinsLWW carry the winning operation's metadata unchanged, so the
+// join does not apply there.
 func MaterializeMerged(s Strategy, ops []op.Op, merge meta.Merge) []space.Box {
 	switch s {
 	case LWW, FWW:
 		return ToBoxes(Segments(s, ops))
 	case AdditiveWins:
 		return space.DifferenceMerged(boxesOf(ops, op.KindAdd, merge), boxesOf(ops, op.KindRemove, merge), merge)
+	case AdditiveWinsLWW:
+		// The shape is the additive union of additions, but each point's
+		// metadata is decided by the latest addition covering it. Partition
+		// the additions by LWW, then carve out the removals.
+		adds := ToBoxes(Segments(LWW, opsOf(ops, op.KindAdd)))
+		return space.DifferenceMerged(adds, boxesOf(ops, op.KindRemove, merge), merge)
 	case GrowOnly:
 		return boxesOf(ops, op.KindAdd, merge)
 	}
@@ -150,6 +162,17 @@ func boxesOf(ops []op.Op, kind op.Kind, merge meta.Merge) []space.Box {
 		}
 	}
 	return space.NormalizeMerged(boxes, merge)
+}
+
+// opsOf returns the operations of one kind, in input order.
+func opsOf(ops []op.Op, kind op.Kind) []op.Op {
+	out := make([]op.Op, 0, len(ops))
+	for _, o := range ops {
+		if o.Kind == kind {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // normalize reduces overlapping regions to disjoint winner-annotated pieces

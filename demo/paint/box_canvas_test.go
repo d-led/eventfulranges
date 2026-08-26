@@ -74,16 +74,26 @@ func TestBoxCanvasPaintsSubdividedCell(t *testing.T) {
 	require.False(t, c.set.Contains([]float64{0.5, 0.5}), "the cell is half-open")
 }
 
-func TestBoxCanvasStoresColorMetadata(t *testing.T) {
+func TestBoxCanvasResolvesColorPerPoint(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()
 
 	_, err := c.Paint(Rect{0, 0, 4, 4}, json.RawMessage(`{"color":"#ff0000"}`))
 	require.NoError(t, err)
-	_, err = c.Paint(Rect{0, 0, 8, 8}, json.RawMessage(`{"author":"alice"}`))
+	_, err = c.Paint(Rect{2, 2, 6, 6}, json.RawMessage(`{"color":"#0000ff"}`))
 	require.NoError(t, err)
 
-	boxes := c.set.Boxes()
-	require.Len(t, boxes, 1, "the larger stroke subsumes the smaller")
-	require.JSONEq(t, `{"color":"#ff0000","author":"alice"}`, string(boxes[0].Meta))
+	colorAt := func(p []float64) string {
+		for _, b := range c.set.Boxes() {
+			if b.Contains(p) {
+				return string(b.Meta)
+			}
+		}
+		return ""
+	}
+	// The later blue stroke wins the overlap; red survives where blue never
+	// reached.
+	require.JSONEq(t, `{"color":"#0000ff"}`, colorAt([]float64{3, 3}))
+	require.JSONEq(t, `{"color":"#0000ff"}`, colorAt([]float64{5, 5}))
+	require.JSONEq(t, `{"color":"#ff0000"}`, colorAt([]float64{1, 1}))
 }

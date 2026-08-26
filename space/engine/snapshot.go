@@ -55,7 +55,7 @@ func (e *Engine) reload(ctx context.Context) error {
 // restore rebuilds the view from the snapshot plus the replayed tail.
 func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 	switch e.strategy {
-	case strategy.LWW, strategy.FWW:
+	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
 		for _, o := range snap.Ops {
 			e.clock.Observe(o.TS)
 			e.ops[o.ID] = o
@@ -90,7 +90,7 @@ func (e *Engine) snapshot(ctx context.Context) error {
 		Boxes:    e.view,
 	}
 	switch e.strategy {
-	case strategy.LWW, strategy.FWW:
+	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
 		snap.Ops = e.opsList()
 	case strategy.AdditiveWins:
 		snap.Adds = e.adds
