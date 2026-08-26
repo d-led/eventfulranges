@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fadeOpacity } from './slice.js';
 import { orthoHalf, orthoFrustum, perspDistance } from './camera.js';
+import { delayFor } from './backoff.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -27,6 +28,9 @@ const presenceEl = $('presence');
 const logEl = $('log');
 const fitViewBtn = $('fitView');
 const compactionEl = $('compaction');
+const reconnectBanner = $('reconnectBanner');
+const reconnectBtn = $('reconnectBtn');
+const reconnectText = $('reconnectText');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -77,6 +81,7 @@ let needsFit = true;
 let clientID = '';
 let clients = 0; // viewers of this session
 let total = 0;   // viewers connected across all sessions
+let sessionOps = []; // the full operation log, for the local reserve copy
 
 function resize() {
   const w = canvasHost.clientWidth;
@@ -386,9 +391,65 @@ function randomOp(dims) {
 
 // ---------- websocket ----------
 let socket = null;
+let connected = false; // true once a socket has opened, false after it closes
+let reconnectAttempts = 0;
+let reconnectTimer = null;
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+// setConnected flips the whole UI between live and frozen: the reconnect
+// banner appears, mutation controls disable, and the canvas stops taking
+// input while the socket is down. Local-only actions (copy, download) stay on.
+function setConnected(online) {
+  connected = online;
+  document.body.classList.toggle('disconnected', !online);
+  reconnectBanner.hidden = online;
+  sendBtn.disabled = !online;
+  exampleBtn.disabled = !online;
+  if (online) {
+    reconnectAttempts = 0;
+    clearReconnectTimer();
+  }
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+// scheduleReconnect queues one retry with exponential back-off: 1s, 2s, 4s,
+// … capped at 30s, so a dead server is retried at most twice a minute once
+// the cap is reached.
+function scheduleReconnect() {
+  if (reconnectTimer !== null) return;
+  const delay = delayFor(reconnectAttempts);
+  reconnectAttempts += 1;
+  const secs = Math.round(delay / 1000);
+  setStatus(`disconnected — retrying in ${secs}s`);
+  reconnectText.textContent = `Disconnected — retrying in ${secs}s`;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delay);
+}
+
+// reconnectNow skips the back-off: the banner button forces an immediate
+// fresh connection attempt.
+function reconnectNow() {
+  clearReconnectTimer();
+  reconnectAttempts = 0;
+  setStatus('reconnecting…');
+  reconnectText.textContent = 'Reconnecting…';
+  if (socket && socket.readyState !== WebSocket.CLOSED) {
+    socket.onclose = null; // this close is ours; connect() below opens a fresh socket
+    socket.close();
+  }
+  socket = null;
+  connect();
 }
 
 // COMPACTION_LABELS names the two session compaction modes so the panel can
@@ -446,6 +507,7 @@ function applyState(state) {
 }
 
 function connect() {
+  if (socket && socket.readyState === WebSocket.CONNECTING) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const params = new URLSearchParams(location.search);
   const session = params.get('s');
@@ -463,6 +525,7 @@ function connect() {
   socket = ws;
 
   ws.onopen = () => {
+    setConnected(true);
     setStatus('connected — edits are shared live');
     const startDims = Number(params.get('dims'));
     if (!startDimsSent && startDims >= 1 && startDims <= 4) {
@@ -471,8 +534,8 @@ function connect() {
     }
   };
   ws.onclose = () => {
-    setStatus('disconnected — reconnecting…');
-    setTimeout(connect, 1000);
+    setConnected(false);
+    scheduleReconnect();
   };
   ws.onerror = () => setStatus('connection error');
 
@@ -483,18 +546,42 @@ function connect() {
     } catch {
       return;
     }
-    if (msg.state) applyState(msg.state);
+
+    if (msg.type === 'state') {
+      // A live server re-sends the full log; an empty one means the session
+      // was lost (e.g. the server restarted), so restore from the local reserve.
+      const serverOps = msg.ops || [];
+      const serverBoxes = (msg.state && msg.state.boxes) || [];
+      if (serverOps.length === 0 && serverBoxes.length === 0) {
+        const reserve = sessionOps.length > 0 ? sessionOps.slice() : loadReserve();
+        sessionOps = [];
+        logEl.innerHTML = '';
+        if (reserve.length > 0) {
+          for (const op of reserve) replayOp(op);
+          setStatus('restored from local copy — syncing…');
+        } else {
+          applyState(msg.state);
+        }
+      } else {
+        applyState(msg.state);
+        sessionOps = serverOps.slice();
+        saveReserve(sessionOps);
+        logEl.innerHTML = '';
+        for (const op of serverOps) appendLog(op);
+      }
+    } else if (msg.type === 'op') {
+      if (msg.op) {
+        sessionOps.push(msg.op);
+        saveReserve(sessionOps);
+        appendLog(msg.op);
+      }
+      if (msg.state) applyState(msg.state);
+    }
+
     if (msg.clientID) {
       clientID = msg.clientID;
       updatePresence();
       needsFit = true; // fit once on join, not on every later edit
-    }
-    if (msg.ops) {
-      logEl.innerHTML = '';
-      for (const op of msg.ops) appendLog(op);
-    }
-    if (msg.op) {
-      appendLog(msg.op);
     }
     if (msg.clients !== undefined || msg.total !== undefined) updatePresence(msg.clients, msg.total);
     if (msg.type === 'error') {
@@ -504,10 +591,50 @@ function connect() {
 }
 
 function sendOp(op) {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(op));
-  } else {
-    setStatus('not connected — cannot send');
+  if (!connected || !socket || socket.readyState !== WebSocket.OPEN) {
+    setStatus('disconnected — reconnect to edit');
+    return;
+  }
+  socket.send(JSON.stringify(op));
+}
+
+// The browser keeps a reserve copy of the operation log in localStorage, so a
+// server restart does not lose the picture: on reconnect, if the server's
+// session is empty, the local log is replayed back into it.
+function reserveKey() {
+  const session = new URLSearchParams(location.search).get('s');
+  return session ? `eventfulranges:web:${session}` : null;
+}
+
+function saveReserve(log) {
+  const key = reserveKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(log));
+  } catch {
+    // Storage may be unavailable (private mode) or full: the in-memory log
+    // still keeps the session alive for as long as the page does.
+  }
+}
+
+function loadReserve() {
+  const key = reserveKey();
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+// replayOp turns one logged operation back into a command and re-sends it, so
+// an emptied server session is healed from the browser's local copy.
+function replayOp(op) {
+  if (op.kind === 'dims') {
+    sendOp({ kind: 'dims', dims: op.dims });
+  } else if (op.min && op.max) {
+    sendOp({ kind: op.kind, min: op.min, max: op.max });
   }
 }
 
@@ -604,6 +731,8 @@ copyLinkBtn.addEventListener('click', async () => {
   setStatus('share link copied');
 });
 
+reconnectBtn.addEventListener('click', reconnectNow);
+
 // ---------- boot ----------
 resize();
 wVal.textContent = sliceW.toFixed(2);
@@ -611,3 +740,7 @@ opsEl.value = exampleFor(3);
 setViewMode(currentDims);
 connect();
 tick();
+
+// Test seam: Playwright closes the live socket through this to exercise the
+// reconnection flow. It is inert in normal use.
+window.__eventfulranges = { closeSocket: () => socket && socket.close() };

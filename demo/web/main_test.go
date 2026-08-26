@@ -284,6 +284,24 @@ func TestSessionExpires(t *testing.T) {
 	require.NotSame(t, first, s.model("id", false), "an expired session is recreated fresh")
 }
 
+func TestPersistentSessionsReplayAfterRestart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	first := newPersistentSessions(time.Hour, dir)
+	_, err := first.model("id", false).record("alice", opAdd, []float64{0, 0}, []float64{4, 4})
+	require.NoError(t, err)
+
+	// A brand-new registry over the same directory is a "restart": the view is
+	// recreated from the persisted log, not started empty.
+	second := newPersistentSessions(time.Hour, dir)
+	restored := second.model("id", false)
+
+	require.Len(t, restored.ops, 1)
+	require.Equal(t, "add", restored.ops[0].Kind)
+	require.Len(t, restored.snapshot().Boxes, 1)
+}
+
 func TestNewSessionIDIsUnique(t *testing.T) {
 	t.Parallel()
 	first := newSessionID()

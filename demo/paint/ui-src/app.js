@@ -114,6 +114,7 @@ function applyEntries(entries) {
   adds.push(...newAdds); // keep stroke order and one color per box
   removes = union(removes, newRemoves);
   materialize();
+  saveReserve(logEntries);
 }
 
 // ---------- canvas ----------
@@ -665,23 +666,73 @@ function handleMessage(msg) {
     updatePresence(msg.clients, msg.total);
 
   if (msg.type === "state") {
-    adds = [];
-    removes = [];
-    logEntries = [];
-    logPending = [];
-    if (logTimer !== null) {
-      clearTimeout(logTimer);
-      logTimer = null;
-    }
-    logEl.innerHTML = "";
+    // A live server re-sends the full log; an empty one means the session was
+    // lost (e.g. the server restarted), so restore from the local reserve.
     const full = msg.ops || [];
-    if (full.length) applyEntries(full);
-    else materialize();
+    const local = logEntries.length > 0 ? logEntries.slice() : loadReserve();
+    resetLocal();
+    if (full.length > 0) {
+      applyEntries(full);
+    } else if (local.length > 0) {
+      replayLocalLog(local);
+      setStatus("restored from local copy — syncing…");
+    } else {
+      materialize();
+    }
   } else if (msg.type === "op") {
     if (msg.op) applyEntries([msg.op]);
     if (msg.ops) applyEntries(msg.ops);
   } else if (msg.type === "error") {
     setStatus(`error: ${msg.error}`);
+  }
+}
+
+function resetLocal() {
+  adds = [];
+  removes = [];
+  logEntries = [];
+  logPending = [];
+  if (logTimer !== null) {
+    clearTimeout(logTimer);
+    logTimer = null;
+  }
+  logEl.innerHTML = "";
+}
+
+// The browser keeps a reserve copy of the operation log in localStorage, so a
+// server restart does not lose the picture: on reconnect, if the server's
+// session is empty, the local log is replayed back into it.
+function reserveKey() {
+  const session = new URLSearchParams(location.search).get("s");
+  return session ? `eventfulranges:paint:${session}` : null;
+}
+
+function saveReserve(log) {
+  const key = reserveKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(log));
+  } catch {
+    // Storage may be unavailable (private mode) or full: the in-memory log
+    // still keeps the session alive for as long as the page does.
+  }
+}
+
+function loadReserve() {
+  const key = reserveKey();
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function replayLocalLog(log) {
+  for (const entry of log) {
+    const cmd = entryToCmd(entry);
+    if (cmd) sendCmd(cmd);
   }
 }
 

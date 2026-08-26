@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/json"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -73,26 +74,42 @@ const (
 )
 
 // Model is one session's event log. Apply folds one attributed client command
-// into the log and returns the events it produced; Log observes the full
-// history; Snapshot optionally returns a materialized state for fast-forward.
-// Implementations must be safe for concurrent use.
+// into the log and returns the events it produced; Replay folds a persisted
+// log back into a fresh model, preserving the stored attribution and timing;
+// Log observes the full history; Snapshot optionally returns a materialized
+// state for fast-forward. Implementations must be safe for concurrent use.
 type Model interface {
 	Apply(clientID string, cmd Cmd) ([]Entry, error)
+	Replay(entries []Entry) error
 	Log() []Entry
 	Snapshot() any
 }
 
 // Sessions owns the in-memory collection of shared models, one per session ID,
-// plus the global presence topic every session shares.
+// plus the global presence topic every session shares. When dir is non-empty,
+// each session's event log is also persisted to disk, so a restart reloads
+// the model instead of starting it empty.
 type Sessions struct {
 	models   *cache.Cache
 	total    atomic.Int64
 	presence *pubsub.PubSub[string, Message]
 	factory  func() Model
+	dir      string
 }
 
-// NewSessions builds a session registry whose models come from factory.
+// NewSessions builds an in-memory session registry whose models come from
+// factory.
 func NewSessions(ttl time.Duration, factory func() Model) *Sessions {
+	return newSessions(ttl, "", factory)
+}
+
+// NewPersistentSessions builds a session registry that persists each session's
+// event log as JSON Lines under dir, so models survive a restart.
+func NewPersistentSessions(ttl time.Duration, dir string, factory func() Model) *Sessions {
+	return newSessions(ttl, dir, factory)
+}
+
+func newSessions(ttl time.Duration, dir string, factory func() Model) *Sessions {
 	cleanup := ttl / 6
 	if cleanup < time.Minute {
 		cleanup = time.Minute
@@ -101,18 +118,37 @@ func NewSessions(ttl time.Duration, factory func() Model) *Sessions {
 		models:   cache.New(ttl, cleanup),
 		presence: pubsub.New[string, Message](1024),
 		factory:  factory,
+		dir:      dir,
 	}
 }
 
 // Model returns the live Session for id, creating it on first use or once the
 // previous one has expired. Each access resets the idle timer, so an actively
-// shared model never expires under its collaborators.
+// shared model never expires under its collaborators. A persistent registry
+// replays the session's stored log into a fresh model before sharing it.
 func (s *Sessions) Model(id string) *Session {
 	if h, ok := s.models.Get(id); ok {
 		s.models.SetDefault(id, h)
 		return h.(*Session)
 	}
-	sess := newSession(s.factory(), &s.total, s.presence)
+	m := s.factory()
+	var persist func([]Entry) error
+	if s.dir != "" {
+		store, err := openSessionStore(s.dir, id)
+		if err != nil {
+			log.Printf("collab: persist: %v", err)
+		} else {
+			if entries, err := store.load(); err != nil {
+				log.Printf("collab: persist load: %v", err)
+			} else if len(entries) > 0 {
+				if err := m.Replay(entries); err != nil {
+					log.Printf("collab: persist replay: %v", err)
+				}
+			}
+			persist = store.append
+		}
+	}
+	sess := newSession(m, &s.total, s.presence, persist)
 	s.models.SetDefault(id, sess)
 	return sess
 }
@@ -140,23 +176,31 @@ type Session struct {
 	events   *pubsub.PubSub[string, Message]
 	total    *atomic.Int64
 	presence *pubsub.PubSub[string, Message]
+	persist  func([]Entry) error
 }
 
-func newSession(m Model, total *atomic.Int64, presence *pubsub.PubSub[string, Message]) *Session {
+func newSession(m Model, total *atomic.Int64, presence *pubsub.PubSub[string, Message], persist func([]Entry) error) *Session {
 	return &Session{
 		model:    m,
 		events:   pubsub.New[string, Message](1024),
 		total:    total,
 		presence: presence,
+		persist:  persist,
 	}
 }
 
 // Apply folds one attributed command and broadcasts the events it produced to
-// every watcher, including the sender.
+// every watcher, including the sender. A persistent session appends the
+// events to its log before broadcasting, so they survive a restart.
 func (s *Session) Apply(clientID string, cmd Cmd) error {
 	entries, err := s.model.Apply(clientID, cmd)
 	if err != nil {
 		return err
+	}
+	if s.persist != nil && len(entries) > 0 {
+		if err := s.persist(entries); err != nil {
+			log.Printf("collab: persist append: %v", err)
+		}
 	}
 	msg := Message{Type: TypeOp, State: s.snapshot()}
 	if len(entries) == 1 {

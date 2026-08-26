@@ -408,6 +408,25 @@ test("draws with a single touch on touch devices", async ({ browser }) => {
   await context.close();
 });
 
+test("keeps a local reserve copy of the log in the browser", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const reserve = await page.evaluate(() => {
+    const session = new URLSearchParams(location.search).get("s");
+    const raw = localStorage.getItem(`eventfulranges:paint:${session}`);
+    return raw ? JSON.parse(raw) : [];
+  });
+  expect(reserve.length).toBeGreaterThan(0);
+  expect(reserve[0].kind).toBe("add");
+});
+
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 24 px per cell).
 async function drawRect(page) {

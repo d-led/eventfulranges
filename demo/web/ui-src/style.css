@@ -178,6 +178,45 @@ button .icon {
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 
+#reconnectBanner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #2b1c1c;
+  border-bottom: 1px solid #7a3030;
+  color: #ffb3b3;
+  font-size: 13px;
+}
+
+#reconnectBanner[hidden] { display: none; }
+
+#reconnectBanner button {
+  flex: 0 0 auto;
+  background: #7a3030;
+  border-color: #a04040;
+  color: #fff;
+}
+
+body.disconnected #canvas {
+  pointer-events: none;
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
+
+button:disabled,
+button:disabled:hover {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+
 code {
   background: #0e1015;
   padding: 1px 5px;

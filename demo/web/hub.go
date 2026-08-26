@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,6 +57,7 @@ type hub struct {
 	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
 	presence *pubsub.PubSub[string, serverMsg] // global presence topic; nil standalone
 	ops      []opRecord
+	persist  func(opRecord) error // appends one record to the session's log; nil in-memory
 }
 
 func newHub(compact bool) *hub {
@@ -122,8 +124,20 @@ func (h *hub) record(clientID string, kind opKind, min, max []float64) (view, er
 	}
 	rec := opRecord{Client: clientID, Kind: string(kind), Min: min, Max: max, At: time.Now()}
 	h.ops = append(h.ops, rec)
+	h.persistRecord(rec)
 	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
 	return v, nil
+}
+
+// persistRecord appends one activity record to the session's persistent log,
+// if one is configured. A failed write is logged, never fatal.
+func (h *hub) persistRecord(rec opRecord) {
+	if h.persist == nil {
+		return
+	}
+	if err := h.persist(rec); err != nil {
+		log.Printf("persist append: %v", err)
+	}
 }
 
 // join registers a watcher and reports the new count together with the
@@ -245,6 +259,7 @@ func (h *hub) setDims(clientID string, dims int) (view, error) {
 	}
 	rec := opRecord{Client: clientID, Kind: string(opDims), Dims: dims, At: time.Now()}
 	h.ops = append(h.ops, rec)
+	h.persistRecord(rec)
 	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
 	return v, nil
 }

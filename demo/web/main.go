@@ -22,11 +22,17 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
+	data := flag.String("data", "data", "directory for persistent sessions (empty disables)")
 	flag.Parse()
 
 	gin.SetMode(gin.ReleaseMode)
 
-	s := newSessions(sessionTTL)
+	var s *sessions
+	if *data == "" {
+		s = newSessions(sessionTTL)
+	} else {
+		s = newPersistentSessions(sessionTTL, *data)
+	}
 	log.Printf("eventfulranges visualizer listening on %s", *addr)
 	log.Printf("open %s", uiURL(*addr))
 	if err := newRouter(s, GetFS()).Run(*addr); err != nil {

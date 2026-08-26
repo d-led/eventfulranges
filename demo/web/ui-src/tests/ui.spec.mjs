@@ -216,3 +216,47 @@ test('fit view frames material far from the origin', async ({ page }) => {
 
   expect(Buffer.compare(withBox, withoutBox)).not.toBe(0);
 });
+
+test('detects disconnection and freezes edits', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  // Drop the connection as if the server vanished: the banner appears and the
+  // mutation controls freeze, while local actions stay available.
+  await page.evaluate(() => window.__eventfulranges.closeSocket());
+  await expect(page.locator('#reconnectBanner')).toBeVisible();
+  await expect(page.locator('#send')).toBeDisabled();
+  await expect(page.locator('#copyLink')).toBeEnabled();
+});
+
+test('reconnect button reconnects immediately', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.evaluate(() => window.__eventfulranges.closeSocket());
+  await expect(page.locator('#reconnectBanner')).toBeVisible();
+
+  await page.locator('#reconnectBtn').click();
+  await expect(page.locator('#status')).toContainText('connected');
+  await expect(page.locator('#reconnectBanner')).toBeHidden();
+});
+
+test('keeps a local reserve copy of the log in the browser', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#ops').fill('add,(0,0,0),(4,4,4)');
+  await page.locator('#send').click();
+  await expect(page.locator('#result')).not.toHaveValue('');
+
+  const reserve = await page.evaluate(() => {
+    const session = new URLSearchParams(location.search).get('s');
+    const raw = localStorage.getItem(`eventfulranges:web:${session}`);
+    return raw ? JSON.parse(raw) : [];
+  });
+  expect(reserve.length).toBeGreaterThan(0);
+  expect(reserve[0].kind).toBe('add');
+});

@@ -35,6 +35,24 @@ func (m *counter) Apply(clientID string, cmd Cmd) ([]Entry, error) {
 	return []Entry{entry}, nil
 }
 
+func (m *counter) Replay(entries []Entry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.n = 0
+	m.log = m.log[:0]
+	for _, e := range entries {
+		var p struct {
+			Delta int `json:"delta"`
+		}
+		if err := json.Unmarshal(e.Data, &p); err != nil {
+			return err
+		}
+		m.n += p.Delta
+		m.log = append(m.log, e)
+	}
+	return nil
+}
+
 func (m *counter) Log() []Entry {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -59,6 +77,13 @@ func (m *logOnly) Apply(clientID string, cmd Cmd) ([]Entry, error) {
 	entry := Entry{ID: "e", Client: clientID, Kind: cmd.Kind, Data: cmd.Data, At: time.Now()}
 	m.log = append(m.log, entry)
 	return []Entry{entry}, nil
+}
+
+func (m *logOnly) Replay(entries []Entry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.log = append([]Entry(nil), entries...)
+	return nil
 }
 
 func (m *logOnly) Log() []Entry {
@@ -197,4 +222,24 @@ func assertPresence(t *testing.T, conn *websocket.Conn, wantClients, wantTotal i
 			total = msg.Total
 		}
 	}
+}
+
+func TestPersistentSessionsReplayLogAfterRestart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	first := NewPersistentSessions(time.Hour, dir, func() Model { return &counter{} })
+	require.NoError(t, first.Model("s1").Apply("alice", Cmd{Kind: "inc", Data: json.RawMessage(`{"delta":2}`)}))
+
+	// A brand-new registry over the same directory is a "restart": the model
+	// is recreated from the persisted log, not started empty.
+	second := NewPersistentSessions(time.Hour, dir, func() Model { return &counter{} })
+	restored := second.Model("s1")
+
+	log, clients := restored.Join()
+	require.Equal(t, 1, clients)
+	require.Len(t, log, 1)
+	require.Equal(t, "alice", log[0].Client)
+	require.Equal(t, "inc", log[0].Kind)
+	require.JSONEq(t, `{"n":2}`, string(restored.Snapshot()))
 }

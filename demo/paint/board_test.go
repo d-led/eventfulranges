@@ -79,3 +79,23 @@ func cellCmd(kind string, x0, y0, x1, y1 float64) collab.Cmd {
 	data, _ := json.Marshal(map[string]float64{"x0": x0, "y0": y0, "x1": x1, "y1": y1})
 	return collab.Cmd{Kind: kind, Data: data}
 }
+
+func TestBoardReplayRestoresLog(t *testing.T) {
+	t.Parallel()
+	original := newBoard()
+	_, err := original.Apply("alice", paintCmd(0, 0, 4, 4))
+	require.NoError(t, err)
+	_, err = original.Apply("bob", eraseCmd(1, 1, 3, 3))
+	require.NoError(t, err)
+
+	restored := newBoard()
+	require.NoError(t, restored.Replay(original.Log()))
+
+	log := restored.Log()
+	require.Len(t, log, 2)
+	require.Equal(t, "add", log[0].Kind)
+	require.Equal(t, "alice", log[0].Client)
+	require.JSONEq(t, `{"min":[0,0],"max":[4,4]}`, string(log[0].Data))
+	require.Equal(t, "remove", log[1].Kind)
+	require.Equal(t, "bob", log[1].Client)
+}

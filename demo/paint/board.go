@@ -61,6 +61,70 @@ func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
 	return entries, nil
 }
 
+// Replay folds a persisted log back into a fresh board, re-materializing the
+// canvas while preserving each entry's attribution and timestamp.
+func (b *board) Replay(entries []collab.Entry) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.log = b.log[:0]
+	for _, e := range entries {
+		rect, err := replayRect(e.Data)
+		if err != nil {
+			return err
+		}
+		kind, err := commandKind(e.Kind)
+		if err != nil {
+			return err
+		}
+		events, err := b.fold(kind, rect, e.Meta)
+		if err != nil {
+			return err
+		}
+		for _, ev := range events {
+			b.log = append(b.log, collab.Entry{
+				ID:     ev.ID,
+				Client: e.Client,
+				Kind:   ev.Kind,
+				Data:   ev.Data,
+				Meta:   e.Meta,
+				Detail: ev.Detail,
+				At:     e.At,
+			})
+		}
+	}
+	return nil
+}
+
+// replayRect decodes the box shape the event log stores — {"min":[…],"max":[…]}
+// — into a board rectangle. The wire command uses {"x0","y0","x1","y1"}, but
+// the log keeps the materialized box, so replay must read that shape.
+func replayRect(data json.RawMessage) (Rect, error) {
+	var box struct {
+		Min []float64 `json:"min"`
+		Max []float64 `json:"max"`
+	}
+	if err := json.Unmarshal(data, &box); err != nil {
+		return Rect{}, fmt.Errorf("paint: replay: %w", err)
+	}
+	if len(box.Min) != 2 || len(box.Max) != 2 {
+		return Rect{}, fmt.Errorf("paint: replay: box must have two dimensions")
+	}
+	return Rect{X0: box.Min[0], Y0: box.Min[1], X1: box.Max[0], Y1: box.Max[1]}, nil
+}
+
+// commandKind maps an event-log kind back to the command it came from.
+func commandKind(kind string) (string, error) {
+	switch kind {
+	case "add":
+		return "paint", nil
+	case "remove":
+		return "erase", nil
+	default:
+		return "", fmt.Errorf("paint: replay: unknown entry kind %q", kind)
+	}
+}
+
 // fold dispatches a command to the canvas.
 func (b *board) fold(kind string, rect Rect, meta json.RawMessage) ([]Event, error) {
 	switch kind {
