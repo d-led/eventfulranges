@@ -104,22 +104,28 @@ dimension, overlapping in every other). This is the primitive behind "how many
 contiguous regions" questions — e.g. the number of continuous free slots in a
 calendar.
 
-**Region query — *proposed*.** Two distinct query shapes are worth separating,
-because a path in n dimensions can enter and leave ranges repeatedly:
+**Region queries — *implemented*.** Two query shapes over a straight
+`space.Path` (a segment `From` → `To`, parameterized by `t ∈ [0,1]`):
 
-1. **Set query** — which boxes does a polygon cross? An unordered answer
-   (possibly grouped with `ConnectedComponents`).
-2. **Traversal query** — the *ordered* sequence of ranges a path passes
-   through, **including the empty gaps between them** (entered range A,
-   exited into empty space, entered range B, …). This is the query the user
-   means by "in and out".
+1. **Set query** — `space.Crossed(boxes, path) []Box`: which boxes does the
+   path cross with positive length? An unordered answer in canonical cover
+   order. A path that merely grazes a face or runs along an edge crosses
+   nothing.
+2. **Traversal query** — `space.Traverse(boxes, path) []PathSegment`: the
+   *ordered* sequence of ranges the path passes through, **including the empty
+   gaps between them** (entered range A, exited into empty space, entered
+   range B, …). This is the query the user means by "in and out". Each segment
+   is a half-open `t`-interval `[Start, End)` that tiles `[0,1]` exactly,
+   tagged covered/gap with the covering boxes listed. Both queries are exposed
+   on the `BoxSet` facade as `Crossed`/`Traverse`.
 
-The traversal query is the harder one: it needs path/box intersection along
-the path's parameterization plus an ordering of crossings, and it is exactly
-where point-in-polygon (`pnpoly`) and simulation of simplicity earn their
-keep — a path grazing a box corner or running along an edge must be resolved
-deterministically, which the axis-aligned cover algebra never needs on its
-own.
+The path/box intersection is the slab method under the same half-open
+convention as `Box`, so a path grazing a corner or running along an edge is
+resolved deterministically *without* point-in-polygon or simulation of
+simplicity: the boundary point belongs to the box on the "closed" side, and a
+zero-length touch is not a crossing. SoS would only be needed for a future
+general polygonal region whose canonicalizer subdivides into a disjoint cover
+(see §1).
 
 ## Non-breaking guarantee
 

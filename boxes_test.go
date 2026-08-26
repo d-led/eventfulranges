@@ -52,6 +52,31 @@ func TestOpenBoxStore(t *testing.T) {
 	require.Len(t, bs.Boxes(), 2)
 }
 
+func TestBoxSetRegionQueries(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins)
+	require.NoError(t, err)
+	_, err = bs.Add(ctx, []float64{0, 0}, []float64{10, 10})
+	require.NoError(t, err)
+	_, err = bs.Add(ctx, []float64{20, 0}, []float64{30, 10})
+	require.NoError(t, err)
+
+	// A horizontal path crosses the first box, skips empty space, then
+	// crosses the second.
+	p := space.NewPath([]float64{0, 0}, []float64{40, 0})
+	first := space.NewBox([]float64{0, 0}, []float64{10, 10})
+	second := space.NewBox([]float64{20, 0}, []float64{30, 10})
+
+	require.Equal(t, []space.Box{first, second}, bs.Crossed(p))
+	require.Equal(t, []space.PathSegment{
+		{Start: 0, End: 0.25, Covered: true, Boxes: []space.Box{first}},
+		{Start: 0.25, End: 0.5, Covered: false},
+		{Start: 0.5, End: 0.75, Covered: true, Boxes: []space.Box{second}},
+		{Start: 0.75, End: 1, Covered: false},
+	}, bs.Traverse(p))
+}
+
 func TestBoxApplyAllForAntiEntropy(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

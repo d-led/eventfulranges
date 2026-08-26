@@ -94,6 +94,18 @@ func (b *BoxSet) Overlaps(box space.Box) bool {
 	return b.engine.Overlaps(box)
 }
 
+// Crossed returns the materialized boxes the path crosses with positive
+// length, in canonical cover order.
+func (b *BoxSet) Crossed(p space.Path) []space.Box {
+	return space.Crossed(b.Boxes(), p)
+}
+
+// Traverse partitions the path's parameter interval into covered and gap
+// segments as it enters and leaves the materialized set.
+func (b *BoxSet) Traverse(p space.Path) []space.PathSegment {
+	return space.Traverse(b.Boxes(), p)
+}
+
 // Ops returns the known operations for anti-entropy exchange.
 func (b *BoxSet) Ops() []sop.Op {
 	return b.engine.Ops()
