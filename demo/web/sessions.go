@@ -42,12 +42,12 @@ func newSessions(ttl time.Duration) *sessions {
 // model returns the live shared view for id, creating it on first use or once
 // the previous one has expired. Each access resets the idle timer, so an
 // actively shared model never expires under its collaborators.
-func (s *sessions) model(id string) *hub {
+func (s *sessions) model(id string, compact bool) *hub {
 	if h, ok := s.models.Get(id); ok {
 		s.models.SetDefault(id, h)
 		return h.(*hub)
 	}
-	h := newHub()
+	h := newHub(compact)
 	h.total = &s.total
 	h.presence = s.presence
 	s.models.SetDefault(id, h)

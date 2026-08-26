@@ -58,6 +58,9 @@ func newRouter(s *sessions, fs http.FileSystem) *gin.Engine {
 			if d := c.Query("dims"); d != "" {
 				target += "&dims=" + url.QueryEscape(d)
 			}
+			if m := c.Query("compact"); m != "" {
+				target += "&compact=" + url.QueryEscape(m)
+			}
 			c.Redirect(http.StatusFound, target)
 			c.Abort()
 			return
@@ -81,7 +84,7 @@ func handleWS(c *gin.Context, s *sessions) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing session id"})
 		return
 	}
-	h := s.model(id)
+	h := s.model(id, c.Query("compact") == "merge")
 	clientID := newClientID()
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)

@@ -17,7 +17,7 @@ import (
 
 func TestViewAddThenRemoveYieldsHollowShell(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 
 	_, err := h.apply(opAdd, []float64{0, 0, 0}, []float64{4, 4, 4})
 	require.NoError(t, err)
@@ -37,8 +37,8 @@ func TestViewAddThenRemoveYieldsHollowShell(t *testing.T) {
 
 func TestViewConvergesRegardlessOfOrder(t *testing.T) {
 	t.Parallel()
-	first := newHub()
-	second := newHub()
+	first := newHub(false)
+	second := newHub(false)
 
 	// Replica A: add then remove. Replica B: remove then add.
 	_, err := first.apply(opAdd, []float64{0, 0}, []float64{4, 4})
@@ -56,7 +56,7 @@ func TestViewConvergesRegardlessOfOrder(t *testing.T) {
 
 func TestViewRejectsBadInput(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 	_, err := h.apply(opAdd, []float64{0, 0}, []float64{4, 4})
 	require.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestViewRejectsBadInput(t *testing.T) {
 
 func TestViewDimensionIsFixedByTheFirstBox(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 	_, err := h.apply(opAdd, []float64{0}, []float64{1})
 	require.NoError(t, err)
 
@@ -84,7 +84,7 @@ func TestViewDimensionIsFixedByTheFirstBox(t *testing.T) {
 
 func TestDimsFixesTheSessionDimension(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 
 	v, err := h.applyDims(4)
 	require.NoError(t, err)
@@ -100,7 +100,7 @@ func TestDimsFixesTheSessionDimension(t *testing.T) {
 
 func TestDimsRejectsOutOfRange(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 	for _, d := range []int{0, -1, 5} {
 		_, err := h.applyDims(d)
 		require.Error(t, err, "dimension %d must be rejected", d)
@@ -110,7 +110,7 @@ func TestDimsRejectsOutOfRange(t *testing.T) {
 
 func TestDimsCannotChangeOnceBoxesExist(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 	_, err := h.apply(opAdd, []float64{0, 0, 0}, []float64{1, 1, 1})
 	require.NoError(t, err)
 
@@ -149,7 +149,7 @@ func TestWebSocketBroadcastsToEveryClient(t *testing.T) {
 
 func TestHubTracksPresenceAndLog(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 
 	_, err := h.record("alice", opAdd, []float64{0}, []float64{1})
 	require.NoError(t, err)
@@ -204,7 +204,7 @@ func assertPresence(t *testing.T, conn *websocket.Conn, wantClients, wantTotal i
 
 func TestHubLogsDimensionChanges(t *testing.T) {
 	t.Parallel()
-	h := newHub()
+	h := newHub(false)
 
 	_, err := h.setDims("alice", 4)
 	require.NoError(t, err)
@@ -262,8 +262,8 @@ func TestSessionsAreIsolated(t *testing.T) {
 	t.Parallel()
 	s := newSessions(time.Hour)
 
-	alpha := s.model("alpha")
-	beta := s.model("beta")
+	alpha := s.model("alpha", false)
+	beta := s.model("beta", false)
 
 	_, err := alpha.apply(opAdd, []float64{0}, []float64{1})
 	require.NoError(t, err)
@@ -276,11 +276,11 @@ func TestSessionExpires(t *testing.T) {
 	t.Parallel()
 	s := newSessions(10 * time.Millisecond)
 
-	first := s.model("id")
-	require.Same(t, first, s.model("id"), "an active session is reused")
+	first := s.model("id", false)
+	require.Same(t, first, s.model("id", false), "an active session is reused")
 
 	time.Sleep(30 * time.Millisecond)
-	require.NotSame(t, first, s.model("id"), "an expired session is recreated fresh")
+	require.NotSame(t, first, s.model("id", false), "an expired session is recreated fresh")
 }
 
 func TestNewSessionIDIsUnique(t *testing.T) {
@@ -289,6 +289,26 @@ func TestNewSessionIDIsUnique(t *testing.T) {
 	second := newSessionID()
 	require.NotEmpty(t, first)
 	require.NotEqual(t, first, second)
+}
+
+func TestCompactionMergesAdjacentBoxes(t *testing.T) {
+	t.Parallel()
+	h := newHub(true)
+	_, err := h.apply(opAdd, []float64{0, 0}, []float64{2, 4})
+	require.NoError(t, err)
+	_, err = h.apply(opAdd, []float64{2, 0}, []float64{4, 4})
+	require.NoError(t, err)
+	require.Len(t, h.snapshot().Boxes, 1, "adjacent boxes merge into one under compaction")
+}
+
+func TestNoCompactionKeepsCanonicalCover(t *testing.T) {
+	t.Parallel()
+	h := newHub(false)
+	_, err := h.apply(opAdd, []float64{0, 0}, []float64{2, 4})
+	require.NoError(t, err)
+	_, err = h.apply(opAdd, []float64{2, 0}, []float64{4, 4})
+	require.NoError(t, err)
+	require.Len(t, h.snapshot().Boxes, 2, "canonical cover keeps adjacent boxes separate")
 }
 
 func TestRouterServesTheUI(t *testing.T) {

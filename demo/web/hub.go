@@ -56,11 +56,14 @@ type hub struct {
 	ops      []opRecord
 }
 
-func newHub() *hub {
+func newHub(compact bool) *hub {
 	// The session is in-memory and expires after a day without use, so the
 	// engine never reloads from a snapshot; disable the automatic snapshots.
-	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWins,
-		eventfulranges.WithBoxSnapshotEvery(0))
+	opts := []eventfulranges.BoxOption{eventfulranges.WithBoxSnapshotEvery(0)}
+	if compact {
+		opts = append(opts, eventfulranges.WithBoxCanonicalizer(space.MergeAdjacent))
+	}
+	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWins, opts...)
 	if err != nil {
 		panic(err) // a fresh in-memory store cannot fail to open
 	}
