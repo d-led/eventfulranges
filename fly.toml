@@ -1,0 +1,36 @@
+# fly.toml - eventfulranges paint demo backend (private, Flycast only).
+#
+# The public front door is the `eventfulranges` oauth2-proxy app, which routes
+# to this app over the private network at eventfulranges-app.flycast. The Go
+# server listens on :8081 (demo/paint's default -addr), which Fly proxies here.
+
+app = "eventfulranges-app"
+primary_region = "ams"
+
+# Session data lives on the machine's ephemeral filesystem: the app writes to
+# the directory resolved from $DATA_DIR, and Machine restarts clear sessions.
+[env]
+  DATA_DIR = "/tmp"
+
+[http_service]
+  # the port the Go server listens on (demo/paint default -addr)
+  internal_port = 8081
+  # must be false - Flycast is http-only
+  force_https = false
+  # Fly Proxy stops Machines based on traffic
+  auto_stop_machines = "stop"
+  # Fly Proxy starts Machines based on traffic
+  auto_start_machines = true
+  # Number of Machines to keep running in primary region
+  min_machines_running = 0
+  max_machines_running = 1
+  processes = ["app"]
+  [http_service.concurrency]
+    # the whiteboard is websocket-first: count connections, not requests
+    type = "connections"
+    soft_limit = 250
+
+[[vm]]
+  memory_mb = 512
+  cpu_kind = "shared"
+  cpus = 1

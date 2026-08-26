@@ -1,0 +1,22 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Node build artifacts and dependencies
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+
+# Local runtime data (sessions)
+**/data
+
+# Not needed to build demo/paint
+build
+docs
+examples
+scripts
+docker-compose.yml
+demo/paint/proxy
+demo/web
