@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -309,6 +310,116 @@ func TestNoCompactionKeepsCanonicalCover(t *testing.T) {
 	_, err = h.apply(opAdd, []float64{2, 0}, []float64{4, 4})
 	require.NoError(t, err)
 	require.Len(t, h.snapshot().Boxes, 2, "canonical cover keeps adjacent boxes separate")
+}
+
+// exampleOps mirrors exampleFor in demo/web/ui-src/app.js: the same hollow
+// shell in every dimension — a hypercube tiled into unit cubes (six in 1D,
+// three per axis otherwise) with an aligned central block carved out. Keeping
+// the two in sync is what makes the visualizer's "Load example" show the
+// compaction difference this test pins down.
+func exampleOps(dims int) []clientOp {
+	side := 3
+	carveLo, carveHi := 1.0, 2.0
+	if dims == 1 {
+		side = 6
+		carveLo, carveHi = 2.0, 4.0
+	}
+	ops := make([]clientOp, 0, ipow(side, dims)+1)
+	for code := 0; code < ipow(side, dims); code++ {
+		min := make([]float64, dims)
+		max := make([]float64, dims)
+		c := code
+		for d := 0; d < dims; d++ {
+			v := c % side
+			c /= side
+			min[d] = float64(v)
+			max[d] = float64(v + 1)
+		}
+		ops = append(ops, clientOp{Kind: "add", Min: min, Max: max})
+	}
+	lo := make([]float64, dims)
+	hi := make([]float64, dims)
+	for d := range lo {
+		lo[d] = carveLo
+		hi[d] = carveHi
+	}
+	return append(ops, clientOp{Kind: "remove", Min: lo, Max: hi})
+}
+
+// ipow raises base to a non-negative integer power.
+func ipow(base, exp int) int {
+	n := 1
+	for i := 0; i < exp; i++ {
+		n *= base
+	}
+	return n
+}
+
+// TestExamplesDifferByCompaction pins the visualizer's built-in example in
+// every dimension: the same operations must cover the same points under both
+// compaction modes, while canonical keeps each tile and merge adjacent
+// collapses every side into a single box.
+func TestExamplesDifferByCompaction(t *testing.T) {
+	t.Parallel()
+	for dims := 1; dims <= 4; dims++ {
+		t.Run(fmt.Sprintf("%dD", dims), func(t *testing.T) {
+			t.Parallel()
+			canonical := newHub(false)
+			merged := newHub(true)
+			for _, op := range exampleOps(dims) {
+				_, err := canonical.apply(opKind(op.Kind), op.Min, op.Max)
+				require.NoError(t, err)
+				_, err = merged.apply(opKind(op.Kind), op.Min, op.Max)
+				require.NoError(t, err)
+			}
+
+			c := canonical.snapshot()
+			m := merged.snapshot()
+			require.Equal(t, dims, c.Dims)
+
+			// Canonical keeps every surviving tile; merge adjacent collapses
+			// touching tiles, so the same cover is represented by fewer boxes.
+			require.Len(t, c.Boxes, canonicalTileCount(dims))
+			require.Less(t, len(m.Boxes), len(c.Boxes),
+				"merge adjacent must collapse some of the %d tiles", len(c.Boxes))
+
+			// Both representations cover exactly the same points.
+			requireCoverageEqual(t, c.Boxes, m.Boxes, dims)
+		})
+	}
+}
+
+// canonicalTileCount is the number of surviving unit tiles: the whole tiling
+// minus the carved block. 1D tiles six unit segments and carves two of them.
+func canonicalTileCount(dims int) int {
+	if dims == 1 {
+		return 4
+	}
+	return ipow(3, dims) - 1
+}
+
+// requireCoverageEqual samples the covered region on a half-unit grid and
+// asserts both covers agree on every point. The canonicalizer is
+// cover-preserving, so this is the property the examples must not break.
+func requireCoverageEqual(t *testing.T, a, b []space.Box, dims int) {
+	t.Helper()
+	side := 3.0
+	if dims == 1 {
+		side = 6.0
+	}
+	var visit func([]float64, int)
+	visit = func(prefix []float64, d int) {
+		if d == dims {
+			p := append([]float64(nil), prefix...)
+			require.Equal(t, space.Contains(a, p), space.Contains(b, p),
+				"point %v must be covered identically", p)
+			return
+		}
+		for v := 0.0; v <= side; v += 0.5 {
+			visit(append(prefix, v), d+1)
+		}
+	}
+	visit(nil, 0)
 }
 
 func TestRouterServesTheUI(t *testing.T) {

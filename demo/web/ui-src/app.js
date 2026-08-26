@@ -25,6 +25,7 @@ const copyLinkBtn = $('copyLink');
 const presenceEl = $('presence');
 const logEl = $('log');
 const fitViewBtn = $('fitView');
+const compactionEl = $('compaction');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -317,19 +318,31 @@ function boxesToCSV(boxes) {
   return boxes.map((b) => `(${b.min.join(',')}),(${b.max.join(',')})`).join('\n');
 }
 
+// exampleFor builds the same hollow shell in every dimension: a hypercube
+// tiled into unit cubes (six in 1D, three per axis otherwise) with an aligned
+// central block carved out. Canonical compaction keeps every surviving tile,
+// so the shell appears as a fine grid; merge-adjacent collapses each side
+// into a single box, so the same shell appears as a few clean slabs.
 function exampleFor(dims) {
-  // 1D–3D: a centred hollow shell (two segments, a square frame, a cube's six
-  // faces). 4D: two hypercubes sliding past each other with their overlap
-  // carved out — their symmetric difference. Sweeping w shows one cube slide
-  // into the other, open into a six-face shell through the overlap, and slide
-  // on through.
-  const examples = {
-    1: 'add,(0),(8)\nremove,(2),(6)',
-    2: 'add,(0,0),(4,4)\nremove,(1,1),(3,3)',
-    3: 'add,(0,0,0),(4,4,4)\nremove,(1,1,1),(3,3,3)',
-    4: 'add,(0,0,0,0),(3,3,3,3)\nadd,(1,1,1,1),(4,4,4,4)\nremove,(1,1,1,1),(3,3,3,3)',
-  };
-  return examples[dims] ?? examples[3];
+  const side = dims === 1 ? 6 : 3;
+  const carveLo = Array(dims).fill(dims === 1 ? 2 : 1);
+  const carveHi = Array(dims).fill(dims === 1 ? 4 : 2);
+  const lines = [];
+  const total = side ** dims;
+  for (let code = 0; code < total; code++) {
+    const min = [];
+    const max = [];
+    let c = code;
+    for (let d = 0; d < dims; d++) {
+      const v = c % side;
+      c = Math.floor(c / side);
+      min.push(v);
+      max.push(v + 1);
+    }
+    lines.push(`add,(${min.join(',')}),(${max.join(',')})`);
+  }
+  lines.push(`remove,(${carveLo.join(',')}),(${carveHi.join(',')})`);
+  return lines.join('\n');
 }
 
 // boundingBoxOf returns the axis-aligned box spanning every materialized box,
@@ -379,6 +392,18 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+// COMPACTION_LABELS names the two session compaction modes so the panel can
+// explain, in words, what the active strategy does to the materialized boxes.
+const COMPACTION_LABELS = {
+  canonical: 'Compaction: canonical — every box is kept exactly as materialized.',
+  merge: 'Compaction: merge adjacent — touching boxes are joined into larger ones.',
+};
+
+function setCompaction(mode) {
+  compactionEl.textContent = COMPACTION_LABELS[mode] || COMPACTION_LABELS.canonical;
+  compactionEl.dataset.mode = mode;
+}
+
 // updatePresence renders the connected-client count and this client's own id.
 function updatePresence(n, t) {
   if (n !== undefined) clients = n;
@@ -407,6 +432,7 @@ function appendLog(op) {
 function applyState(state) {
   const hadBoxes = currentBoxes.length > 0;
   currentBoxes = state.boxes || [];
+  if (state.compact) setCompaction(state.compact);
   const dims = state.dims;
   if (dims > 0 && dims !== currentDims) {
     currentDims = dims;

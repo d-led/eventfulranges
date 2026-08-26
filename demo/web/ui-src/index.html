@@ -22,6 +22,8 @@
         <p class="hint">Start a fresh session and choose its dimension and compaction.</p>
       </div>
 
+      <p id="compaction" class="compaction">Compaction: canonical — every box is kept exactly as materialized.</p>
+
       <div class="field">
         <label for="ops">Operations — CSV: <code>kind,(min…),(max…)</code> (<code>#</code> = comment)</label>
         <textarea id="ops" spellcheck="false"></textarea>
@@ -87,10 +89,16 @@
       <div class="field">
         <label for="compact">Compaction</label>
         <select id="compact">
-          <option value="">Canonical — keep every box</option>
-          <option value="merge">Merge adjacent boxes</option>
+          <option value="">Canonical — no compaction</option>
+          <option value="merge">Merge adjacent — compact</option>
         </select>
-        <p class="hint">Merge adjacent joins touching boxes into larger ones.</p>
+        <p class="hint">
+          <strong>Canonical</strong> keeps every materialized box exactly as
+          the library emits it. <strong>Merge adjacent</strong> joins boxes
+          that touch along a whole face into one larger box — the same points,
+          fewer boxes. Load the example in both modes to watch the tiles
+          collapse.
+        </p>
       </div>
       <div class="row">
         <button id="startSession" class="primary">Start session</button>

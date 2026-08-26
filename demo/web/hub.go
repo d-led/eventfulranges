@@ -29,6 +29,7 @@ type view struct {
 	Adds    int         `json:"adds"`
 	Removes int         `json:"removes"`
 	Dims    int         `json:"dims"`
+	Compact string      `json:"compact"`
 }
 
 // opRecord is one entry in the session's shared activity log.
@@ -49,7 +50,8 @@ type hub struct {
 	mu       sync.Mutex
 	events   *pubsub.PubSub[string, serverMsg]
 	set      *eventfulranges.BoxSet
-	dims     int // session dimension: -1 until fixed by a dims op or the first box
+	compact  bool // compaction mode: canonical (keep every box) or merge adjacent
+	dims     int  // session dimension: -1 until fixed by a dims op or the first box
 	clients  int
 	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
 	presence *pubsub.PubSub[string, serverMsg] // global presence topic; nil standalone
@@ -68,9 +70,10 @@ func newHub(compact bool) *hub {
 		panic(err) // a fresh in-memory store cannot fail to open
 	}
 	return &hub{
-		events: pubsub.New[string, serverMsg](1024),
-		set:    set,
-		dims:   -1,
+		events:  pubsub.New[string, serverMsg](1024),
+		set:     set,
+		compact: compact,
+		dims:    -1,
 	}
 }
 
@@ -86,6 +89,14 @@ const (
 // one sliceable w axis. The library supports arbitrary n; the demo stops at 4
 // so every box can be rendered.
 const maxDims = 4
+
+// compactMode names the two session compaction modes. The name travels with
+// the view so the client can describe, in words, what the active strategy
+// does to the materialized boxes.
+const (
+	compactCanonical = "canonical" // keep every materialized box as-is
+	compactMerge     = "merge"     // join touching boxes into larger ones
+)
 
 // apply folds one anonymous operation into the shared view and broadcasts the
 // new state. Tests use it to exercise the model without a client identity.
@@ -247,10 +258,15 @@ func (h *hub) materializeLocked() view {
 			removes++
 		}
 	}
+	mode := compactCanonical
+	if h.compact {
+		mode = compactMerge
+	}
 	return view{
 		Boxes:   h.set.Boxes(),
 		Adds:    adds,
 		Removes: removes,
 		Dims:    h.dims,
+		Compact: mode,
 	}
 }
