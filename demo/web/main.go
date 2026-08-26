@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,17 +23,16 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
-	data := flag.String("data", "data", "directory for persistent sessions (empty disables)")
+	defaultData := os.Getenv("DATA_DIR")
+	if defaultData == "" {
+		defaultData = "data"
+	}
+	data := flag.String("data", defaultData, "directory for persistent sessions")
 	flag.Parse()
 
 	gin.SetMode(gin.ReleaseMode)
 
-	var s *sessions
-	if *data == "" {
-		s = newSessions(sessionTTL)
-	} else {
-		s = newPersistentSessions(sessionTTL, *data)
-	}
+	s := newPersistentSessions(sessionTTL, *data)
 	log.Printf("eventfulranges visualizer listening on %s", *addr)
 	log.Printf("open %s", uiURL(*addr))
 	if err := newRouter(s, GetFS()).Run(*addr); err != nil {
