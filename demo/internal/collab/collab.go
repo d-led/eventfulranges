@@ -28,20 +28,25 @@ const (
 )
 
 // Cmd is one anonymous client command. Kind names the command; Data is its
-// JSON payload, interpreted by the Model.
+// JSON payload, interpreted by the Model; Meta carries arbitrary per-command
+// metadata (for example a stroke color) that the model may attach to the
+// events it produces.
 type Cmd struct {
 	Kind string          `json:"kind"`
 	Data json.RawMessage `json:"data,omitempty"`
+	Meta json.RawMessage `json:"meta,omitempty"`
 }
 
 // Entry is one event in a session's log. ID identifies the event for
 // idempotent delivery; Kind names the event; Data carries the raw payload so
-// clients can materialize the view, export JSONL, or build a share link.
+// clients can materialize the view, export JSONL, or build a share link; Meta
+// carries arbitrary metadata attached to the originating command.
 type Entry struct {
 	ID     string          `json:"id,omitempty"`
 	Client string          `json:"client,omitempty"`
 	Kind   string          `json:"kind"`
 	Data   json.RawMessage `json:"data,omitempty"`
+	Meta   json.RawMessage `json:"meta,omitempty"`
 	Detail string          `json:"detail,omitempty"`
 	At     time.Time       `json:"at"`
 }

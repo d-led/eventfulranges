@@ -20,10 +20,18 @@ export function union(a, b) {
 }
 
 export function difference(a, b) {
-  let result = normalize(a);
-  for (const q of normalize(b)) {
+  return normalize(a).flatMap((p) => subtractAll(p, normalize(b)));
+}
+
+// subtractAll carves every box in list out of p, returning the surviving
+// pieces. The caller can pre-normalize list once and reuse it across many
+// boxes, which keeps per-stroke materialization from re-normalizing the whole
+// removal set for each painted box.
+export function subtractAll(p, list) {
+  let result = [p];
+  for (const q of list) {
     const next = [];
-    for (const p of result) next.push(...subtract(p, q));
+    for (const r of result) next.push(...subtract(r, q));
     result = normalize(next);
   }
   return result;

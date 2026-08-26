@@ -52,6 +52,21 @@ func TestBoardAcceptsSubdividedCell(t *testing.T) {
 	require.Equal(t, "add", entries[0].Kind)
 }
 
+func TestBoardAttachesMetadata(t *testing.T) {
+	t.Parallel()
+	b := newBoard()
+
+	entries, err := b.Apply("alice", collab.Cmd{
+		Kind: "paint",
+		Data: json.RawMessage(`{"x0":0,"y0":0,"x1":1,"y1":1}`),
+		Meta: json.RawMessage(`{"color":"#ff5500"}`),
+	})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.JSONEq(t, `{"color":"#ff5500"}`, string(entries[0].Meta))
+	require.JSONEq(t, `{"color":"#ff5500"}`, string(b.Log()[0].Meta))
+}
+
 func paintCmd(x0, y0, x1, y1 float64) collab.Cmd {
 	return cellCmd("paint", x0, y0, x1, y1)
 }

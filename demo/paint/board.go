@@ -51,6 +51,7 @@ func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
 			Client: clientID,
 			Kind:   ev.Kind,
 			Data:   ev.Data,
+			Meta:   cmd.Meta,
 			Detail: ev.Detail,
 			At:     time.Now(),
 		}

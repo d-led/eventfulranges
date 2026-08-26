@@ -42,6 +42,40 @@ export function gridRect(a, b, cell) {
   };
 }
 
+// gridLine returns the half-open cell rectangles, in board units, of the cells
+// crossed by the line from cell a to cell b, excluding a and including b.
+// Consecutive calls tile a pen stroke without repainting the anchor cell.
+export function gridLine(a, b, cell) {
+  const rects = [];
+  let x0 = a.ix;
+  let y0 = a.iy;
+  const x1 = b.ix;
+  const y1 = b.iy;
+  const dx = Math.abs(x1 - x0);
+  const dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  while (x0 !== x1 || y0 !== y1) {
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+    rects.push({
+      x0: x0 * cell,
+      y0: y0 * cell,
+      x1: (x0 + 1) * cell,
+      y1: (y0 + 1) * cell,
+    });
+  }
+  return rects;
+}
+
 // bounds returns the tight axis-aligned bounds of the boxes, or null when
 // there is nothing to fit.
 export function bounds(boxes) {

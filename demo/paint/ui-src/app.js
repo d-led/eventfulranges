@@ -1,5 +1,5 @@
-import { union, difference } from "./boxes.js";
-import { gridLevel, gridSize, gridRect, fitCamera } from "./grid.js";
+import { union, normalize, subtractAll } from "./boxes.js";
+import { gridLevel, gridSize, gridRect, gridLine, fitCamera } from "./grid.js";
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -9,11 +9,15 @@ const presenceEl = $("presence");
 const logEl = $("log");
 const copyShareBtn = $("copyShare");
 const downloadJsonlBtn = $("downloadJsonl");
+const importJsonlBtn = $("importJsonl");
+const importJsonlInput = $("importJsonlInput");
 const newSessionBtn = $("newSession");
-const paintBtn = $("toolPaint");
+const rectBtn = $("toolRect");
+const penBtn = $("toolPen");
 const eraseBtn = $("toolErase");
 const panBtn = $("toolPan");
 const toolLabel = $("toolLabel");
+const strokeColorEl = $("strokeColor");
 const gridLabel = $("gridLabel");
 const gridPlus = $("gridPlus");
 const gridMinus = $("gridMinus");
@@ -32,13 +36,16 @@ let clients = 0;
 let total = 0;
 let socket = null;
 
+const DEFAULT_COLOR = "#e6e8ee";
 const cam = { x: 0, y: 0, scale: 12 }; // board units at the canvas centre, px per unit
 
 let gridOffset = 0; // user shift over the zoom-chosen subdivision level
-let tool = "paint";
+let strokeColor = DEFAULT_COLOR; // metadata attached to every painted box
+let tool = "rect";
 let dragging = false;
 let dragStart = null;
 let dragCur = null;
+let penLast = null; // last painted pen cell, as {ix, iy}
 let panning = false;
 let panLast = null;
 
@@ -47,7 +54,14 @@ let panLast = null;
 // semantics (union of additions minus union of removals) into the surviving
 // boxes.
 function materialize() {
-  boxes = difference(adds, removes);
+  const rems = normalize(removes);
+  const pieces = [];
+  for (const a of adds) {
+    for (const p of subtractAll({ min: a.min, max: a.max }, rems)) {
+      pieces.push({ min: p.min, max: p.max, color: a.color });
+    }
+  }
+  boxes = pieces;
   draw();
 }
 
@@ -55,12 +69,19 @@ function applyEntries(entries) {
   const newAdds = [];
   const newRemoves = [];
   for (const e of entries) {
-    if (e.kind === "add") newAdds.push(e.data);
-    else if (e.kind === "remove") newRemoves.push(e.data);
+    if (e.kind === "add") {
+      newAdds.push({
+        min: e.data.min,
+        max: e.data.max,
+        color: e.meta?.color ?? DEFAULT_COLOR,
+      });
+    } else if (e.kind === "remove") {
+      newRemoves.push(e.data);
+    }
     logEntries.push(e);
     appendLog(e);
   }
-  adds = union(adds, newAdds);
+  adds.push(...newAdds); // keep stroke order and one color per box
   removes = union(removes, newRemoves);
   materialize();
 }
@@ -92,13 +113,13 @@ function draw() {
 
 function drawBoxes(w, h) {
   const px = cam.scale;
-  ctx.fillStyle = "#e6e8ee";
   for (const b of boxes) {
     const sx = (b.min[0] - cam.x) * px + w / 2;
     const sy = (b.min[1] - cam.y) * px + h / 2;
     const sw = (b.max[0] - b.min[0]) * px;
     const sh = (b.max[1] - b.min[1]) * px;
     if (sx + sw < 0 || sx > w || sy + sh < 0 || sy > h) continue;
+    ctx.fillStyle = b.color;
     ctx.fillRect(sx, sy, sw, sh);
   }
 }
@@ -139,7 +160,7 @@ function strokeGrid(cell, first, last, rowTop, rowBottom, w, h, style, width) {
 }
 
 function drawPreview(w, h) {
-  if (!dragging) return;
+  if (!dragging || tool === "pen") return;
   const r = gridRect(dragStart, dragCur, gridSize(cam.scale, gridOffset));
   const sx = (r.x0 - cam.x) * cam.scale + w / 2;
   const sy = (r.y0 - cam.y) * cam.scale + h / 2;
@@ -156,6 +177,36 @@ function pointAt(e) {
   };
 }
 
+function penCell(p) {
+  const cell = gridSize(cam.scale, gridOffset);
+  return { ix: Math.floor(p.x / cell), iy: Math.floor(p.y / cell) };
+}
+
+function penRect(c) {
+  const cell = gridSize(cam.scale, gridOffset);
+  return {
+    x0: c.ix * cell,
+    y0: c.iy * cell,
+    x1: (c.ix + 1) * cell,
+    y1: (c.iy + 1) * cell,
+  };
+}
+
+function sendPaint(r) {
+  sendCmd({
+    kind: "paint",
+    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
+    meta: { color: strokeColor },
+  });
+}
+
+function sendErase(r) {
+  sendCmd({
+    kind: "erase",
+    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
+  });
+}
+
 // ---------- interaction ----------
 boardEl.addEventListener("mousedown", (e) => {
   if (e.button === 1 || tool === "pan") {
@@ -165,6 +216,11 @@ boardEl.addEventListener("mousedown", (e) => {
   }
   if (e.button !== 0) return;
   dragging = true;
+  if (tool === "pen") {
+    penLast = penCell(pointAt(e));
+    sendPaint(penRect(penLast));
+    return;
+  }
   dragStart = pointAt(e);
   dragCur = dragStart;
 });
@@ -177,10 +233,16 @@ window.addEventListener("mousemove", (e) => {
     draw();
     return;
   }
-  if (dragging) {
-    dragCur = pointAt(e);
-    draw();
+  if (!dragging) return;
+  if (tool === "pen") {
+    const cur = penCell(pointAt(e));
+    const cell = gridSize(cam.scale, gridOffset);
+    for (const r of gridLine(penLast, cur, cell)) sendPaint(r);
+    penLast = cur;
+    return;
   }
+  dragCur = pointAt(e);
+  draw();
 });
 
 window.addEventListener("mouseup", () => {
@@ -190,7 +252,7 @@ window.addEventListener("mouseup", () => {
   }
   if (!dragging) return;
   dragging = false;
-  commitStroke();
+  if (tool !== "pen") commitStroke();
 });
 
 boardEl.addEventListener(
@@ -214,19 +276,18 @@ boardEl.addEventListener(
 function commitStroke() {
   const r = gridRect(dragStart, dragCur, gridSize(cam.scale, gridOffset));
   if (r.x1 <= r.x0 || r.y1 <= r.y0) return;
-  sendCmd({
-    kind: tool === "erase" ? "erase" : "paint",
-    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
-  });
+  if (tool === "erase") sendErase(r);
+  else sendPaint(r);
 }
 
 function setTool(name) {
   tool = name;
-  paintBtn.classList.toggle("active", name === "paint");
+  rectBtn.classList.toggle("active", name === "rect");
+  penBtn.classList.toggle("active", name === "pen");
   eraseBtn.classList.toggle("active", name === "erase");
   panBtn.classList.toggle("active", name === "pan");
   boardEl.style.cursor = name === "pan" ? "grab" : "crosshair";
-  toolLabel.textContent = { paint: "Paint", erase: "Erase", pan: "Pan" }[name];
+  toolLabel.textContent = { rect: "Rect", pen: "Pen", erase: "Erase", pan: "Pan" }[name];
 }
 
 function updateGridLabel() {
@@ -342,6 +403,7 @@ function downloadJSONL() {
       id: e.id,
       kind: e.kind,
       data: e.data,
+      meta: e.meta,
       client: e.client,
       at: e.at,
     }),
@@ -358,10 +420,63 @@ function downloadJSONL() {
   URL.revokeObjectURL(a.href);
 }
 
+async function importJSONL(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  let imported = 0;
+  let skipped = 0;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      skipped++;
+      continue;
+    }
+    const cmd = entryToCmd(entry);
+    if (!cmd) {
+      skipped++;
+      continue;
+    }
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(cmd));
+      imported++;
+    } else {
+      skipped++;
+    }
+  }
+  setStatus(`imported ${imported} ops${skipped ? `, skipped ${skipped}` : ""}`);
+  input.value = "";
+}
+
+function entryToCmd(entry) {
+  const kind =
+    entry.kind === "add" ? "paint" : entry.kind === "remove" ? "erase" : null;
+  if (!kind || !entry.data) return null;
+  const { min, max } = entry.data;
+  if (!Array.isArray(min) || !Array.isArray(max)) return null;
+  const cmd = {
+    kind,
+    data: { x0: min[0], y0: min[1], x1: max[0], y1: max[1] },
+  };
+  if (entry.meta) cmd.meta = entry.meta;
+  return cmd;
+}
+
 // ---------- events ----------
-paintBtn.addEventListener("click", () => setTool("paint"));
+rectBtn.addEventListener("click", () => setTool("rect"));
+penBtn.addEventListener("click", () => setTool("pen"));
 eraseBtn.addEventListener("click", () => setTool("erase"));
 panBtn.addEventListener("click", () => setTool("pan"));
+
+strokeColorEl.addEventListener("input", () => {
+  strokeColor = strokeColorEl.value;
+});
+
+importJsonlBtn.addEventListener("click", () => importJsonlInput.click());
+importJsonlInput.addEventListener("change", () => importJSONL(importJsonlInput));
 
 gridPlus.addEventListener("click", () => {
   gridOffset += 1;
@@ -401,7 +516,7 @@ window.addEventListener("resize", draw);
 // ---------- boot ----------
 function boot() {
   resizeCanvas();
-  setTool("paint");
+  setTool("rect");
   updateGridLabel();
   draw();
   connect();

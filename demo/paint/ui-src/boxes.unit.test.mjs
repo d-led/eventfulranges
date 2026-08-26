@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalize, union, difference } from "./boxes.js";
+import { normalize, union, difference, subtractAll } from "./boxes.js";
 
 const box = (x0, y0, x1, y1) => ({ min: [x0, y0], max: [x1, y1] });
 const covers = (boxes, x, y) =>
@@ -35,5 +35,16 @@ describe("boxes", () => {
     expect(difference([box(0, 0, 4, 4)], [box(10, 10, 12, 12)])).toEqual([
       box(0, 0, 4, 4),
     ]);
+  });
+
+  it("subtracts every box in a list from one box", () => {
+    const pieces = subtractAll(box(0, 0, 4, 4), [
+      box(1, 1, 2, 2),
+      box(2, 2, 3, 3),
+    ]);
+    expect(covers(pieces, 0.5, 0.5)).toBe(true);
+    expect(covers(pieces, 1.5, 1.5)).toBe(false);
+    expect(covers(pieces, 2.5, 2.5)).toBe(false);
+    expect(covers(pieces, 3.5, 3.5)).toBe(true);
   });
 });

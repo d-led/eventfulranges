@@ -6,6 +6,7 @@ import {
   gridLevel,
   gridSize,
   gridRect,
+  gridLine,
   bounds,
   fitCamera,
 } from "./grid.js";
@@ -65,6 +66,40 @@ describe("grid", () => {
       x1: 3,
       y1: 3,
     });
+  });
+
+  it("traces a pen stroke across the cells between two anchors", () => {
+    const cell = (ix, iy) => ({ x0: ix, y0: iy, x1: ix + 1, y1: iy + 1 });
+    expect(gridLine({ ix: 0, iy: 0 }, { ix: 3, iy: 0 }, 1)).toEqual([
+      cell(1, 0),
+      cell(2, 0),
+      cell(3, 0),
+    ]);
+    expect(gridLine({ ix: 0, iy: 0 }, { ix: 0, iy: 2 }, 1)).toEqual([
+      cell(0, 1),
+      cell(0, 2),
+    ]);
+    expect(gridLine({ ix: 0, iy: 0 }, { ix: 2, iy: 2 }, 1)).toEqual([
+      cell(1, 1),
+      cell(2, 2),
+    ]);
+  });
+
+  it("traces no cells when the anchor cell has not moved", () => {
+    expect(gridLine({ ix: 1, iy: 1 }, { ix: 1, iy: 1 }, 1)).toEqual([]);
+  });
+
+  it("traces subcells at a finer grid level", () => {
+    const half = (ix, iy) => ({
+      x0: ix * 0.5,
+      y0: iy * 0.5,
+      x1: (ix + 1) * 0.5,
+      y1: (iy + 1) * 0.5,
+    });
+    expect(gridLine({ ix: 0, iy: 0 }, { ix: 2, iy: 0 }, 0.5)).toEqual([
+      half(1, 0),
+      half(2, 0),
+    ]);
   });
 
   it("bounds boxes or reports nothing to fit", () => {

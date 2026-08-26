@@ -87,6 +87,65 @@ test("grid controls shift the subdivision level", async ({ page }) => {
   await expect.poll(() => levelOf()).toBe(before);
 });
 
+test("pen paints cells along a sweep", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#toolPen").click();
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 24, cy, { steps: 3 });
+  await page.mouse.up();
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+});
+
+test("a stroke carries its color as metadata", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#strokeColor").evaluate((el) => {
+    el.value = "#ff5500";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const first = JSON.parse(content.trim().split("\n")[0]);
+  expect(first.meta).toEqual({ color: "#ff5500" });
+});
+
+test("imports a JSONL log onto the board", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#importJsonlInput").setInputFiles({
+    name: "board.jsonl",
+    mimeType: "application/x-ndjson",
+    buffer: Buffer.from(
+      JSON.stringify({
+        kind: "add",
+        data: { min: [0, 0], max: [2, 2] },
+        meta: { color: "#00ff00" },
+      }) + "\n",
+    ),
+  });
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+});
+
 // drawRect drags a 4x4 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 12 px per cell).
 async function drawRect(page) {

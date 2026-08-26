@@ -22,11 +22,20 @@
         <div class="field">
           <label>Tool</label>
           <div class="row">
-            <button id="toolPaint" class="active">Paint</button>
+            <button id="toolRect" class="active">Rect</button>
+            <button id="toolPen">Pen</button>
             <button id="toolErase">Erase</button>
             <button id="toolPan">Pan</button>
           </div>
-          <p class="hint">Active tool: <strong id="toolLabel">Paint</strong></p>
+          <p class="hint">Active tool: <strong id="toolLabel">Rect</strong></p>
+        </div>
+
+        <div class="field">
+          <label for="strokeColor">Color</label>
+          <input type="color" id="strokeColor" value="#e6e8ee" />
+          <p class="hint">
+            Every painted box carries its color as metadata in the log.
+          </p>
         </div>
 
         <div class="field">
@@ -65,6 +74,16 @@
           <p class="hint">
             The append-only operation log, one JSON object per line — the raw
             event source behind the board.
+          </p>
+          <button id="importJsonl">Import JSONL</button>
+          <input
+            type="file"
+            id="importJsonlInput"
+            accept=".jsonl,application/x-ndjson,application/json"
+            hidden
+          />
+          <p class="hint">
+            Load a picture by replaying a downloaded log back onto the board.
           </p>
         </div>
 
