@@ -13,7 +13,7 @@ import (
 
 // Store is an in-memory EventStore.
 type Store struct {
-	mu          sync.Mutex
+	mu          sync.RWMutex
 	ops         []op.Op
 	snapshot    []byte
 	snapshotVer int64
@@ -38,8 +38,8 @@ func (s *Store) Append(_ context.Context, expectedVersion int64, events []op.Op)
 
 // Read returns the operations after fromVersion and the log length.
 func (s *Store) Read(_ context.Context, fromVersion int64) ([]op.Op, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if fromVersion < 0 {
 		fromVersion = 0
 	}
@@ -62,8 +62,8 @@ func (s *Store) SaveSnapshot(_ context.Context, data []byte, version int64) erro
 
 // LoadSnapshot returns the stored snapshot.
 func (s *Store) LoadSnapshot(_ context.Context) ([]byte, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if !s.hasSnapshot {
 		return nil, 0, store.ErrSnapshotNotFound
 	}

@@ -19,7 +19,7 @@ import (
 // it turns client commands into event-log entries by delegating to a Canvas.
 // Browsers receive the log and materialize the view themselves.
 type board struct {
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	canvas Canvas
 	log    []collab.Entry
 }
@@ -155,8 +155,8 @@ func (b *board) fold(kind, id string, rect Rect, meta json.RawMessage) ([]Event,
 
 // Log returns the session's operation log in append order.
 func (b *board) Log() []collab.Entry {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return append([]collab.Entry(nil), b.log...)
 }
 

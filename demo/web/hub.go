@@ -48,7 +48,7 @@ type opRecord struct {
 // other session. The view is materialized by the n-dimensional event-sourced
 // engine; the hub only folds client commands into it and tracks presence.
 type hub struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	events   *pubsub.PubSub[string, serverMsg]
 	set      *eventfulranges.BoxSet
 	compact  bool // compaction mode: canonical (keep every box) or merge adjacent
@@ -195,8 +195,8 @@ func (h *hub) publishGlobalPresence() {
 
 // snapshot returns the current view without broadcasting it.
 func (h *hub) snapshot() view {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.materializeLocked()
 }
 

@@ -45,7 +45,7 @@ const errorField = "error"
 // seenUsers remembers every email that has ever joined any session, in memory
 // only: a restart forgets the list, by design.
 type seenUsers struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	users map[string]struct{}
 }
 
@@ -63,8 +63,8 @@ func (s *seenUsers) add(email string) {
 }
 
 func (s *seenUsers) list() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := make([]string, 0, len(s.users))
 	for email := range s.users {
 		out = append(out, email)

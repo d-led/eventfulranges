@@ -22,7 +22,7 @@ import (
 
 // Store persists box operations and snapshots in one JSON Lines stream.
 type Store struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	opsPath string
 
 	// appendLines writes the serialized events to the log. It is replaceable
@@ -82,8 +82,8 @@ func (s *Store) appendEvents(file *os.File, events []op.Op) error {
 // Read returns the operations after fromVersion and the total operation
 // count.
 func (s *Store) Read(_ context.Context, fromVersion int64) ([]op.Op, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.read(fromVersion)
 }
 
@@ -112,8 +112,8 @@ func (s *Store) SaveSnapshot(_ context.Context, data []byte, version int64) erro
 
 // LoadSnapshot returns the newest snapshot record in the stream.
 func (s *Store) LoadSnapshot(_ context.Context) ([]byte, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var latest *snapshotMarker
 	_, err := s.scan(func(_ int64, _ *op.Op, snap *snapshotMarker) {
 		if snap != nil && (latest == nil || snap.Version >= latest.Version) {

@@ -10,7 +10,6 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"log"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -182,8 +181,7 @@ func (s *Sessions) UnsubscribePresence(ch chan Message) {
 type Session struct {
 	id       string
 	model    Model
-	mu       sync.Mutex
-	clients  int
+	clients  atomic.Int64
 	events   *pubsub.PubSub[string, Message]
 	total    *atomic.Int64
 	presence *pubsub.PubSub[string, Message]
@@ -260,10 +258,7 @@ func (s *Session) Unsubscribe(ch chan Message) {
 // Join registers a watcher, returns the session's activity log and the new
 // watcher count, and publishes the updated presence.
 func (s *Session) Join(email string) (log []Entry, clients int) {
-	s.mu.Lock()
-	s.clients++
-	clients = s.clients
-	s.mu.Unlock()
+	clients = int(s.clients.Add(1))
 	s.total.Add(1)
 	s.seen.add(email)
 	s.roster.connect(email, s.id)
@@ -274,23 +269,30 @@ func (s *Session) Join(email string) (log []Entry, clients int) {
 
 // clientCount reports how many watchers are currently connected.
 func (s *Session) clientCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.clients
+	return int(s.clients.Load())
 }
 
 // Leave unregisters a watcher and publishes the updated presence.
 func (s *Session) Leave(email string) {
-	s.mu.Lock()
-	if s.clients > 0 {
-		s.clients--
-		s.total.Add(-1)
-	}
-	clients := s.clients
-	s.mu.Unlock()
+	clients := s.leaveDecrement()
 	s.roster.disconnect(email, s.id)
 	s.publishPresence(clients)
 	s.publishRoster()
+}
+
+// leaveDecrement lowers the watcher count by one without going negative and
+// returns the new count.
+func (s *Session) leaveDecrement() int {
+	for {
+		c := s.clients.Load()
+		if c == 0 {
+			return 0
+		}
+		if s.clients.CompareAndSwap(c, c-1) {
+			s.total.Add(-1)
+			return int(c - 1)
+		}
+	}
 }
 
 func (s *Session) publishPresence(clients int) {

@@ -17,7 +17,7 @@ type RosterEntry struct {
 // is the shared, global view published to every client whenever someone joins
 // or leaves any session.
 type roster struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	users map[string]map[string]int // email -> sessionID -> connection count
 }
 
@@ -59,8 +59,8 @@ func (r *roster) disconnect(email, sessionID string) {
 // snapshot returns the roster as a deterministically ordered list, with emails
 // anonymized so the wire never carries a raw address.
 func (r *roster) snapshot() []RosterEntry {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	entries := make([]RosterEntry, 0, len(r.users))
 	for email, sessions := range r.users {
 		ids := make([]string, 0, len(sessions))
