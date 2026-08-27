@@ -949,7 +949,6 @@ function summaryLine(batch) {
 
 function appendLog(li) {
   logEl.appendChild(li);
-  logEl.scrollTop = logEl.scrollHeight;
   while (logEl.children.length > LOG_MAX) logEl.removeChild(logEl.firstChild);
 }
 

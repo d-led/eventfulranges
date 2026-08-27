@@ -63,7 +63,7 @@ main {
 
 #activity {
   grid-area: activity;
-  max-height: 180px;
+  height: 180px;
   overflow-y: auto;
   border-top: 1px solid var(--border);
   background: var(--panel);
@@ -387,7 +387,7 @@ button:disabled:hover {
     min-height: 320px;
   }
   #activity {
-    max-height: 160px;
+    height: 160px;
   }
   /* Icon-only buttons: hide the text label when an icon is present. */
   .btn-text {
