@@ -381,6 +381,25 @@ button:disabled:hover {
   padding: 6px 9px;
 }
 
+/* The GitHub link in the toolbar is an <a> styled like a button. */
+#toolbar .gh-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #222734;
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+#toolbar .gh-btn:hover {
+  filter: brightness(1.12);
+}
+
 .toolbar-group {
   display: inline-flex;
   align-items: center;
@@ -448,10 +467,9 @@ button:disabled:hover {
     overflow-y: visible;
     padding: 12px 14px;
   }
-  /* The description and badge are noise on a phone: drop them so the board
-     keeps its room. */
-  .lede,
-  .gh {
+  /* The description is noise on a phone: drop it so the board keeps its
+     room. */
+  .lede {
     display: none;
   }
   /* The board itself must stay at least 80% of the viewport tall, so a phone
@@ -467,7 +485,8 @@ button:disabled:hover {
   .btn-text {
     display: none;
   }
-  #toolbar button {
+  #toolbar button,
+  #toolbar .gh-btn {
     padding: 8px;
   }
 }
@@ -512,29 +531,4 @@ body.zen .zen-hidden {
 
 body.zen .zen-hud {
   display: flex;
-}
-
-/* GitHub badge in the sidebar. */
-.gh {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.gh a {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.gh a:hover {
-  color: var(--fg);
-}
-
-.gh-mark {
-  width: 16px;
-  height: 16px;
 }
