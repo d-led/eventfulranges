@@ -10,6 +10,14 @@ import (
 	"github.com/d-led/eventfulranges/demo/internal/collab"
 )
 
+// Build metadata, injected by goreleaser with -ldflags at release time and
+// left at these defaults for local development.
+var (
+	version = "dev"
+	commit  = "unknown"
+	branch  = "unknown"
+)
+
 //go:generate npm --prefix ui-src install --no-audit --no-fund
 //go:generate npm --prefix ui-src run build
 
@@ -25,7 +33,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 
 	sessions := collab.NewPersistentSessions(collab.SessionTTL, *data, func() collab.Model { return newBoard() })
-	log.Printf("eventfulranges whiteboard listening on %s", *addr)
+	log.Printf("eventfulranges whiteboard %s (branch %s, commit %s) listening on %s", version, branch, commit, *addr)
 	log.Printf("open %s", collab.UIURL(*addr))
 	if err := collab.NewRouter(sessions, GetFS(), nil).Run(*addr); err != nil {
 		log.Fatal(err)

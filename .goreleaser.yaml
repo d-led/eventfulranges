@@ -8,10 +8,11 @@ dist: .goreleaser-dist
 
 before:
   hooks:
-    # Build the embedded UI into demo/web/dist before go:embed runs.
+    # Build the embedded UIs into their dist/ dirs before go:embed runs.
     # npm ci (not install) keeps package-lock.json from drifting and the
     # working tree clean, so the tag build is reproducible.
-    - sh: cd demo/web/ui-src && npm ci --no-audit --no-fund && npm run build
+    - cd demo/web/ui-src && npm ci --no-audit --no-fund && npm run build
+    - cd demo/paint/ui-src && npm ci --no-audit --no-fund && npm run build
 
 builds:
   - id: web
@@ -26,7 +27,28 @@ builds:
     tags:
       - embed
     ldflags:
-      - -s -w
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.branch={{ .Branch }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+  - id: paint
+    dir: demo/paint
+    main: .
+    binary: eventfulranges-paint
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # The UI is only embedded with this build tag (see demo/paint/embed.go).
+    tags:
+      - embed
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.branch={{ .Branch }}
     goos:
       - linux
       - darwin
@@ -42,13 +64,20 @@ universal_binaries:
   - id: web
     ids:
       - web
+    name_template: eventfulranges
+    replace: true
+
+  - id: paint
+    ids:
+      - paint
+    name_template: eventfulranges-paint
     replace: true
 
 archives:
   - formats: ['tar.gz']
     # uname-compatible name template; zip for Windows.
     name_template: >-
-      {{ .ProjectName }}_
+      {{ .Binary }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386

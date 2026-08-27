@@ -18,6 +18,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Build metadata, injected by goreleaser with -ldflags at release time and
+// left at these defaults for local development.
+var (
+	version = "dev"
+	commit  = "unknown"
+	branch  = "unknown"
+)
+
 //go:generate npm --prefix ui-src install --no-audit --no-fund
 //go:generate npm --prefix ui-src run build
 
@@ -33,7 +41,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 
 	s := newPersistentSessions(sessionTTL, *data)
-	log.Printf("eventfulranges visualizer listening on %s", *addr)
+	log.Printf("eventfulranges visualizer %s (branch %s, commit %s) listening on %s", version, branch, commit, *addr)
 	log.Printf("open %s", uiURL(*addr))
 	if err := newRouter(s, GetFS()).Run(*addr); err != nil {
 		log.Fatal(err)
