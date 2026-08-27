@@ -16,6 +16,8 @@ const options = {
 
 mkdirSync("../dist", { recursive: true });
 cpSync("index.html", "../dist/index.html");
+cpSync("admin.html", "../dist/admin.html");
+cpSync("admin.js", "../dist/admin.js");
 cpSync("style.css", "../dist/style.css");
 
 if (watch) {

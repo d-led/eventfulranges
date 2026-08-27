@@ -623,6 +623,40 @@ test("on a small phone the board stays at least 80% of the viewport tall", async
   expect(box.height).toBeGreaterThanOrEqual(Math.floor(viewport.height * 0.8));
 });
 
+test("admins see the admin link and page", async ({ browser }) => {
+  const context = await browser.newContext({
+    extraHTTPHeaders: { "X-Auth-Request-Email": "admin@example.com" },
+  });
+  const page = await context.newPage();
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await expect(page.locator("#adminLink")).toBeVisible();
+  await page.locator("#adminLink").click();
+  await page.waitForURL(/\/admin\//);
+  // The page fetched and rendered the instance info.
+  await expect(page.locator("#storageBytes")).toHaveText(/\d/);
+  await expect(page.locator("#users")).toBeAttached();
+  await expect(page.locator("#sessions")).toBeAttached();
+
+  await context.close();
+});
+
+test("non-admins do not see the admin link and are denied the admin API", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await expect(page.locator("#adminLink")).toBeHidden();
+
+  const res = await request.get("/admin/api/info");
+  expect(res.status()).toBe(403);
+});
+
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 24 px per cell).
 async function drawRect(page) {

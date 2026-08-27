@@ -7,6 +7,10 @@
 # directory (the repo root) because the demo module replaces the library with
 # the parent module. Config: ./fly.toml, build: ./Dockerfile.
 # Proxy: public oauth2-proxy front door (eventfulranges), in demo/paint/proxy.
+#
+# Admin: the backend gates /admin by ADMIN_EMAILS (a comma-separated list of
+# emails). Set ADMIN_EMAILS in the environment before deploying to store it as
+# a Fly secret, or set the secret once by hand.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -50,6 +54,14 @@ if [ -n "${OAUTH2_PROXY_CLIENT_ID:-}" ] && ! secret_names | grep -qx "OAUTH2_PRO
 fi
 if [ -n "${OAUTH2_PROXY_CLIENT_SECRET:-}" ] && ! secret_names | grep -qx "OAUTH2_PROXY_CLIENT_SECRET"; then
   fly secrets set -a "$PROXY_APP" "OAUTH2_PROXY_CLIENT_SECRET=$OAUTH2_PROXY_CLIENT_SECRET"
+fi
+
+# --- admin access -----------------------------------------------------------
+# The admin area is gated by a comma-separated list of emails, set as a secret
+# on the backend. Provide it via ADMIN_EMAILS (or set it by hand with
+# `fly secrets set -a eventfulranges-app ADMIN_EMAILS=...`).
+if [ -n "${ADMIN_EMAILS:-}" ] && ! fly secrets list -a "$BACKEND_APP" 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "ADMIN_EMAILS"; then
+  fly secrets set -a "$BACKEND_APP" "ADMIN_EMAILS=$ADMIN_EMAILS"
 fi
 
 # --- backend ----------------------------------------------------------------

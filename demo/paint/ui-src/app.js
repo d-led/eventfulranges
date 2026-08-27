@@ -51,6 +51,7 @@ const backlogEl = $("backlog");
 const zenBtn = $("zenBtn");
 const zenBacklog = $("zenBacklog");
 const toastEl = $("toast");
+const adminLink = $("adminLink");
 
 const ctx = boardEl.getContext("2d");
 
@@ -1257,6 +1258,18 @@ function boot() {
   updateBacklog();
   draw();
   connect();
+  checkAdmin();
+}
+
+// checkAdmin reveals the admin link when the server recognizes this user as an
+// admin (the server gates /admin by the reverse-proxy email, so a 403 hides it).
+async function checkAdmin() {
+  try {
+    const res = await fetch("/admin/api/info");
+    adminLink.hidden = !res.ok;
+  } catch {
+    adminLink.hidden = true;
+  }
 }
 
 boot();

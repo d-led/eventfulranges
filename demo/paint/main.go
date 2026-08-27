@@ -35,7 +35,9 @@ func main() {
 	sessions := collab.NewPersistentSessions(collab.SessionTTL, *data, func() collab.Model { return newBoard() })
 	log.Printf("eventfulranges whiteboard %s (branch %s, commit %s) listening on %s", version, branch, commit, *addr)
 	log.Printf("open %s", collab.UIURL(*addr))
-	if err := collab.NewRouter(sessions, GetFS(), nil).Run(*addr); err != nil {
+	router := collab.NewRouter(sessions, GetFS(), nil)
+	collab.RegisterAdminRoutes(router, sessions, parseAdminList(os.Getenv("ADMIN_EMAILS")), GetFS())
+	if err := router.Run(*addr); err != nil {
 		log.Fatal(err)
 	}
 }

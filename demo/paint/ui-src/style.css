@@ -172,6 +172,23 @@ h1 {
   font-weight: 600;
 }
 
+.admin-link {
+  display: inline-block;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* The explicit display above overrides the UA's [hidden] rule, so restore it. */
+.admin-link[hidden] {
+  display: none;
+}
+
+.admin-link:hover {
+  text-decoration: underline;
+}
+
 .hint {
   margin: 8px 0 0;
   font-size: 12px;

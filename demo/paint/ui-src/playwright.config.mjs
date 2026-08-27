@@ -13,6 +13,7 @@ export default defineConfig({
   webServer: {
     cwd: "..",
     command: "go run . -addr 127.0.0.1:18083",
+    env: { ...process.env, ADMIN_EMAILS: "admin@example.com" },
     url: "http://127.0.0.1:18083/ui/app.js",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
