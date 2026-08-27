@@ -46,6 +46,29 @@ test("downloads the operation log as JSONL", async ({ page }) => {
   expect(first.data).toHaveProperty("max");
 });
 
+test("one-shot feedback appears as a toast and fades away", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  await download.path(); // consume the download
+
+  await expect(page.locator("#toast")).toHaveClass(/show/);
+  await expect(page.locator("#toast")).toContainText("downloaded board.jsonl");
+
+  // The toast dismisses itself without any further interaction.
+  await expect(page.locator("#toast")).not.toHaveClass(/show/, {
+    timeout: 5000,
+  });
+});
+
 test("presence separates this session from all connected", async ({
   browser,
 }) => {

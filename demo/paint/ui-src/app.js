@@ -50,6 +50,7 @@ const redoBtn = $("redoBtn");
 const backlogEl = $("backlog");
 const zenBtn = $("zenBtn");
 const zenBacklog = $("zenBacklog");
+const toastEl = $("toast");
 
 const ctx = boardEl.getContext("2d");
 
@@ -568,7 +569,7 @@ function fitAll() {
   const { w, h } = resizeCanvas();
   const view = fitCamera(boxes, w, h);
   if (!view) {
-    setStatus("nothing to fit");
+    notify("nothing to fit");
     return;
   }
   cam.x = view.x;
@@ -851,6 +852,20 @@ function updateBacklog() {
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+// notify flashes a transient toast for one-shot feedback (copy, download,
+// import) that would otherwise be invisible at the top of a phone screen.
+let toastTimer = null;
+
+function notify(text) {
+  toastEl.textContent = text;
+  toastEl.classList.add("show");
+  if (toastTimer !== null) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove("show");
+    toastTimer = null;
+  }, 2400);
 }
 
 // updatePresence derives the "here" and "connected" counts from the roster, so
@@ -1137,7 +1152,7 @@ async function importJSONL(input) {
       updateGridLabel();
     }
   }
-  setStatus(`imported ${imported} ops${skipped ? `, skipped ${skipped}` : ""}`);
+  notify(`imported ${imported} ops${skipped ? `, skipped ${skipped}` : ""}`);
   input.value = "";
   draw();
 }
@@ -1215,15 +1230,15 @@ zoomResetBtn.addEventListener("click", zoomReset);
 copyShareBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(location.href);
-    setStatus("share link copied");
+    notify("share link copied");
   } catch {
-    setStatus("could not copy link");
+    notify("could not copy link");
   }
 });
 
 downloadJsonlBtn.addEventListener("click", () => {
   downloadJSONL();
-  setStatus(`downloaded board.jsonl (${logEntries.length} ops)`);
+  notify(`downloaded board.jsonl (${logEntries.length} ops)`);
 });
 
 newSessionBtn.addEventListener("click", () => location.replace("/ui/"));
