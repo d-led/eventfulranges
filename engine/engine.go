@@ -53,6 +53,7 @@ type Engine struct {
 	removes  []interval.Interval
 	version  int64
 	since    int
+	dirty    bool
 }
 
 // Open loads an existing log (and snapshot, when compatible) and returns a
@@ -93,22 +94,25 @@ func (e *Engine) ApplyAll(ctx context.Context, ops []op.Op) error {
 
 // Materialize returns a copy of the current canonical interval view.
 func (e *Engine) Materialize() []interval.Interval {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
 	return append([]interval.Interval(nil), e.view...)
 }
 
 // Contains reports whether x belongs to the materialized set.
 func (e *Engine) Contains(x float64) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
 	return interval.Contains(e.view, x)
 }
 
 // Overlaps reports whether any materialized interval shares a point with iv.
 func (e *Engine) Overlaps(iv interval.Interval) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
 	return interval.Overlaps(e.view, iv)
 }
 
@@ -228,8 +232,9 @@ func (e *Engine) catchUp(ctx context.Context) error {
 func (e *Engine) applyToView(o op.Op) {
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW:
-		e.segments = strategy.CombineSegments(e.strategy, e.segments, strategy.Segments(e.strategy, []op.Op{o}))
-		e.view = strategy.ToIntervals(e.segments)
+		// A single op can reorder the whole priority-resolved cover, so defer
+		// the rebuild until the view is actually requested.
+		e.dirty = true
 	case strategy.AdditiveWins:
 		if o.Kind == op.KindAdd {
 			e.adds = interval.Union(e.adds, []interval.Interval{o.Interval})
@@ -242,6 +247,15 @@ func (e *Engine) applyToView(o op.Op) {
 			e.adds = interval.Union(e.adds, []interval.Interval{o.Interval})
 			e.view = e.adds
 		}
+	}
+}
+
+// ensureView rebuilds the cached view when a deferred materialization is
+// pending.
+func (e *Engine) ensureView() {
+	if e.dirty {
+		e.materializeAll()
+		e.dirty = false
 	}
 }
 

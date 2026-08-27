@@ -102,6 +102,7 @@ func (e *Engine) buildSnapshot() Snapshot {
 // snapshot writes the current view and version to the store. Backends without
 // snapshot support skip it.
 func (e *Engine) snapshot(ctx context.Context) error {
+	e.ensureView()
 	sn, ok := e.store.(store.Snapshotter)
 	if !ok {
 		return nil
@@ -120,6 +121,7 @@ func (e *Engine) snapshot(ctx context.Context) error {
 func (e *Engine) Compact(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.ensureView()
 	compactor, ok := e.store.(store.Compactor)
 	if !ok {
 		return store.ErrCompactionUnsupported
