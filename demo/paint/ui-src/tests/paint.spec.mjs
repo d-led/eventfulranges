@@ -657,6 +657,86 @@ test("non-admins do not see the admin link and are denied the admin API", async 
   expect(res.status()).toBe(403);
 });
 
+test("the admin page does not hold a session open", async ({ browser }) => {
+  const context = await browser.newContext({
+    extraHTTPHeaders: { "X-Auth-Request-Email": "admin@example.com" },
+  });
+
+  // One whiteboard tab connects to a session and paints into it.
+  const board = await context.newPage();
+  await board.goto("/ui/");
+  await board.waitForURL(/[?&]s=/);
+  const session = new URL(board.url()).searchParams.get("s");
+  await expect(board.locator("#status")).toContainText("connected");
+  await drawRect(board);
+  await expect(board.locator("#log li.add").first()).toContainText("add");
+
+  // The admin page is plain HTTP: it adds no client, so the live whiteboard
+  // tab alone accounts for the session's client count.
+  const admin = await context.newPage();
+  await admin.goto("/admin/");
+  await expect(admin.locator("#storageBytes")).toHaveText(/\d/);
+  const row = admin.locator("#sessions tr", { hasText: session });
+  await expect(row.locator("td").nth(2)).toHaveText("1");
+
+  // Close the whiteboard; the admin page stays open, yet the session becomes
+  // inactive and deletable.
+  await board.close();
+  await expect
+    .poll(async () => {
+      const res = await admin.request.get("/admin/api/info", {
+        headers: { "X-Auth-Request-Email": "admin@example.com" },
+      });
+      const info = await res.json();
+      return info.sessions.find((s) => s.id === session)?.clients ?? 0;
+    })
+    .toBe(0);
+
+  const del = await admin.request.delete(`/admin/api/sessions/${session}`, {
+    headers: { "X-Auth-Request-Email": "admin@example.com" },
+  });
+  expect(del.status()).toBe(204);
+
+  await admin.reload();
+  await expect(admin.locator("#sessions tr", { hasText: session })).toHaveCount(0);
+
+  await context.close();
+});
+
+test("painting still works after extreme zoom far from the origin", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  // Pan ~50 board units right, then zoom in far past the grid's default
+  // limit. The zoom must cap at the precision budget instead of crashing.
+  await page.mouse.move(cx, cy);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(cx - 1200, cy, { steps: 20 });
+  await page.mouse.up({ button: "right" });
+
+  for (let i = 0; i < 48; i++) {
+    await page.locator("#zoomIn").click();
+  }
+  await expect(page.locator("#zoomLabel")).not.toHaveText("100%");
+
+  // A stroke at this zoom still lands as a real operation, not an error.
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 36, cy + 36);
+  await page.mouse.up();
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+  await expect(page.locator("#status")).toContainText("connected");
+});
+
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is
 // cell (0,0) at the initial camera (scale 24 px per cell).
 async function drawRect(page) {

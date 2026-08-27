@@ -1,5 +1,8 @@
 import { normalize, subtractAll } from "./boxes.js";
 import {
+  MIN_CELL_PX,
+  MIN_LEVEL,
+  MAX_LEVEL,
   gridLevel,
   gridSize,
   gridStep,
@@ -186,51 +189,31 @@ function drawGrid(w, h) {
   // Draw the coarsest power-of-two multiple of the cell that is still readable;
   // strokes still snap to the fine cell, but the grid never vanishes.
   const step = gridStep(cell, cam.scale);
-  const left = cam.x - w / 2 / cam.scale;
-  const right = cam.x + w / 2 / cam.scale;
-  const top = cam.y - h / 2 / cam.scale;
-  const bottom = cam.y + h / 2 / cam.scale;
-  const first = Math.floor(left / step);
-  const last = Math.ceil(right / step);
-  const rowTop = Math.floor(top / step);
-  const rowBottom = Math.ceil(bottom / step);
+  // Iterate lines relative to the camera, so their indices stay small no
+  // matter how far the camera has panned from the origin at extreme zoom.
+  const centerX = Math.round(cam.x / step);
+  const centerY = Math.round(cam.y / step);
+  const offX = cam.x - centerX * step;
+  const offY = cam.y - centerY * step;
+  const cols = Math.ceil(w / (step * cam.scale) / 2) + 1;
+  const rows = Math.ceil(h / (step * cam.scale) / 2) + 1;
   // Dark halo first, so the grid stays legible over white painted cells.
-  strokeGrid(
-    step,
-    first,
-    last,
-    rowTop,
-    rowBottom,
-    w,
-    h,
-    "rgba(9, 11, 16, 0.6)",
-    2,
-  );
+  strokeGrid(step, offX, offY, cols, rows, w, h, "rgba(9, 11, 16, 0.6)", 2);
   // Light core on top, so the grid stays legible over the dark background.
-  strokeGrid(
-    step,
-    first,
-    last,
-    rowTop,
-    rowBottom,
-    w,
-    h,
-    "rgba(232, 236, 244, 0.25)",
-    1,
-  );
+  strokeGrid(step, offX, offY, cols, rows, w, h, "rgba(232, 236, 244, 0.25)", 1);
 }
 
-function strokeGrid(cell, first, last, rowTop, rowBottom, w, h, style, width) {
+function strokeGrid(step, offX, offY, cols, rows, w, h, style, width) {
   ctx.strokeStyle = style;
   ctx.lineWidth = width;
   ctx.beginPath();
-  for (let k = first; k <= last; k++) {
-    const sx = (k * cell - cam.x) * cam.scale + w / 2;
+  for (let i = -cols; i <= cols; i++) {
+    const sx = (i * step - offX) * cam.scale + w / 2;
     ctx.moveTo(sx, 0);
     ctx.lineTo(sx, h);
   }
-  for (let k = rowTop; k <= rowBottom; k++) {
-    const sy = (k * cell - cam.y) * cam.scale + h / 2;
+  for (let j = -rows; j <= rows; j++) {
+    const sy = (j * step - offY) * cam.scale + h / 2;
     ctx.moveTo(0, sy);
     ctx.lineTo(w, sy);
   }
@@ -483,7 +466,7 @@ function movePinch(touches) {
     const before = boardPoint(cx, cy);
     const next = cam.scale * (dist / pinch.dist);
     if (Number.isFinite(next) && next > 0) {
-      cam.scale = next;
+      cam.scale = clampScale(next);
       cam.x = before.x - (cx - resizeCanvas().w / 2) / cam.scale;
       cam.y = before.y - (cy - resizeCanvas().h / 2) / cam.scale;
     }
@@ -495,11 +478,36 @@ function movePinch(touches) {
   draw();
 }
 
+// maxSafeLevel caps the grid level so every cell index stays below 2^53,
+// float64's exact-integer range. Far from the origin the finest usable cell
+// grows with the distance — the same precision trick used for
+// astrophysics-scale coordinates, so no stroke is ever lost to rounding.
+function maxSafeLevel() {
+  const far = Math.max(1, Math.abs(cam.x), Math.abs(cam.y));
+  return Math.max(0, Math.min(MAX_LEVEL, 52 - Math.ceil(Math.log2(far))));
+}
+
+// clampScale keeps the camera scale inside the grid's representable range.
+function clampScale(next) {
+  const lo = MIN_CELL_PX * 2 ** MIN_LEVEL;
+  const hi = MIN_CELL_PX * 2 ** maxSafeLevel();
+  return Math.min(hi, Math.max(lo, next));
+}
+
+// setGridOffset shifts the user's fine/coarse grid adjustment, clamped so the
+// effective level stays inside the precision budget at the current position.
+function setGridOffset(next) {
+  const base = gridLevel(cam.scale, 0);
+  gridOffset = Math.max(MIN_LEVEL - base, Math.min(next, maxSafeLevel() - base));
+  updateGridLabel();
+  draw();
+}
+
 // zoomBy scales the camera around the canvas centre by the given factor.
 function zoomBy(factor) {
   const next = cam.scale * factor;
   if (!Number.isFinite(next) || next <= 0) return;
-  cam.scale = next;
+  cam.scale = clampScale(next);
   updateGridLabel();
   draw();
 }
@@ -521,7 +529,7 @@ boardEl.addEventListener(
     const beforeY = (e.offsetY - h / 2) / cam.scale + cam.y;
     const next = cam.scale * Math.exp(-e.deltaY * 0.0015);
     if (!Number.isFinite(next) || next <= 0) return;
-    cam.scale = next;
+    cam.scale = clampScale(next);
     cam.x = beforeX - (e.offsetX - w / 2) / cam.scale;
     cam.y = beforeY - (e.offsetY - h / 2) / cam.scale;
     updateGridLabel();
@@ -575,7 +583,7 @@ function fitAll() {
   }
   cam.x = view.x;
   cam.y = view.y;
-  cam.scale = view.scale;
+  cam.scale = clampScale(view.scale);
   updateGridLabel();
   draw();
 }
@@ -1207,16 +1215,8 @@ importJsonlInput.addEventListener("change", () =>
   importJSONL(importJsonlInput),
 );
 
-gridPlus.addEventListener("click", () => {
-  gridOffset += 1;
-  updateGridLabel();
-  draw();
-});
-gridMinus.addEventListener("click", () => {
-  gridOffset -= 1;
-  updateGridLabel();
-  draw();
-});
+gridPlus.addEventListener("click", () => setGridOffset(gridOffset + 1));
+gridMinus.addEventListener("click", () => setGridOffset(gridOffset - 1));
 gridDefault.addEventListener("click", () => {
   gridOffset = 0;
   updateGridLabel();
