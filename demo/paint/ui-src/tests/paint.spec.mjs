@@ -571,15 +571,20 @@ test("focus mode gives the canvas the whole viewport and hides the chrome", asyn
   expect(full.height).toBeGreaterThanOrEqual(viewport.height * 0.8);
   expect(full.height).toBeGreaterThan(before.height);
 
+  // The resized canvas must be repainted, not left blank.
+  await expectBoardPainted(page);
+
   // Drawing still works with the chrome hidden.
   await drawRect(page);
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
-  // Exiting restores the side panel and activity log.
+  // Exiting restores the side panel and activity log, and repaints the board
+  // at its restored size.
   await page.locator("#zenBtn").click();
   await expect(page.locator("body")).not.toHaveClass(/zen/);
   await expect(page.locator("#panel")).toBeVisible();
   await expect(page.locator("#activity")).toBeVisible();
+  await expectBoardPainted(page);
 });
 
 test("on a small phone the board stays at least 80% of the viewport tall", async ({ page }) => {
@@ -606,4 +611,13 @@ async function drawRect(page) {
   await page.mouse.down();
   await page.mouse.move(cx + 36, cy + 36);
   await page.mouse.up();
+}
+
+// expectBoardPainted waits until the canvas backing store has been drawn: a
+// resized canvas is transparent (alpha 0) until draw() fills the background.
+async function expectBoardPainted(page) {
+  await page.waitForFunction(() => {
+    const c = document.querySelector("#board");
+    return c.getContext("2d").getImageData(1, 1, 1, 1).data[3] > 0;
+  });
 }

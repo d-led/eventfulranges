@@ -1177,7 +1177,9 @@ zenBtn.addEventListener("click", () => {
   zenBtn.classList.toggle("active", zen);
   zenBtn.setAttribute("aria-pressed", String(zen));
   zenBtn.title = zen ? "Exit focus mode" : "Focus mode: full-screen editing";
-  requestAnimationFrame(resizeCanvas);
+  // The layout changes on the next frame; redraw then, because resizing the
+  // canvas clears it and only draw() repaints the grid and boxes.
+  requestAnimationFrame(draw);
 });
 
 strokeColorEl.addEventListener("input", () => {
