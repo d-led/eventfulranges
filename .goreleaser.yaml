@@ -11,8 +11,8 @@ before:
     # Build the embedded UIs into their dist/ dirs before go:embed runs.
     # npm ci (not install) keeps package-lock.json from drifting and the
     # working tree clean, so the tag build is reproducible.
-    - cd demo/web/ui-src && npm ci --no-audit --no-fund && npm run build
-    - cd demo/paint/ui-src && npm ci --no-audit --no-fund && npm run build
+    - sh -c 'cd demo/web/ui-src && npm ci --no-audit --no-fund && npm run build'
+    - sh -c 'cd demo/paint/ui-src && npm ci --no-audit --no-fund && npm run build'
 
 builds:
   - id: web
