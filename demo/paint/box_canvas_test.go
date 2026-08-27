@@ -108,11 +108,12 @@ func TestBoxCanvasRetractRestoresErasedCells(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, c.set.Contains([]float64{2, 2}), "erased first")
 
-	events, err := c.Retract("e")
+	events, err := c.Retract("undo-e", "e")
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	require.Equal(t, "retract", events[0].Kind)
 	require.Equal(t, "e", events[0].Ref)
+	require.Equal(t, "undo-e", events[0].ID)
 
 	require.True(t, c.set.Contains([]float64{2, 2}), "undoing the erase restores the hole")
 }
@@ -125,7 +126,7 @@ func TestBoxCanvasRetractRemovesOnlyThatPaint(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.Paint("bob", Rect{2, 2, 6, 6}, nil)
 	require.NoError(t, err)
-	_, err = c.Retract("bob")
+	_, err = c.Retract("", "bob")
 	require.NoError(t, err)
 
 	require.True(t, c.set.Contains([]float64{1, 1}), "alice's paint survives")

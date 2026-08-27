@@ -108,15 +108,17 @@ func TestBoardRetractProducesRetractEntry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "paint-1", entries[0].ID)
 
-	ret, err := b.Apply("alice", collab.Cmd{Kind: "retract", Ref: "paint-1"})
+	ret, err := b.Apply("alice", collab.Cmd{ID: "retract-1", Kind: "retract", Ref: "paint-1"})
 	require.NoError(t, err)
 	require.Len(t, ret, 1)
 	require.Equal(t, "retract", ret[0].Kind)
 	require.Equal(t, "paint-1", ret[0].Ref)
+	require.Equal(t, "retract-1", ret[0].ID, "the retraction keeps the client's own ID")
 
 	restored := newBoard()
 	require.NoError(t, restored.Replay(b.Log()))
 	require.Len(t, restored.Log(), 2)
 	require.Equal(t, "retract", restored.Log()[1].Kind)
 	require.Equal(t, "paint-1", restored.Log()[1].Ref)
+	require.Equal(t, "retract-1", restored.Log()[1].ID)
 }

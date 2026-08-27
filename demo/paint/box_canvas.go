@@ -45,19 +45,20 @@ func (c *boxCanvas) Erase(id string, r Rect, meta json.RawMessage) ([]Event, err
 	return c.fold(cmdErase, id, r, meta)
 }
 
-// Retract cancels the operation named id, restoring whatever it removed or
-// removing whatever it added.
-func (c *boxCanvas) Retract(id string) ([]Event, error) {
-	target, err := c.set.Retract(context.Background(), id)
+// Retract cancels the operation named ref, undoing that one edit. id, when
+// non-empty, names the retraction itself, so the issuing client can
+// acknowledge it by ID like any other operation.
+func (c *boxCanvas) Retract(id, ref string) ([]Event, error) {
+	target, err := c.set.RetractWithID(context.Background(), id, ref)
 	if err != nil {
 		return nil, err
 	}
 	return []Event{{
 		ID:     target.ID,
 		Kind:   target.Kind.String(),
-		Ref:    id,
+		Ref:    ref,
 		Data:   boxData(target.Box),
-		Detail: fmt.Sprintf("undo %s", id),
+		Detail: fmt.Sprintf("undo %s", ref),
 	}}, nil
 }
 

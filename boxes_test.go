@@ -218,6 +218,21 @@ func TestBoxSetCannotRetractARetraction(t *testing.T) {
 	require.Error(t, err, "a retraction cannot itself be retracted")
 }
 
+func TestBoxSetRetractWithID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins)
+	require.NoError(t, err)
+
+	added, err := bs.Add(ctx, []float64{0, 0}, []float64{4, 4})
+	require.NoError(t, err)
+
+	retracted, err := bs.RetractWithID(ctx, "undo-1", added.ID)
+	require.NoError(t, err)
+	require.Equal(t, "undo-1", retracted.ID, "the retraction keeps the caller's ID")
+	require.False(t, bs.Contains([]float64{0.5, 0.5}), "the retracted paint is gone")
+}
+
 func TestBoxSetCustomMetaMerge(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

@@ -42,5 +42,5 @@ type Event struct {
 type Canvas interface {
 	Paint(id string, r Rect, meta json.RawMessage) ([]Event, error)
 	Erase(id string, r Rect, meta json.RawMessage) ([]Event, error)
-	Retract(id string) ([]Event, error)
+	Retract(id, ref string) ([]Event, error)
 }

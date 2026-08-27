@@ -38,7 +38,7 @@ func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
 	var events []Event
 	var err error
 	if cmd.Kind == cmdRetract {
-		events, err = b.canvas.Retract(cmd.Ref)
+		events, err = b.canvas.Retract(cmd.ID, cmd.Ref)
 	} else {
 		var rect Rect
 		if err := json.Unmarshal(cmd.Data, &rect); err != nil {
@@ -99,7 +99,7 @@ func (b *board) Replay(entries []collab.Entry) error {
 // entry's operation ID so later retractions still resolve.
 func (b *board) replayEntry(e collab.Entry) ([]Event, error) {
 	if e.Kind == "retract" {
-		return b.canvas.Retract(e.Ref)
+		return b.canvas.Retract(e.ID, e.Ref)
 	}
 	rect, err := replayRect(e.Data)
 	if err != nil {

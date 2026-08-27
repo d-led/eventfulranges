@@ -109,6 +109,14 @@ func (b *BoxSet) RemoveWithMeta(ctx context.Context, min, max []float64, m json.
 // touching any other operation. Retraction is single-level: a Retract cannot
 // itself be retracted.
 func (b *BoxSet) Retract(ctx context.Context, refID string) (sop.Op, error) {
+	return b.RetractWithID(ctx, "", refID)
+}
+
+// RetractWithID cancels the operation named refID exactly like Retract, but
+// records the retraction itself under id when it is non-empty. A caller that
+// assigns its own operation identifiers can therefore acknowledge the
+// retraction by ID, just like any other operation.
+func (b *BoxSet) RetractWithID(ctx context.Context, id, refID string) (sop.Op, error) {
 	target, ok := b.engine.Op(refID)
 	if !ok {
 		return sop.Op{}, fmt.Errorf("box set: retract unknown operation %q", refID)
@@ -117,6 +125,9 @@ func (b *BoxSet) Retract(ctx context.Context, refID string) (sop.Op, error) {
 		return sop.Op{}, fmt.Errorf("box set: cannot retract a retraction %q", refID)
 	}
 	o := sop.Retract(refID, target.Box)
+	if id != "" {
+		o.ID = id
+	}
 	return o, b.engine.Apply(ctx, o)
 }
 
