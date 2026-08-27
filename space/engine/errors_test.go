@@ -16,16 +16,17 @@ import (
 
 // stubStore is an EventStore that injects errors on demand.
 type stubStore struct {
-	appendErr error
-	readErr   error
-	readErrOn int // 1-based Read call to fail on; 0 means every Read fails
-	loadErr   error
-	snapErr   error
-	loadData  []byte
-	loadVer   int64
-	hasLoad   bool
-	reads     int
-	ops       []op.Op
+	appendErr  error
+	compactErr error
+	readErr    error
+	readErrOn  int // 1-based Read call to fail on; 0 means every Read fails
+	loadErr    error
+	snapErr    error
+	loadData   []byte
+	loadVer    int64
+	hasLoad    bool
+	reads      int
+	ops        []op.Op
 }
 
 func (s *stubStore) Append(_ context.Context, _ int64, events []op.Op) error {
@@ -70,6 +71,10 @@ func (s *stubStore) LoadSnapshot(_ context.Context) ([]byte, int64, error) {
 	return s.loadData, s.loadVer, nil
 }
 
+func (s *stubStore) Compact(_ context.Context, _ []byte, _ int64) error {
+	return s.compactErr
+}
+
 // logOnlyStore hides the snapshot surface of an inner store, so the engine
 // treats it as a stream-only backend (a Log without a Snapshotter).
 type logOnlyStore struct {
@@ -86,6 +91,14 @@ func (s logOnlyStore) Read(ctx context.Context, from int64) ([]op.Op, int64, err
 
 func validAdd(id string) op.Op {
 	return op.Op{ID: id, Kind: op.KindAdd, Box: box(0, 0, 1, 1)}
+}
+
+func TestCompactError(t *testing.T) {
+	t.Parallel()
+	st := &stubStore{compactErr: errors.New("compact boom")}
+	e, err := engine.Open(context.Background(), st, strategy.LWW)
+	require.NoError(t, err)
+	require.Error(t, e.Compact(context.Background()))
 }
 
 func TestApplyNonConflictError(t *testing.T) {

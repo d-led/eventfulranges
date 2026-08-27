@@ -9,8 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-
-	"github.com/Arceliar/phony"
+	"sync"
 
 	"github.com/d-led/eventfulranges/clock"
 	"github.com/d-led/eventfulranges/meta"
@@ -57,11 +56,9 @@ func WithMetaMerge(m meta.Merge) Option {
 }
 
 // Engine is a concurrency-safe CRDT over n-dimensional boxes backed by an
-// append-only event log. Its mutable state is owned by a single actor
-// goroutine (see the phony package); public methods run on that goroutine and
-// return results synchronously.
+// append-only event log. Its mutable state is guarded by mu.
 type Engine struct {
-	phony.Inbox
+	mu sync.RWMutex
 
 	store         store.Log
 	strategy      strategy.Strategy
@@ -111,9 +108,7 @@ func Open(ctx context.Context, st store.Log, s strategy.Strategy, opts ...Option
 
 // Apply applies a single operation, ignoring duplicates by ID.
 func (e *Engine) Apply(ctx context.Context, o op.Op) error {
-	var err error
-	phony.Block(e, func() { err = e.apply(ctx, []op.Op{o}) })
-	return err
+	return e.apply(ctx, []op.Op{o})
 }
 
 // ApplyAll applies a batch of operations, ignoring duplicates by ID.
@@ -121,78 +116,66 @@ func (e *Engine) ApplyAll(ctx context.Context, ops []op.Op) error {
 	if len(ops) == 0 {
 		return nil
 	}
-	var err error
-	phony.Block(e, func() { err = e.apply(ctx, ops) })
-	return err
+	return e.apply(ctx, ops)
 }
 
 // Materialize returns a copy of the current canonical box cover.
 func (e *Engine) Materialize() []space.Box {
-	var out []space.Box
-	phony.Block(e, func() {
-		e.ensureView()
-		out = append([]space.Box(nil), e.view...)
-	})
-	return out
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
+	return append([]space.Box(nil), e.view...)
 }
 
 // Contains reports whether the point belongs to the materialized set.
 func (e *Engine) Contains(p []float64) bool {
-	var got bool
-	phony.Block(e, func() {
-		e.ensureView()
-		got = space.Contains(e.view, p)
-	})
-	return got
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
+	return space.Contains(e.view, p)
 }
 
 // Overlaps reports whether any materialized box shares a point with b.
 func (e *Engine) Overlaps(b space.Box) bool {
-	var got bool
-	phony.Block(e, func() {
-		e.ensureView()
-		got = space.OverlapsSet(e.view, b)
-	})
-	return got
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
+	return space.OverlapsSet(e.view, b)
 }
 
 // Ops returns the known operations sorted by ID for deterministic exchange.
 func (e *Engine) Ops() []op.Op {
-	var out []op.Op
-	phony.Block(e, func() {
-		out = make([]op.Op, 0, len(e.ops))
-		for _, o := range e.ops {
-			out = append(out, o)
-		}
-		sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	})
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out := make([]op.Op, 0, len(e.ops))
+	for _, o := range e.ops {
+		out = append(out, o)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
 // Op returns the known operation with the given ID, if any.
 func (e *Engine) Op(id string) (op.Op, bool) {
-	var out op.Op
-	var ok bool
-	phony.Block(e, func() {
-		out, ok = e.ops[id]
-	})
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out, ok := e.ops[id]
 	return out, ok
 }
 
 // Snapshot persists the current materialized view and log version.
 func (e *Engine) Snapshot(ctx context.Context) error {
-	var err error
-	phony.Block(e, func() {
-		e.ensureView()
-		err = e.snapshot(ctx)
-	})
-	return err
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.snapshot(ctx)
 }
 
 func (e *Engine) apply(ctx context.Context, ops []op.Op) error {
 	if err := validateOps(ops); err != nil {
 		return err
 	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if err := e.ensureDims(ops); err != nil {
 		return err
 	}

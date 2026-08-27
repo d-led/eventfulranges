@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/Arceliar/phony"
-
 	"github.com/d-led/eventfulranges/space"
 	"github.com/d-led/eventfulranges/space/op"
 	"github.com/d-led/eventfulranges/space/store"
@@ -116,21 +114,19 @@ func (e *Engine) snapshot(ctx context.Context) error {
 // Compact rewrites the store as a snapshot of the current view plus any
 // operations it does not cover, collapsing the stream to its smallest form.
 func (e *Engine) Compact(ctx context.Context) error {
-	var err error
-	phony.Block(e, func() {
-		e.ensureView()
-		compactor, ok := e.store.(store.Compactor)
-		if !ok {
-			err = store.ErrCompactionUnsupported
-			return
-		}
-		data, _ := json.Marshal(e.buildSnapshot())
-		err = compactor.Compact(ctx, data, e.version)
-		if err == nil {
-			e.since = 0
-		}
-	})
-	return err
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ensureView()
+	compactor, ok := e.store.(store.Compactor)
+	if !ok {
+		return store.ErrCompactionUnsupported
+	}
+	data, _ := json.Marshal(e.buildSnapshot())
+	if err := compactor.Compact(ctx, data, e.version); err != nil {
+		return err
+	}
+	e.since = 0
+	return nil
 }
 
 // loadSnapshot reads and decodes the latest snapshot, if any.
