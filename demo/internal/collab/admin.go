@@ -36,6 +36,9 @@ type AdminInfo struct {
 // connected clients.
 var ErrSessionActive = errors.New("collab: session has connected clients")
 
+// ErrInvalidSessionID is returned when a session id is not a safe file name.
+var ErrInvalidSessionID = errors.New("collab: invalid session id")
+
 // errorField is the JSON key of every error response body.
 const errorField = "error"
 
@@ -138,19 +141,39 @@ func (s *Sessions) sessionInfos(onDisk map[string]int64) (map[string]bool, []Ses
 // DeleteSession removes an inactive session — one with no connected clients —
 // from memory and disk. Deleting an active session fails with ErrSessionActive.
 func (s *Sessions) DeleteSession(id string) error {
+	path, err := s.deletePath(id)
+	if err != nil {
+		return err
+	}
 	if h, ok := s.models.Get(id); ok {
 		if sess := h.(*Session); sess.clientCount() > 0 {
 			return ErrSessionActive
 		}
 		s.models.Delete(id)
 	}
-	if s.dir == "" {
+	if path == "" {
 		return nil
 	}
-	if err := os.Remove(filepath.Join(s.dir, id+".jsonl")); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
+}
+
+// deletePath resolves id to its log file under the data directory, rejecting
+// any id that would escape it. An in-memory registry has no path to resolve.
+func (s *Sessions) deletePath(id string) (string, error) {
+	if s.dir == "" {
+		return "", nil
+	}
+	if id == "" || id == "." || id == ".." {
+		return "", ErrInvalidSessionID
+	}
+	path := filepath.Join(s.dir, id+".jsonl")
+	if filepath.Dir(path) != filepath.Clean(s.dir) {
+		return "", ErrInvalidSessionID
+	}
+	return path, nil
 }
 
 // proxyEmail resolves the authenticated email from the reverse-proxy headers
@@ -187,8 +210,10 @@ func RegisterAdminRoutes(r gin.IRouter, sessions *Sessions, gate AdminGate, fs h
 		switch {
 		case errors.Is(err, ErrSessionActive):
 			c.JSON(http.StatusConflict, gin.H{errorField: err.Error()})
+		case errors.Is(err, ErrInvalidSessionID):
+			c.JSON(http.StatusBadRequest, gin.H{errorField: err.Error()})
 		case err != nil:
-			c.JSON(http.StatusInternalServerError, gin.H{errorField: err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{errorField: "could not delete session"})
 		default:
 			c.Status(http.StatusNoContent)
 		}

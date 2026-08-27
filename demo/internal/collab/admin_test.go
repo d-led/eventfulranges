@@ -164,6 +164,33 @@ func TestAdminDeleteSessionRoute(t *testing.T) {
 	require.Equal(t, "busy", remaining[0].ID)
 }
 
+func TestDeleteSessionRejectsPathTraversal(t *testing.T) {
+	t.Parallel()
+	reg := NewPersistentSessions(time.Hour, t.TempDir(), func() Model { return &counter{} })
+
+	for _, id := range []string{"../escape", "a/b", ".", "..", ""} {
+		require.ErrorIs(t, reg.DeleteSession(id), ErrInvalidSessionID, "id %q must be rejected", id)
+	}
+}
+
+func TestAdminDeleteRouteRejectsTraversalID(t *testing.T) {
+	t.Parallel()
+	reg := NewPersistentSessions(time.Hour, t.TempDir(), func() Model { return &counter{} })
+	router := gin.New()
+	RegisterAdminRoutes(router, reg, staticGate{emails: map[string]bool{"admin@example.com": true}}, http.Dir(t.TempDir()))
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	// %2e%2e decodes to "..", which must not escape the data directory.
+	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/admin/api/sessions/%2e%2e", nil)
+	require.NoError(t, err)
+	req.Header.Set("X-Auth-Request-Email", "admin@example.com")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
 func TestAdminRoutesRejectNilGate(t *testing.T) {
 	t.Parallel()
 	router := gin.New()
