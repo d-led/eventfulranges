@@ -13,7 +13,7 @@ func TestBoxCanvasPaintAddsOneBox(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()
 
-	events, err := c.Paint(Rect{0, 0, 4, 4}, nil)
+	events, err := c.Paint("", Rect{0, 0, 4, 4}, nil)
 	require.NoError(t, err)
 	require.Len(t, events, 1, "one rectangle is one box event")
 
@@ -26,9 +26,9 @@ func TestBoxCanvasEraseCarvesFrame(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()
 
-	_, err := c.Paint(Rect{0, 0, 4, 4}, nil)
+	_, err := c.Paint("", Rect{0, 0, 4, 4}, nil)
 	require.NoError(t, err)
-	_, err = c.Erase(Rect{1, 1, 3, 3}, nil)
+	_, err = c.Erase("", Rect{1, 1, 3, 3}, nil)
 	require.NoError(t, err)
 
 	boxes := c.set.Boxes()
@@ -42,14 +42,14 @@ func TestBoxCanvasConvergesRegardlessOfOrder(t *testing.T) {
 	first := newBoxCanvas()
 	second := newBoxCanvas()
 
-	_, err := first.Paint(Rect{0, 0, 4, 4}, nil)
+	_, err := first.Paint("", Rect{0, 0, 4, 4}, nil)
 	require.NoError(t, err)
-	_, err = first.Erase(Rect{1, 1, 3, 3}, nil)
+	_, err = first.Erase("", Rect{1, 1, 3, 3}, nil)
 	require.NoError(t, err)
 
-	_, err = second.Erase(Rect{1, 1, 3, 3}, nil)
+	_, err = second.Erase("", Rect{1, 1, 3, 3}, nil)
 	require.NoError(t, err)
-	_, err = second.Paint(Rect{0, 0, 4, 4}, nil)
+	_, err = second.Paint("", Rect{0, 0, 4, 4}, nil)
 	require.NoError(t, err)
 
 	require.True(t, space.Equal(first.set.Boxes(), second.set.Boxes()))
@@ -58,7 +58,7 @@ func TestBoxCanvasConvergesRegardlessOfOrder(t *testing.T) {
 func TestBoxCanvasRejectsEmptyBox(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()
-	_, err := c.Paint(Rect{1, 1, 1, 2}, nil)
+	_, err := c.Paint("", Rect{1, 1, 1, 2}, nil)
 	require.Error(t, err)
 }
 
@@ -66,7 +66,7 @@ func TestBoxCanvasPaintsSubdividedCell(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()
 
-	events, err := c.Paint(Rect{0, 0, 0.5, 0.5}, nil)
+	events, err := c.Paint("", Rect{0, 0, 0.5, 0.5}, nil)
 	require.NoError(t, err)
 	require.Len(t, events, 1, "one subdivided cell is one box event")
 
@@ -78,9 +78,9 @@ func TestBoxCanvasResolvesColorPerPoint(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()
 
-	_, err := c.Paint(Rect{0, 0, 4, 4}, json.RawMessage(`{"color":"#ff0000"}`))
+	_, err := c.Paint("", Rect{0, 0, 4, 4}, json.RawMessage(`{"color":"#ff0000"}`))
 	require.NoError(t, err)
-	_, err = c.Paint(Rect{2, 2, 6, 6}, json.RawMessage(`{"color":"#0000ff"}`))
+	_, err = c.Paint("", Rect{2, 2, 6, 6}, json.RawMessage(`{"color":"#0000ff"}`))
 	require.NoError(t, err)
 
 	colorAt := func(p []float64) string {
@@ -96,4 +96,38 @@ func TestBoxCanvasResolvesColorPerPoint(t *testing.T) {
 	require.JSONEq(t, `{"color":"#0000ff"}`, colorAt([]float64{3, 3}))
 	require.JSONEq(t, `{"color":"#0000ff"}`, colorAt([]float64{5, 5}))
 	require.JSONEq(t, `{"color":"#ff0000"}`, colorAt([]float64{1, 1}))
+}
+
+func TestBoxCanvasRetractRestoresErasedCells(t *testing.T) {
+	t.Parallel()
+	c := newBoxCanvas()
+
+	_, err := c.Paint("p", Rect{0, 0, 4, 4}, nil)
+	require.NoError(t, err)
+	_, err = c.Erase("e", Rect{1, 1, 3, 3}, nil)
+	require.NoError(t, err)
+	require.False(t, c.set.Contains([]float64{2, 2}), "erased first")
+
+	events, err := c.Retract("e")
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "retract", events[0].Kind)
+	require.Equal(t, "e", events[0].Ref)
+
+	require.True(t, c.set.Contains([]float64{2, 2}), "undoing the erase restores the hole")
+}
+
+func TestBoxCanvasRetractRemovesOnlyThatPaint(t *testing.T) {
+	t.Parallel()
+	c := newBoxCanvas()
+
+	_, err := c.Paint("alice", Rect{0, 0, 4, 4}, nil)
+	require.NoError(t, err)
+	_, err = c.Paint("bob", Rect{2, 2, 6, 6}, nil)
+	require.NoError(t, err)
+	_, err = c.Retract("bob")
+	require.NoError(t, err)
+
+	require.True(t, c.set.Contains([]float64{1, 1}), "alice's paint survives")
+	require.False(t, c.set.Contains([]float64{5, 5}), "the retracted paint is gone")
 }

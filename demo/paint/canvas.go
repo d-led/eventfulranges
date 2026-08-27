@@ -5,8 +5,9 @@ import "encoding/json"
 // Command kinds the board and canvas speak, mirrored by the browser UI. They
 // name the half-open box operations a client submits.
 const (
-	cmdPaint = "paint"
-	cmdErase = "erase"
+	cmdPaint   = "paint"
+	cmdErase   = "erase"
+	cmdRetract = "retract"
 )
 
 // Rect is a half-open cell rectangle [X0,X1) x [Y0,Y1) in board coordinates.
@@ -25,6 +26,7 @@ type Rect struct {
 type Event struct {
 	ID     string
 	Kind   string
+	Ref    string
 	Data   json.RawMessage
 	Detail string
 }
@@ -34,8 +36,11 @@ type Event struct {
 // produced. Meta is arbitrary JSON-object metadata (for example a stroke
 // color) carried by the folded ranges. How cells are encoded is an
 // implementation detail, which is what keeps the board and the transport
-// agnostic of the underlying CRDT shape.
+// agnostic of the underlying CRDT shape. id is the client-chosen operation
+// identifier: when non-empty it is used as the operation's ID, so a client can
+// retract its own edits by ID.
 type Canvas interface {
-	Paint(r Rect, meta json.RawMessage) ([]Event, error)
-	Erase(r Rect, meta json.RawMessage) ([]Event, error)
+	Paint(id string, r Rect, meta json.RawMessage) ([]Event, error)
+	Erase(id string, r Rect, meta json.RawMessage) ([]Event, error)
+	Retract(id string) ([]Event, error)
 }

@@ -1,11 +1,10 @@
-import { union, normalize, subtractAll } from "./boxes.js";
+import { normalize, subtractAll } from "./boxes.js";
 import {
   gridLevel,
   gridSize,
   gridStep,
   gridRect,
   gridLine,
-  diskCells,
   fitCamera,
 } from "./grid.js";
 import { delayFor } from "./backoff.js";
@@ -52,8 +51,8 @@ const redoBtn = $("redoBtn");
 const ctx = boardEl.getContext("2d");
 
 // ---------- state ----------
-let adds = []; // normalized boxes {min, max} of painted cells
-let removes = []; // normalized boxes {min, max} of erased cells
+let adds = []; // [{id, min, max, color}] painted boxes, one per operation
+let removes = []; // [{id, min, max}] erased boxes, one per operation
 let boxes = []; // materialized view: [{min, max}]
 let logEntries = []; // the full operation log, for JSONL export
 let clientID = "";
@@ -71,7 +70,6 @@ let logTimer = null; // debounce handle
 
 const DEFAULT_COLOR = "#e6e8ee";
 const INITIAL_SCALE = 24; // pixels per board unit at 100% zoom, matching MIN_CELL_PX
-const ERASER_RADIUS = 1.5; // circular brush radius, in grid cells
 const cam = { x: 0, y: 0, scale: INITIAL_SCALE }; // board units at the canvas centre, px per unit
 
 let gridOffset = 0; // user shift over the zoom-chosen subdivision level
@@ -80,9 +78,7 @@ let tool = "rect";
 let dragging = false;
 let dragStart = null;
 let dragCur = null;
-let penLast = null; // last painted pen cell, as {ix, iy}
-let eraserLast = null; // last erased cell, as {ix, iy}
-let eraserDrawn = new Set(); // cells already erased by the current stroke
+let brushLast = null; // last cell stamped by the pen or eraser brush, as {ix, iy}
 let panning = false;
 let panLast = null;
 let pinch = null; // two-finger gesture: {dist, cx, cy}
@@ -92,7 +88,7 @@ let pinch = null; // two-finger gesture: {dist, cx, cy}
 // semantics (union of additions minus union of removals) into the surviving
 // boxes.
 function materialize() {
-  const rems = normalize(removes);
+  const rems = normalize(removes.map((r) => ({ min: r.min, max: r.max })));
   const pieces = [];
   for (const a of adds) {
     for (const p of subtractAll({ min: a.min, max: a.max }, rems)) {
@@ -106,21 +102,29 @@ function materialize() {
 function applyEntries(entries) {
   const newAdds = [];
   const newRemoves = [];
+  const retracted = new Set();
   for (const e of entries) {
     if (e.kind === "add") {
       newAdds.push({
+        id: e.id,
         min: e.data.min,
         max: e.data.max,
         color: e.meta?.color ?? DEFAULT_COLOR,
       });
     } else if (e.kind === "remove") {
-      newRemoves.push(e.data);
+      newRemoves.push({ id: e.id, min: e.data.min, max: e.data.max });
+    } else if (e.kind === "retract") {
+      retracted.add(e.ref);
     }
     logEntries.push(e);
   }
   queueLog(entries);
-  adds.push(...newAdds); // keep stroke order and one color per box
-  removes = union(removes, newRemoves);
+  if (retracted.size > 0) {
+    adds = adds.filter((a) => !retracted.has(a.id));
+    removes = removes.filter((r) => !retracted.has(r.id));
+  }
+  adds.push(...newAdds.filter((a) => !retracted.has(a.id)));
+  removes.push(...newRemoves.filter((r) => !retracted.has(r.id)));
   materialize();
   saveReserve(logEntries);
 }
@@ -220,18 +224,7 @@ function strokeGrid(cell, first, last, rowTop, rowBottom, w, h, style, width) {
 }
 
 function drawPreview(w, h) {
-  if (!dragging || tool === "pen") return;
-  if (tool === "eraser") {
-    const cell = gridSize(cam.scale, gridOffset);
-    const sx = (dragCur.x - cam.x) * cam.scale + w / 2;
-    const sy = (dragCur.y - cam.y) * cam.scale + h / 2;
-    ctx.strokeStyle = "#ff6b6b";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sx, sy, ERASER_RADIUS * cell * cam.scale, 0, Math.PI * 2);
-    ctx.stroke();
-    return;
-  }
+  if (!dragging || tool === "pen" || tool === "eraser") return;
   const r = gridRect(dragStart, dragCur, gridSize(cam.scale, gridOffset));
   const sx = (r.x0 - cam.x) * cam.scale + w / 2;
   const sy = (r.y0 - cam.y) * cam.scale + h / 2;
@@ -264,12 +257,14 @@ function boardPointAtTouch(t) {
   return boardPoint(p.x, p.y);
 }
 
-function penCell(p) {
+// cellAt returns the grid cell containing the board point p.
+function cellAt(p) {
   const cell = gridSize(cam.scale, gridOffset);
   return { ix: Math.floor(p.x / cell), iy: Math.floor(p.y / cell) };
 }
 
-function penRect(c) {
+// cellRect returns the half-open cell rectangle of the grid cell c.
+function cellRect(c) {
   const cell = gridSize(cam.scale, gridOffset);
   return {
     x0: c.ix * cell,
@@ -279,8 +274,15 @@ function penRect(c) {
   };
 }
 
+// newOpID mints the client-side operation identifier, so an undo can retract
+// exactly the ops this browser issued.
+function newOpID() {
+  return crypto.randomUUID();
+}
+
 function sendPaint(r) {
   const cmd = {
+    id: newOpID(),
     kind: "paint",
     data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
     meta: { color: strokeColor },
@@ -291,6 +293,7 @@ function sendPaint(r) {
 
 function sendErase(r) {
   const cmd = {
+    id: newOpID(),
     kind: "erase",
     data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
   };
@@ -298,33 +301,21 @@ function sendErase(r) {
   sendCmd(cmd);
 }
 
-// stampEraser erases the circular brush around cell (ix, iy), skipping cells
-// the current stroke has already covered.
-function stampEraser(ix, iy) {
-  const cell = gridSize(cam.scale, gridOffset);
-  for (const r of diskCells(ix, iy, cell, ERASER_RADIUS)) {
-    const key = `${Math.round(r.x0 / cell)},${Math.round(r.y0 / cell)}`;
-    if (eraserDrawn.has(key)) continue;
-    eraserDrawn.add(key);
-    sendErase(r);
-  }
+// brushSend stamps one cell with the active brush tool: the pen paints it and
+// the eraser erases it. Both cover exactly one grid cell, so the eraser is as
+// precise as the pen.
+function brushSend(r) {
+  if (tool === "eraser") sendErase(r);
+  else sendPaint(r);
 }
 
 // ---------- interaction ----------
 function startDraw(boardPt) {
   dragging = true;
   beginStroke();
-  if (tool === "pen") {
-    penLast = penCell(boardPt);
-    sendPaint(penRect(penLast));
-    return;
-  }
-  if (tool === "eraser") {
-    dragStart = boardPt;
-    dragCur = boardPt;
-    eraserDrawn = new Set();
-    eraserLast = penCell(boardPt);
-    stampEraser(eraserLast.ix, eraserLast.iy);
+  if (tool === "pen" || tool === "eraser") {
+    brushLast = cellAt(boardPt);
+    brushSend(cellRect(brushLast));
     return;
   }
   dragStart = boardPt;
@@ -332,21 +323,11 @@ function startDraw(boardPt) {
 }
 
 function moveDraw(boardPt) {
-  if (tool === "pen") {
-    const cur = penCell(boardPt);
+  if (tool === "pen" || tool === "eraser") {
+    const cur = cellAt(boardPt);
     const cell = gridSize(cam.scale, gridOffset);
-    for (const r of gridLine(penLast, cur, cell)) sendPaint(r);
-    penLast = cur;
-    return;
-  }
-  if (tool === "eraser") {
-    dragCur = boardPt;
-    const cell = gridSize(cam.scale, gridOffset);
-    const cur = penCell(boardPt);
-    for (const r of gridLine(eraserLast, cur, cell)) {
-      stampEraser(Math.round(r.x0 / cell), Math.round(r.y0 / cell));
-    }
-    eraserLast = cur;
+    for (const r of gridLine(brushLast, cur, cell)) brushSend(r);
+    brushLast = cur;
     return;
   }
   dragCur = boardPt;
@@ -885,26 +866,24 @@ function endStroke() {
   stroke = [];
 }
 
-// inverseCmd is the compensating event: painting is undone by erasing the same
-// box and vice versa.
-function inverseCmd(cmd) {
-  if (cmd.kind === "paint") return { kind: "erase", data: cmd.data };
-  return { kind: "paint", data: cmd.data, meta: { color: strokeColor } };
-}
-
+// undo retracts the last stroke's operations by ID, so it undoes only this
+// browser's own edits; redo re-issues them under fresh IDs.
 function undo() {
   const s = undoStack.pop();
   if (!s) return;
   redoStack.push(s);
-  for (let i = s.length - 1; i >= 0; i--) sendCmd(inverseCmd(s[i]));
+  for (let i = s.length - 1; i >= 0; i--) {
+    sendCmd({ id: newOpID(), kind: "retract", ref: s[i].id });
+  }
   updateUndoRedo();
 }
 
 function redo() {
   const s = redoStack.pop();
   if (!s) return;
-  undoStack.push(s);
-  for (const cmd of s) sendCmd(cmd);
+  const reissued = s.map((cmd) => ({ ...cmd, id: newOpID() }));
+  undoStack.push(reissued);
+  for (const cmd of reissued) sendCmd(cmd);
   updateUndoRedo();
 }
 
@@ -979,6 +958,7 @@ function downloadJSONL() {
     JSON.stringify({
       id: e.id,
       kind: e.kind,
+      ref: e.ref,
       data: e.data,
       meta: e.meta,
       client: e.client,
@@ -1049,6 +1029,9 @@ async function importJSONL(input) {
 }
 
 function entryToCmd(entry) {
+  if (entry.kind === "retract") {
+    return entry.ref ? { kind: "retract", ref: entry.ref } : null;
+  }
   const kind =
     entry.kind === "add" ? "paint" : entry.kind === "remove" ? "erase" : null;
   if (!kind || !entry.data) return null;
@@ -1058,6 +1041,7 @@ function entryToCmd(entry) {
     kind,
     data: { x0: min[0], y0: min[1], x1: max[0], y1: max[1] },
   };
+  if (entry.id) cmd.id = entry.id;
   if (entry.meta) cmd.meta = entry.meta;
   return cmd;
 }

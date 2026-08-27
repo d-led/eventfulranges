@@ -179,6 +179,45 @@ func TestBoxSetRemoveWithMeta(t *testing.T) {
 	require.True(t, bs.Contains([]float64{0.5, 2}), "the shell around the hole survives")
 }
 
+func TestBoxSetRetract(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins)
+	require.NoError(t, err)
+
+	added, err := bs.Add(ctx, []float64{0, 0}, []float64{4, 4})
+	require.NoError(t, err)
+	removed, err := bs.Remove(ctx, []float64{1, 1}, []float64{3, 3})
+	require.NoError(t, err)
+	require.False(t, bs.Contains([]float64{2, 2}), "the hole is erased")
+
+	_, err = bs.Retract(ctx, removed.ID)
+	require.NoError(t, err)
+	require.True(t, bs.Contains([]float64{2, 2}), "undoing the erase restores the hole")
+
+	_, err = bs.Retract(ctx, added.ID)
+	require.NoError(t, err)
+	require.False(t, bs.Contains([]float64{0.5, 0.5}), "undoing the paint clears the rectangle")
+
+	_, err = bs.Retract(ctx, "missing")
+	require.Error(t, err, "retracting an unknown op fails")
+}
+
+func TestBoxSetCannotRetractARetraction(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.AdditiveWins)
+	require.NoError(t, err)
+
+	added, err := bs.Add(ctx, []float64{0, 0}, []float64{4, 4})
+	require.NoError(t, err)
+	retracted, err := bs.Retract(ctx, added.ID)
+	require.NoError(t, err)
+
+	_, err = bs.Retract(ctx, retracted.ID)
+	require.Error(t, err, "a retraction cannot itself be retracted")
+}
+
 func TestBoxSetCustomMetaMerge(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

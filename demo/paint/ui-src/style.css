@@ -144,6 +144,9 @@ main {
 #log li.remove {
   color: #ff9b9b;
 }
+#log li.retract {
+  color: #e6c07b;
+}
 #log li.summary {
   color: var(--accent);
 }
@@ -354,14 +357,6 @@ button:disabled:hover {
   width: 34px;
   height: 28px;
   padding: 2px;
-}
-
-.file-row {
-  margin: 12px 0;
-}
-
-.file-row button {
-  justify-content: center;
 }
 
 .roster-title {

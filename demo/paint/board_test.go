@@ -99,3 +99,24 @@ func TestBoardReplayRestoresLog(t *testing.T) {
 	require.Equal(t, "remove", log[1].Kind)
 	require.Equal(t, "bob", log[1].Client)
 }
+
+func TestBoardRetractProducesRetractEntry(t *testing.T) {
+	t.Parallel()
+	b := newBoard()
+
+	entries, err := b.Apply("alice", collab.Cmd{ID: "paint-1", Kind: "paint", Data: json.RawMessage(`{"x0":0,"y0":0,"x1":4,"y1":4}`)})
+	require.NoError(t, err)
+	require.Equal(t, "paint-1", entries[0].ID)
+
+	ret, err := b.Apply("alice", collab.Cmd{Kind: "retract", Ref: "paint-1"})
+	require.NoError(t, err)
+	require.Len(t, ret, 1)
+	require.Equal(t, "retract", ret[0].Kind)
+	require.Equal(t, "paint-1", ret[0].Ref)
+
+	restored := newBoard()
+	require.NoError(t, restored.Replay(b.Log()))
+	require.Len(t, restored.Log(), 2)
+	require.Equal(t, "retract", restored.Log()[1].Kind)
+	require.Equal(t, "paint-1", restored.Log()[1].Ref)
+}

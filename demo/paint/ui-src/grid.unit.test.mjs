@@ -9,7 +9,6 @@ import {
   gridStep,
   gridRect,
   gridLine,
-  diskCells,
   bounds,
   fitCamera,
 } from "./grid.js";
@@ -119,42 +118,6 @@ describe("grid", () => {
       half(1, 0),
       half(2, 0),
     ]);
-  });
-
-  const cells = (rects) => rects.map((r) => `${r.x0},${r.y0}`).sort();
-
-  it("covers the 3x3 block around the brush at radius 1.5", () => {
-    expect(cells(diskCells(0, 0, 1, 1.5))).toEqual([
-      "-1,-1",
-      "-1,0",
-      "-1,1",
-      "0,-1",
-      "0,0",
-      "0,1",
-      "1,-1",
-      "1,0",
-      "1,1",
-    ]);
-  });
-
-  it("covers the plus shape at radius 1 and just the centre at radius 0", () => {
-    expect(cells(diskCells(0, 0, 1, 1))).toEqual([
-      "-1,0",
-      "0,-1",
-      "0,0",
-      "0,1",
-      "1,0",
-    ]);
-    expect(cells(diskCells(0, 0, 1, 0))).toEqual(["0,0"]);
-  });
-
-  it("scales the brush footprint with the cell size", () => {
-    const rects = diskCells(0, 0, 0.5, 1.5);
-    expect(rects).toHaveLength(9);
-    for (const r of rects) {
-      expect(r.x1 - r.x0).toBe(0.5);
-      expect(r.y1 - r.y0).toBe(0.5);
-    }
   });
 
   it("bounds boxes or reports nothing to fit", () => {

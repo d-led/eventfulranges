@@ -32,15 +32,20 @@ func newBoard() *board {
 // Apply folds one paint or erase command into the canvas and returns the
 // events it produced, attributed to the client.
 func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
-	var rect Rect
-	if err := json.Unmarshal(cmd.Data, &rect); err != nil {
-		return nil, fmt.Errorf("paint: bad command payload: %w", err)
-	}
-
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	events, err := b.fold(cmd.Kind, rect, cmd.Meta)
+	var events []Event
+	var err error
+	if cmd.Kind == cmdRetract {
+		events, err = b.canvas.Retract(cmd.Ref)
+	} else {
+		var rect Rect
+		if err := json.Unmarshal(cmd.Data, &rect); err != nil {
+			return nil, fmt.Errorf("paint: bad command payload: %w", err)
+		}
+		events, err = b.fold(cmd.Kind, cmd.ID, rect, cmd.Meta)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +55,7 @@ func (b *board) Apply(clientID string, cmd collab.Cmd) ([]collab.Entry, error) {
 			ID:     ev.ID,
 			Client: clientID,
 			Kind:   ev.Kind,
+			Ref:    ev.Ref,
 			Data:   ev.Data,
 			Meta:   cmd.Meta,
 			Detail: ev.Detail,
@@ -69,15 +75,7 @@ func (b *board) Replay(entries []collab.Entry) error {
 
 	b.log = b.log[:0]
 	for _, e := range entries {
-		rect, err := replayRect(e.Data)
-		if err != nil {
-			return err
-		}
-		kind, err := commandKind(e.Kind)
-		if err != nil {
-			return err
-		}
-		events, err := b.fold(kind, rect, e.Meta)
+		events, err := b.replayEntry(e)
 		if err != nil {
 			return err
 		}
@@ -86,6 +84,7 @@ func (b *board) Replay(entries []collab.Entry) error {
 				ID:     ev.ID,
 				Client: e.Client,
 				Kind:   ev.Kind,
+				Ref:    ev.Ref,
 				Data:   ev.Data,
 				Meta:   e.Meta,
 				Detail: ev.Detail,
@@ -94,6 +93,23 @@ func (b *board) Replay(entries []collab.Entry) error {
 		}
 	}
 	return nil
+}
+
+// replayEntry folds one persisted entry back into the canvas, preserving the
+// entry's operation ID so later retractions still resolve.
+func (b *board) replayEntry(e collab.Entry) ([]Event, error) {
+	if e.Kind == "retract" {
+		return b.canvas.Retract(e.Ref)
+	}
+	rect, err := replayRect(e.Data)
+	if err != nil {
+		return nil, err
+	}
+	kind, err := commandKind(e.Kind)
+	if err != nil {
+		return nil, err
+	}
+	return b.fold(kind, e.ID, rect, e.Meta)
 }
 
 // replayRect decodes the box shape the event log stores — {"min":[…],"max":[…]}
@@ -126,12 +142,12 @@ func commandKind(kind string) (string, error) {
 }
 
 // fold dispatches a command to the canvas.
-func (b *board) fold(kind string, rect Rect, meta json.RawMessage) ([]Event, error) {
+func (b *board) fold(kind, id string, rect Rect, meta json.RawMessage) ([]Event, error) {
 	switch kind {
 	case cmdPaint:
-		return b.canvas.Paint(rect, meta)
+		return b.canvas.Paint(id, rect, meta)
 	case cmdErase:
-		return b.canvas.Erase(rect, meta)
+		return b.canvas.Erase(id, rect, meta)
 	default:
 		return nil, fmt.Errorf("paint: unknown command %q", kind)
 	}

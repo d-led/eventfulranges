@@ -19,6 +19,8 @@ func TestKindString(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "add", op.KindAdd.String())
 	require.Equal(t, "remove", op.KindRemove.String())
+	require.Equal(t, "retract", op.KindRetract.String())
+	require.Equal(t, "kind(7)", op.Kind(7).String())
 }
 
 func TestKindText(t *testing.T) {
@@ -31,6 +33,9 @@ func TestKindText(t *testing.T) {
 		remove, err := op.KindRemove.MarshalText()
 		require.NoError(t, err)
 		require.Equal(t, "remove", string(remove))
+		retract, err := op.KindRetract.MarshalText()
+		require.NoError(t, err)
+		require.Equal(t, "retract", string(retract))
 	})
 	t.Run("unmarshal", func(t *testing.T) {
 		t.Parallel()
@@ -39,6 +44,8 @@ func TestKindText(t *testing.T) {
 		require.Equal(t, op.KindAdd, k)
 		require.NoError(t, k.UnmarshalText([]byte("remove")))
 		require.Equal(t, op.KindRemove, k)
+		require.NoError(t, k.UnmarshalText([]byte("retract")))
+		require.Equal(t, op.KindRetract, k)
 		require.Error(t, k.UnmarshalText([]byte("paint")))
 	})
 }
@@ -53,6 +60,8 @@ func TestValidate(t *testing.T) {
 	}{
 		{name: "valid add", o: op.Op{ID: "a", Kind: op.KindAdd, Box: valid}},
 		{name: "valid remove", o: op.Op{ID: "a", Kind: op.KindRemove, Box: valid}},
+		{name: "valid retract", o: op.Op{ID: "a", Kind: op.KindRetract, Ref: "t", Box: valid}},
+		{name: "retract missing ref", o: op.Op{ID: "a", Kind: op.KindRetract, Box: valid}, err: op.ErrMissingRef},
 		{name: "missing id", o: op.Op{Kind: op.KindAdd, Box: valid}, err: op.ErrMissingID},
 		{
 			name: "invalid box",
@@ -102,6 +111,16 @@ func TestConstructors(t *testing.T) {
 		require.Equal(t, op.KindRemove, o.Kind)
 		require.Equal(t, space.NewBox([]float64{2}, []float64{3}), o.Box)
 	})
+	t.Run("retract", func(t *testing.T) {
+		t.Parallel()
+		box := space.NewBox([]float64{2}, []float64{3})
+		o := op.Retract("target", box)
+		require.Equal(t, op.KindRetract, o.Kind)
+		require.Equal(t, "target", o.Ref)
+		require.Equal(t, box, o.Box)
+		require.NotEmpty(t, o.ID)
+		require.NoError(t, o.Validate())
+	})
 	t.Run("constructors copy input slices", func(t *testing.T) {
 		t.Parallel()
 		min := []float64{0, 0}
@@ -135,4 +154,17 @@ func TestOpJSON(t *testing.T) {
 	var bad op.Op
 	require.NoError(t, json.Unmarshal([]byte(`{"id":"x","kind":"add","box":{"min":[5],"max":[1]},"ts":0}`), &bad), "unmarshal must not validate")
 	require.Equal(t, "x", bad.ID)
+}
+
+func TestRetractJSON(t *testing.T) {
+	t.Parallel()
+	o := op.Retract("target", space.NewBox([]float64{1, 2}, []float64{5, 6}))
+	data, err := json.Marshal(o)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":"`+o.ID+`","kind":"retract","box":{"min":[1,2],"max":[5,6]},"ts":0,"ref":"target"}`, string(data))
+
+	var back op.Op
+	require.NoError(t, json.Unmarshal(data, &back))
+	require.Equal(t, o, back)
+	require.Equal(t, "target", back.Ref)
 }

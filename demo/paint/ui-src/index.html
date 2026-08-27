@@ -29,18 +29,6 @@
 
         <div id="status" title="Click to see who's here">connecting…</div>
 
-        <div class="row file-row">
-          <button id="importJsonl" title="Load a board from a JSONL log">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
-            <span class="btn-text">Load</span>
-          </button>
-          <button id="downloadJsonl" title="Save the board as a JSONL log">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-            <span class="btn-text">Save</span>
-          </button>
-        </div>
-        <input type="file" id="importJsonlInput" accept=".jsonl,application/x-ndjson,application/json" hidden />
-
         <p class="lede">
           A shared whiteboard on a fractal grid, backed by a conflict-free
           replicated data type (CRDT) so every client converges. Scroll or
@@ -132,6 +120,15 @@
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
               <span class="btn-text">Share</span>
             </button>
+          </div>
+          <div class="toolbar-group">
+            <button id="importJsonl" title="Load a board from a JSONL log">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+            </button>
+            <button id="downloadJsonl" title="Save the board as a JSONL log">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            </button>
+            <input type="file" id="importJsonlInput" accept=".jsonl,application/x-ndjson,application/json" hidden />
           </div>
         </div>
         <canvas id="board"></canvas>

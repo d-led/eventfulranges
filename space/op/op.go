@@ -22,14 +22,22 @@ const (
 	KindAdd Kind = iota
 	// KindRemove excludes the box from the materialized set.
 	KindRemove
+	// KindRetract cancels the operation its Ref names, undoing that one
+	// edit without touching anyone else's.
+	KindRetract
 )
 
-// String returns "add" or "remove".
+// String returns "add", "remove", or "retract".
 func (k Kind) String() string {
-	if k == KindAdd {
+	switch k {
+	case KindAdd:
 		return "add"
+	case KindRemove:
+		return "remove"
+	case KindRetract:
+		return "retract"
 	}
-	return "remove"
+	return fmt.Sprintf("kind(%d)", k)
 }
 
 // MarshalText implements encoding.TextMarshaler.
@@ -44,6 +52,8 @@ func (k *Kind) UnmarshalText(text []byte) error {
 		*k = KindAdd
 	case "remove":
 		*k = KindRemove
+	case "retract":
+		*k = KindRetract
 	default:
 		return fmt.Errorf("invalid op kind %q", text)
 	}
@@ -53,12 +63,16 @@ func (k *Kind) UnmarshalText(text []byte) error {
 // ErrMissingID is returned when an op has no identifier.
 var ErrMissingID = errors.New("op id must not be empty")
 
+// ErrMissingRef is returned when a retract op names no target.
+var ErrMissingRef = errors.New("retract op must name a target")
+
 // Op is an immutable box operation, the atomic unit of the event log.
 type Op struct {
 	ID     string    `json:"id"`
 	Kind   Kind      `json:"kind"`
 	Box    space.Box `json:"box"`
 	TS     int64     `json:"ts"`
+	Ref    string    `json:"ref,omitempty"`
 	Origin string    `json:"origin,omitempty"`
 }
 
@@ -67,7 +81,13 @@ func (o Op) Validate() error {
 	if o.ID == "" {
 		return ErrMissingID
 	}
-	if o.Kind != KindAdd && o.Kind != KindRemove {
+	switch o.Kind {
+	case KindAdd, KindRemove:
+	case KindRetract:
+		if o.Ref == "" {
+			return ErrMissingRef
+		}
+	default:
 		return fmt.Errorf("invalid op kind %d", o.Kind)
 	}
 	if err := o.Box.Validate(); err != nil {
@@ -92,6 +112,12 @@ func Add(min, max []float64) Op {
 // Remove builds a Remove op over the half-open box [min, max).
 func Remove(min, max []float64) Op {
 	return New(KindRemove, space.NewBox(min, max))
+}
+
+// Retract builds a Retract op that cancels the operation named ref, carrying
+// that operation's box so the retraction validates against the set's geometry.
+func Retract(ref string, box space.Box) Op {
+	return Op{ID: newID(), Kind: KindRetract, Box: box, Ref: ref}
 }
 
 // newID returns a process-unique, roughly time-ordered identifier.

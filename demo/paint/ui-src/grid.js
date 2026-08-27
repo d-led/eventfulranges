@@ -55,27 +55,6 @@ export function gridRect(a, b, cell) {
   };
 }
 
-// diskCells returns the half-open cell rectangles covered by a circular brush
-// of the given radius (in cells) centred on cell (cx, cy). A cell is covered
-// when its centre lies within radius cells of the brush centre.
-export function diskCells(cx, cy, cell, radius = 1.5) {
-  const rects = [];
-  const n = Math.ceil(radius);
-  const r2 = radius * radius;
-  for (let dy = -n; dy <= n; dy++) {
-    for (let dx = -n; dx <= n; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      rects.push({
-        x0: (cx + dx) * cell,
-        y0: (cy + dy) * cell,
-        x1: (cx + dx + 1) * cell,
-        y1: (cy + dy + 1) * cell,
-      });
-    }
-  }
-  return rects;
-}
-
 // gridLine returns the half-open cell rectangles, in board units, of the cells
 // crossed by the line from cell a to cell b, excluding a and including b.
 // Consecutive calls tile a pen stroke without repainting the anchor cell.

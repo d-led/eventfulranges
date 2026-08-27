@@ -35,21 +35,37 @@ func newBoxCanvas() *boxCanvas {
 
 // Paint adds a rectangle of cells to the whiteboard, carrying meta on the
 // underlying box.
-func (c *boxCanvas) Paint(r Rect, meta json.RawMessage) ([]Event, error) {
-	return c.fold(cmdPaint, r, meta)
+func (c *boxCanvas) Paint(id string, r Rect, meta json.RawMessage) ([]Event, error) {
+	return c.fold(cmdPaint, id, r, meta)
 }
 
 // Erase removes a rectangle of cells from the whiteboard, carrying meta on the
 // underlying box.
-func (c *boxCanvas) Erase(r Rect, meta json.RawMessage) ([]Event, error) {
-	return c.fold(cmdErase, r, meta)
+func (c *boxCanvas) Erase(id string, r Rect, meta json.RawMessage) ([]Event, error) {
+	return c.fold(cmdErase, id, r, meta)
+}
+
+// Retract cancels the operation named id, restoring whatever it removed or
+// removing whatever it added.
+func (c *boxCanvas) Retract(id string) ([]Event, error) {
+	target, err := c.set.Retract(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	return []Event{{
+		ID:     target.ID,
+		Kind:   target.Kind.String(),
+		Ref:    id,
+		Data:   boxData(target.Box),
+		Detail: fmt.Sprintf("undo %s", id),
+	}}, nil
 }
 
 // fold appends one half-open box operation and reports the event it produced.
-func (c *boxCanvas) fold(kind string, r Rect, meta json.RawMessage) ([]Event, error) {
+func (c *boxCanvas) fold(kind, id string, r Rect, meta json.RawMessage) ([]Event, error) {
 	min := []float64{r.X0, r.Y0}
 	max := []float64{r.X1, r.Y1}
-	o, err := c.apply(kind, min, max, meta)
+	o, err := c.apply(kind, id, min, max, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -61,16 +77,29 @@ func (c *boxCanvas) fold(kind string, r Rect, meta json.RawMessage) ([]Event, er
 	}}, nil
 }
 
-// apply appends one box under the given command kind, carrying meta.
-func (c *boxCanvas) apply(kind string, min, max []float64, meta json.RawMessage) (sop.Op, error) {
+// apply appends one box under the given command kind, carrying meta. When id
+// is non-empty it overrides the generated operation ID, so the client can
+// retract this exact edit later.
+func (c *boxCanvas) apply(kind, id string, min, max []float64, meta json.RawMessage) (sop.Op, error) {
+	var o sop.Op
 	switch kind {
 	case cmdPaint:
-		return c.set.AddWithMeta(context.Background(), min, max, meta)
+		o = sop.Add(min, max)
 	case cmdErase:
-		return c.set.RemoveWithMeta(context.Background(), min, max, meta)
+		o = sop.Remove(min, max)
 	default:
 		return sop.Op{}, fmt.Errorf("paint: unknown command %q", kind)
 	}
+	if id != "" {
+		o.ID = id
+	}
+	if meta != nil {
+		o.Box = o.Box.WithMeta(meta)
+	}
+	if err := c.set.Apply(context.Background(), o); err != nil {
+		return sop.Op{}, err
+	}
+	return o, nil
 }
 
 // boxData renders a box as {"min":[x0,y0],"max":[x1,y1]}, the shape the browser

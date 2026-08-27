@@ -169,6 +169,16 @@ func (e *Engine) Ops() []op.Op {
 	return out
 }
 
+// Op returns the known operation with the given ID, if any.
+func (e *Engine) Op(id string) (op.Op, bool) {
+	var out op.Op
+	var ok bool
+	phony.Block(e, func() {
+		out, ok = e.ops[id]
+	})
+	return out, ok
+}
+
 // Snapshot persists the current materialized view and log version.
 func (e *Engine) Snapshot(ctx context.Context) error {
 	var err error
@@ -289,6 +299,12 @@ func (e *Engine) catchUp(ctx context.Context) error {
 // applyToView folds a single operation into the cached view, segments and
 // add/remove sets.
 func (e *Engine) applyToView(o op.Op) {
+	if o.Kind == op.KindRetract {
+		// A retraction can remove any earlier operation, so rebuild the whole
+		// view from the log instead of patching it incrementally.
+		e.dirty = true
+		return
+	}
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
 		// A single op can reorder the whole priority-resolved cover, so defer
@@ -334,11 +350,12 @@ func (e *Engine) materializeAll() {
 	case strategy.LWW, strategy.FWW, strategy.AdditiveWinsLWW:
 		e.setView(strategy.Materialize(e.strategy, ops))
 	case strategy.AdditiveWins:
-		e.adds = boxesOf(ops, op.KindAdd, e.metaMerge)
-		e.removes = boxesOf(ops, op.KindRemove, e.metaMerge)
+		effective := strategy.Effective(ops)
+		e.adds = boxesOf(effective, op.KindAdd, e.metaMerge)
+		e.removes = boxesOf(effective, op.KindRemove, e.metaMerge)
 		e.setView(space.DifferenceMerged(e.adds, e.removes, e.metaMerge))
 	case strategy.GrowOnly:
-		e.adds = boxesOf(ops, op.KindAdd, e.metaMerge)
+		e.adds = boxesOf(strategy.Effective(ops), op.KindAdd, e.metaMerge)
 		e.setView(e.adds)
 	}
 }

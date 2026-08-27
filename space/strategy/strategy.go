@@ -102,6 +102,7 @@ func Materialize(s Strategy, ops []op.Op) []space.Box {
 // AdditiveWinsLWW carry the winning operation's metadata unchanged, so the
 // join does not apply there.
 func MaterializeMerged(s Strategy, ops []op.Op, merge meta.Merge) []space.Box {
+	ops = Effective(ops)
 	switch s {
 	case LWW, FWW:
 		return ToBoxes(Segments(s, ops))
@@ -117,6 +118,30 @@ func MaterializeMerged(s Strategy, ops []op.Op, merge meta.Merge) []space.Box {
 		return boxesOf(ops, op.KindAdd, merge)
 	}
 	return nil
+}
+
+// Effective resolves retractions: it drops every Retract operation and the
+// operation each one references. Retraction is single-level — undoing an
+// undone edit re-issues the original under a fresh ID rather than retracting
+// the Retract — so one pass over the log suffices.
+func Effective(ops []op.Op) []op.Op {
+	retracted := make(map[string]bool, len(ops))
+	for _, o := range ops {
+		if o.Kind == op.KindRetract {
+			retracted[o.Ref] = true
+		}
+	}
+	if len(retracted) == 0 {
+		return ops
+	}
+	out := make([]op.Op, 0, len(ops))
+	for _, o := range ops {
+		if o.Kind == op.KindRetract || retracted[o.ID] {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
 }
 
 // Segments projects the operations into canonical winner-annotated regions.

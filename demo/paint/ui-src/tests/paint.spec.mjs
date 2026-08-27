@@ -337,7 +337,7 @@ test("reconnect button reconnects immediately", async ({ page }) => {
   await expect(page.locator("#reconnectBanner")).toBeHidden();
 });
 
-test("eraser brush removes a 3x3 block of cells", async ({ page }) => {
+test("eraser removes one cell like the pen", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator("#status")).toContainText("connected");
@@ -351,10 +351,9 @@ test("eraser brush removes a 3x3 block of cells", async ({ page }) => {
   await page.mouse.down();
   await page.mouse.up();
 
-  // A single click stamps the 1.5-cell-radius disk: nine erased cells.
-  await expect(page.locator("#log li.summary").first()).toContainText(
-    "remove ×9",
-  );
+  // A single click stamps exactly one cell, the same footprint as the pen.
+  await expect(page.locator("#log li.remove").first()).toContainText("remove");
+  await expect(page.locator("#log li.remove")).toHaveCount(1);
 });
 
 test("zoom buttons zoom in, out, and reset", async ({ page }) => {
@@ -473,7 +472,7 @@ test("roster groups one user's sessions together", async ({ context }) => {
   await expect(a.locator("#rosterList li", { hasText: idA })).toContainText(idB);
 });
 
-test("undo erases the last stroke and redo restores it", async ({ page }) => {
+test("undo retracts the last stroke and redo restores it", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator("#status")).toContainText("connected");
@@ -482,10 +481,66 @@ test("undo erases the last stroke and redo restores it", async ({ page }) => {
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
   await page.locator("#undoBtn").click();
-  await expect(page.locator("#log li.remove").first()).toContainText("remove");
+  await expect(page.locator("#log li.retract").first()).toContainText(
+    "retract",
+  );
 
   await page.locator("#redoBtn").click();
   await expect(page.locator("#log li.add").last()).toContainText("add");
+});
+
+test("undoing an erase restores the erased cell", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page); // paint a 2x2 block
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#toolEraser").click();
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator("#log li.remove").first()).toContainText("remove");
+
+  await page.locator("#undoBtn").click();
+  await expect(page.locator("#log li.retract").first()).toContainText(
+    "retract",
+  );
+});
+
+test("undo retracts only the undoing client's own stroke", async ({ browser }) => {
+  const alice = await browser.newPage();
+  await alice.goto("/ui/");
+  await alice.waitForURL(/[?&]s=/);
+
+  const bob = await browser.newPage();
+  await bob.goto(alice.url());
+  await expect(alice.locator("#status")).toContainText("connected");
+  await expect(bob.locator("#status")).toContainText("connected");
+
+  await drawRect(alice); // alice paints first
+  await expect(alice.locator("#log li.add")).toHaveCount(1);
+  await drawRect(bob); // bob paints the same cells second
+  await expect(alice.locator("#log li.add")).toHaveCount(2);
+
+  await bob.locator("#undoBtn").click();
+  await expect(alice.locator("#log li.retract").first()).toContainText(
+    "retract",
+  );
+
+  // The retract names bob's op, so alice's identical stroke survives.
+  const [download] = await Promise.all([
+    alice.waitForEvent("download"),
+    alice.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const entries = content.trim().split("\n").map((line) => JSON.parse(line));
+  const adds = entries.filter((e) => e.kind === "add");
+  const retract = entries.find((e) => e.kind === "retract");
+  expect(adds).toHaveLength(2);
+  expect(retract.ref).toBe(adds[1].id);
+  expect(retract.ref).not.toBe(adds[0].id);
 });
 
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is

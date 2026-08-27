@@ -3,6 +3,7 @@ package eventfulranges
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/d-led/eventfulranges/clock"
 	"github.com/d-led/eventfulranges/meta"
@@ -101,6 +102,21 @@ func (b *BoxSet) Remove(ctx context.Context, min, max []float64) (sop.Op, error)
 func (b *BoxSet) RemoveWithMeta(ctx context.Context, min, max []float64, m json.RawMessage) (sop.Op, error) {
 	o := sop.Remove(min, max)
 	o.Box = o.Box.WithMeta(m)
+	return o, b.engine.Apply(ctx, o)
+}
+
+// Retract cancels the operation named refID, undoing that one edit without
+// touching any other operation. Retraction is single-level: a Retract cannot
+// itself be retracted.
+func (b *BoxSet) Retract(ctx context.Context, refID string) (sop.Op, error) {
+	target, ok := b.engine.Op(refID)
+	if !ok {
+		return sop.Op{}, fmt.Errorf("box set: retract unknown operation %q", refID)
+	}
+	if target.Kind == sop.KindRetract {
+		return sop.Op{}, fmt.Errorf("box set: cannot retract a retraction %q", refID)
+	}
+	o := sop.Retract(refID, target.Box)
 	return o, b.engine.Apply(ctx, o)
 }
 
