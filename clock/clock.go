@@ -3,7 +3,7 @@
 package clock
 
 import (
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,35 +19,31 @@ type Clock interface {
 // ticks never collide and remote timestamps are always taken into account.
 // The zero value is ready to use.
 type Hybrid struct {
-	mu   sync.Mutex
-	last int64
+	last atomic.Int64
 }
 
 // Tick returns the next hybrid timestamp.
 func (h *Hybrid) Tick() int64 {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	ts := time.Now().UnixNano()
-	if ts <= h.last {
-		ts = h.last + 1
+	for {
+		prev := h.last.Load()
+		ts := time.Now().UnixNano()
+		if ts <= prev {
+			ts = prev + 1
+		}
+		if h.last.CompareAndSwap(prev, ts) {
+			return ts
+		}
 	}
-	h.last = ts
-	return ts
 }
 
 // Observe advances the clock past ts.
 func (h *Hybrid) Observe(ts int64) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if ts > h.last {
-		h.last = ts
-	}
+	advancePast(&h.last, ts)
 }
 
 // Lamport is a pure logical clock, useful for deterministic tests.
 type Lamport struct {
-	mu   sync.Mutex
-	last int64
+	last atomic.Int64
 }
 
 // NewLamport returns a Lamport clock starting at zero.
@@ -57,17 +53,23 @@ func NewLamport() *Lamport {
 
 // Tick returns the next logical timestamp.
 func (l *Lamport) Tick() int64 {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.last++
-	return l.last
+	return l.last.Add(1)
 }
 
 // Observe advances the clock past ts.
 func (l *Lamport) Observe(ts int64) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if ts > l.last {
-		l.last = ts
+	advancePast(&l.last, ts)
+}
+
+// advancePast moves c forward to at least ts, if it is behind.
+func advancePast(c *atomic.Int64, ts int64) {
+	for {
+		prev := c.Load()
+		if ts <= prev {
+			return
+		}
+		if c.CompareAndSwap(prev, ts) {
+			return
+		}
 	}
 }
