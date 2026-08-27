@@ -74,8 +74,27 @@ universal_binaries:
     replace: true
 
 archives:
-  - formats: ['tar.gz']
+  # One archive entry per build: without ids, a single entry would bundle
+  # every build's binary into one archive per target, producing names that
+  # flip-flop between the two binaries.
+  - id: web
+    ids: [web]
+    formats: ['tar.gz']
     # uname-compatible name template; zip for Windows.
+    name_template: >-
+      {{ .Binary }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
+
+  - id: paint
+    ids: [paint]
+    formats: ['tar.gz']
     name_template: >-
       {{ .Binary }}_
       {{- title .Os }}_
