@@ -236,3 +236,27 @@ func TestBoxSetCustomMetaMerge(t *testing.T) {
 
 	require.JSONEq(t, `{"merged":true}`, string(bs.Boxes()[0].Meta), "the custom join decides the merged metadata")
 }
+
+func TestBoxSetCompactRoundTrips(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	bs, err := eventfulranges.OpenBoxes(ctx, dir, strategy.AdditiveWinsLWW,
+		eventfulranges.WithBoxSnapshotEvery(2))
+	require.NoError(t, err)
+
+	_, err = bs.Add(ctx, []float64{0, 0}, []float64{4, 4})
+	require.NoError(t, err)
+	_, err = bs.Remove(ctx, []float64{1, 1}, []float64{3, 3})
+	require.NoError(t, err)
+	want := bs.Boxes()
+	wantOps := bs.Ops()
+
+	require.NoError(t, bs.Compact(ctx))
+
+	reopened, err := eventfulranges.OpenBoxes(ctx, dir, strategy.AdditiveWinsLWW)
+	require.NoError(t, err)
+	require.True(t, space.Equal(want, reopened.Boxes()), "compaction preserves the picture")
+	require.Equal(t, wantOps, reopened.Ops(), "compaction preserves the operation history")
+}

@@ -19,6 +19,7 @@ type Snapshot struct {
 	Segments  []strategy.Segment  `json:"segments,omitempty"`
 	Adds      []interval.Interval `json:"adds,omitempty"`
 	Removes   []interval.Interval `json:"removes,omitempty"`
+	Ops       []op.Op             `json:"ops,omitempty"`
 }
 
 // reload loads the snapshot (when compatible) and replays the tail of the
@@ -51,6 +52,12 @@ func (e *Engine) reload(ctx context.Context) error {
 
 // restore rebuilds the view from the snapshot plus the replayed tail.
 func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
+	// Fold the snapshot's full op history back in so compaction keeps Ops()
+	// complete for anti-entropy exchange.
+	for _, o := range snap.Ops {
+		e.clock.Observe(o.TS)
+		e.ops[o.ID] = o
+	}
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW:
 		e.segments = snap.Segments
@@ -74,17 +81,13 @@ func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 	}
 }
 
-// snapshot writes the current view and version to the store. Backends without
-// snapshot support skip it.
-func (e *Engine) snapshot(ctx context.Context) error {
-	sn, ok := e.store.(store.Snapshotter)
-	if !ok {
-		return nil
-	}
+// buildSnapshot assembles the current view and log version into a Snapshot.
+func (e *Engine) buildSnapshot() Snapshot {
 	snap := Snapshot{
 		Strategy:  e.strategy,
 		Version:   e.version,
 		Intervals: e.view,
+		Ops:       e.opsList(),
 	}
 	switch e.strategy {
 	case strategy.LWW, strategy.FWW:
@@ -93,9 +96,36 @@ func (e *Engine) snapshot(ctx context.Context) error {
 		snap.Adds = e.adds
 		snap.Removes = e.removes
 	}
+	return snap
+}
+
+// snapshot writes the current view and version to the store. Backends without
+// snapshot support skip it.
+func (e *Engine) snapshot(ctx context.Context) error {
+	sn, ok := e.store.(store.Snapshotter)
+	if !ok {
+		return nil
+	}
 	// The strategy is validated at Open, so Marshal cannot fail.
-	data, _ := json.Marshal(snap)
+	data, _ := json.Marshal(e.buildSnapshot())
 	if err := sn.SaveSnapshot(ctx, data, e.version); err != nil {
+		return err
+	}
+	e.since = 0
+	return nil
+}
+
+// Compact rewrites the store as a snapshot of the current view plus any
+// operations it does not cover, collapsing the stream to its smallest form.
+func (e *Engine) Compact(ctx context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	compactor, ok := e.store.(store.Compactor)
+	if !ok {
+		return store.ErrCompactionUnsupported
+	}
+	data, _ := json.Marshal(e.buildSnapshot())
+	if err := compactor.Compact(ctx, data, e.version); err != nil {
 		return err
 	}
 	e.since = 0

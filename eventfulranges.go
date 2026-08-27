@@ -117,3 +117,9 @@ func (r *RangeSet) Ops() []op.Op {
 func (r *RangeSet) Snapshot(ctx context.Context) error {
 	return r.engine.Snapshot(ctx)
 }
+
+// Compact rewrites the store as a snapshot of the current view, collapsing the
+// stream to its smallest form.
+func (r *RangeSet) Compact(ctx context.Context) error {
+	return r.engine.Compact(ctx)
+}

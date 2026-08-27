@@ -44,6 +44,30 @@ func TestOpenAndConvenienceMethods(t *testing.T) {
 	require.NotEmpty(t, rs.Ranges())
 }
 
+func TestRangeSetCompactRoundTrips(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	rs, err := eventfulranges.Open(ctx, dir, strategy.AdditiveWins,
+		eventfulranges.WithSnapshotEvery(2))
+	require.NoError(t, err)
+
+	_, err = rs.Add(ctx, 1, 5)
+	require.NoError(t, err)
+	_, err = rs.Remove(ctx, 2, 3)
+	require.NoError(t, err)
+	want := rs.Ranges()
+	wantOps := rs.Ops()
+
+	require.NoError(t, rs.Compact(ctx))
+
+	reopened, err := eventfulranges.Open(ctx, dir, strategy.AdditiveWins)
+	require.NoError(t, err)
+	require.True(t, interval.Equal(want, reopened.Ranges()), "compaction preserves the picture")
+	require.Equal(t, wantOps, reopened.Ops(), "compaction preserves the operation history")
+}
+
 func TestOpenStore(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

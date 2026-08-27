@@ -156,3 +156,9 @@ func (b *BoxSet) Ops() []sop.Op {
 func (b *BoxSet) Snapshot(ctx context.Context) error {
 	return b.engine.Snapshot(ctx)
 }
+
+// Compact rewrites the store as a snapshot of the current view, collapsing the
+// stream to its smallest form.
+func (b *BoxSet) Compact(ctx context.Context) error {
+	return b.engine.Compact(ctx)
+}

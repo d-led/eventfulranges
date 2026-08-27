@@ -16,6 +16,8 @@ var (
 	ErrVersionConflict = errors.New("store: version conflict")
 	// ErrSnapshotNotFound is returned when no snapshot exists.
 	ErrSnapshotNotFound = errors.New("store: snapshot not found")
+	// ErrCompactionUnsupported is returned when the backend cannot compact.
+	ErrCompactionUnsupported = errors.New("store: compaction unsupported")
 )
 
 // Log is an append-only, ordered stream of box operations. It is the smallest
@@ -37,6 +39,15 @@ type Snapshotter interface {
 	SaveSnapshot(ctx context.Context, data []byte, version int64) error
 	// LoadSnapshot returns the latest snapshot and its version.
 	LoadSnapshot(ctx context.Context) ([]byte, int64, error)
+}
+
+// Compactor rewrites the log so a materialized snapshot replaces every
+// operation it covers, shrinking the stream. A Log may optionally implement
+// it; backends that do not simply skip compaction.
+type Compactor interface {
+	// Compact rewrites the log as the given snapshot followed by the
+	// operations after version.
+	Compact(ctx context.Context, snapshotData []byte, version int64) error
 }
 
 // EventStore is the combined contract: an append-only log with snapshotting.

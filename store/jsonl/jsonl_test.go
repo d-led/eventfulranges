@@ -74,10 +74,10 @@ func TestJSONLSnapshot(t *testing.T) {
 	_, _, err = s.LoadSnapshot(ctx)
 	require.ErrorIs(t, err, store.ErrSnapshotNotFound)
 
-	require.NoError(t, s.SaveSnapshot(ctx, []byte("payload"), 4))
+	require.NoError(t, s.SaveSnapshot(ctx, []byte(`{"v":4}`), 4))
 	data, version, err := s.LoadSnapshot(ctx)
 	require.NoError(t, err)
-	require.Equal(t, []byte("payload"), data)
+	require.JSONEq(t, `{"v":4}`, string(data))
 	require.Equal(t, int64(4), version)
 }
 
@@ -106,10 +106,71 @@ func TestJSONLCorruptSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	_, err := jsonl.Open(dir)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.snapshot.json"), []byte("garbage"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.stream.jsonl"), []byte(`{"snapshot":`+"\n"), 0o644))
 
 	s, err := jsonl.Open(dir)
 	require.NoError(t, err)
 	_, _, err = s.LoadSnapshot(context.Background())
 	require.Error(t, err)
+}
+
+func TestJSONLCompact(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s, err := jsonl.Open(dir)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	require.NoError(t, s.Append(ctx, 0, []op.Op{opAdd("a", 1, 1, 2), opAdd("b", 2, 3, 4)}))
+	require.NoError(t, s.Compact(ctx, []byte(`{"n":2}`), 2))
+
+	data, version, err := s.LoadSnapshot(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), version)
+	require.JSONEq(t, `{"n":2}`, string(data))
+
+	got, v, err := s.Read(ctx, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), v, "the compacted snapshot keeps the logical version")
+	require.Empty(t, got)
+
+	require.NoError(t, s.Append(ctx, 2, []op.Op{opAdd("c", 3, 5, 6)}))
+	got, v, err = s.Read(ctx, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), v)
+	require.Len(t, got, 1)
+	require.Equal(t, "c", got[0].ID)
+}
+
+func TestJSONLInvalidKindLine(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	_, err := jsonl.Open(dir)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.stream.jsonl"), []byte(`{"id":"x","kind":"bogus"}`+"\n"), 0o644))
+
+	s, err := jsonl.Open(dir)
+	require.NoError(t, err)
+	_, _, err = s.Read(context.Background(), 0)
+	require.Error(t, err)
+}
+
+func TestJSONLCompactKeepsTail(t *testing.T) {
+	t.Parallel()
+	s, err := jsonl.Open(t.TempDir())
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	require.NoError(t, s.Append(ctx, 0, []op.Op{
+		opAdd("a", 1, 1, 2),
+		opAdd("b", 2, 3, 4),
+		opAdd("c", 3, 5, 6),
+	}))
+	require.NoError(t, s.Compact(ctx, []byte(`{"n":2}`), 2))
+
+	got, version, err := s.Read(ctx, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), version)
+	require.Len(t, got, 1)
+	require.Equal(t, "c", got[0].ID)
 }

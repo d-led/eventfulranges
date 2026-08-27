@@ -231,8 +231,37 @@ func TestCorruptSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	st, err := jsonl.Open(dir)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.snapshot.json"), []byte("garbage"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ranges.stream.jsonl"), []byte(`{"snapshot":`+"\n"), 0o644))
 
 	_, err = engine.Open(context.Background(), st, strategy.LWW)
 	require.Error(t, err)
+}
+
+func TestCompactUnsupported(t *testing.T) {
+	t.Parallel()
+	e, err := engine.Open(context.Background(), memory.New(), strategy.LWW)
+	require.NoError(t, err)
+	require.Error(t, e.Compact(context.Background()))
+}
+
+func TestCompactRoundTrips(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dir := t.TempDir()
+	st, err := jsonl.Open(dir)
+	require.NoError(t, err)
+	e, err := engine.Open(ctx, st, strategy.AdditiveWins)
+	require.NoError(t, err)
+
+	require.NoError(t, e.Apply(ctx, op.Op{ID: "a", Kind: op.KindAdd, Interval: interval.Interval{Start: 1, End: 5}}))
+	require.NoError(t, e.Apply(ctx, op.Op{ID: "b", Kind: op.KindRemove, Interval: interval.Interval{Start: 2, End: 3}}))
+	want := e.Materialize()
+
+	require.NoError(t, e.Compact(ctx))
+
+	st2, err := jsonl.Open(dir)
+	require.NoError(t, err)
+	reopened, err := engine.Open(ctx, st2, strategy.AdditiveWins)
+	require.NoError(t, err)
+	require.True(t, interval.Equal(want, reopened.Materialize()), "compaction preserves the picture")
 }

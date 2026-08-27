@@ -36,14 +36,14 @@ func TestAppendCountError(t *testing.T) {
 	dir := t.TempDir()
 	blocker := filepath.Join(dir, "file")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o644))
-	s := &Store{opsPath: filepath.Join(blocker, "boxes.jsonl"), snapPath: filepath.Join(dir, "snap.json")}
+	s := &Store{opsPath: filepath.Join(blocker, "boxes.jsonl")}
 	require.Error(t, s.Append(context.Background(), 0, []op.Op{testOp("a")}))
 }
 
 func TestAppendOpenError(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl"), snapPath: filepath.Join(dir, "snap.json")}
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
 	require.NoError(t, os.WriteFile(s.opsPath, nil, 0o444))
 	require.Error(t, s.Append(context.Background(), 0, []op.Op{testOp("a")}))
 }
@@ -53,7 +53,7 @@ func TestReadOpenError(t *testing.T) {
 	dir := t.TempDir()
 	blocker := filepath.Join(dir, "file")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o644))
-	s := &Store{opsPath: filepath.Join(blocker, "boxes.jsonl"), snapPath: filepath.Join(dir, "snap.json")}
+	s := &Store{opsPath: filepath.Join(blocker, "boxes.jsonl")}
 	_, _, err := s.Read(context.Background(), 0)
 	require.Error(t, err)
 }
@@ -61,7 +61,7 @@ func TestReadOpenError(t *testing.T) {
 func TestReadTooLongLine(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl"), snapPath: filepath.Join(dir, "snap.json")}
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
 	long := make([]byte, 70*1024)
 	for i := range long {
 		long[i] = 'a'
@@ -71,32 +71,59 @@ func TestReadTooLongLine(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestSaveSnapshotWriteError(t *testing.T) {
+func TestSaveSnapshotAppendError(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	blocker := filepath.Join(dir, "file")
-	require.NoError(t, os.WriteFile(blocker, nil, 0o644))
-	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl"), snapPath: filepath.Join(blocker, "snap.json")}
-	require.Error(t, s.SaveSnapshot(context.Background(), []byte("x"), 1))
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
+	require.NoError(t, os.Mkdir(s.opsPath, 0o755))
+	require.Error(t, s.SaveSnapshot(context.Background(), []byte(`{}`), 1))
 }
 
-func TestSaveSnapshotRenameError(t *testing.T) {
+func TestSaveSnapshotInvalidData(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	snapDir := filepath.Join(dir, "snap.json")
-	require.NoError(t, os.Mkdir(snapDir, 0o755))
-	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl"), snapPath: snapDir}
-	require.Error(t, s.SaveSnapshot(context.Background(), []byte("x"), 1))
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
+	require.Error(t, s.SaveSnapshot(context.Background(), []byte("not json"), 1))
 }
 
 func TestLoadSnapshotReadError(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	blocker := filepath.Join(dir, "file")
-	require.NoError(t, os.WriteFile(blocker, nil, 0o644))
-	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl"), snapPath: filepath.Join(blocker, "snap.json")}
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
+	require.NoError(t, os.Mkdir(s.opsPath, 0o755))
 	_, _, err := s.LoadSnapshot(context.Background())
 	require.Error(t, err)
+}
+
+func TestCompactReadError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
+	require.NoError(t, os.WriteFile(s.opsPath, []byte("not json\n"), 0o644))
+	require.Error(t, s.Compact(context.Background(), []byte(`{}`), 0))
+}
+
+func TestCompactInvalidData(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := &Store{opsPath: filepath.Join(dir, "boxes.jsonl")}
+	require.Error(t, s.Compact(context.Background(), []byte("not json"), 0))
+}
+
+func TestWriteAtomicWriteError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "boxes.jsonl")
+	require.NoError(t, os.Mkdir(path+".tmp", 0o755))
+	require.Error(t, writeAtomic(path, []byte("x")))
+}
+
+func TestWriteAtomicRenameError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "boxes.jsonl")
+	require.NoError(t, os.Mkdir(path, 0o755))
+	require.Error(t, writeAtomic(path, []byte("x")))
 }
 
 func TestAppendEventsWriteError(t *testing.T) {
@@ -114,8 +141,7 @@ func TestAppendWriteErrorInjected(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	s := &Store{
-		opsPath:  filepath.Join(dir, "boxes.jsonl"),
-		snapPath: filepath.Join(dir, "snap.json"),
+		opsPath: filepath.Join(dir, "boxes.jsonl"),
 		appendLines: func(*os.File, []op.Op) error {
 			return errors.New("write failed")
 		},
