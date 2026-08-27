@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>eventfulranges — infinite shared whiteboard</title>
+    <title>eventfulranges — ± infinite paint</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -13,7 +13,7 @@
     </div>
     <main>
       <aside id="panel">
-        <h1>eventfulranges · whiteboard</h1>
+        <h1>eventfulranges · ± infinite paint</h1>
 
         <p id="presence" class="presence">
           <span id="hereLink" class="presence-link">… here</span>
@@ -31,10 +31,12 @@
         <div id="backlog" class="backlog" hidden></div>
 
         <p class="lede">
-          A shared whiteboard on a fractal grid, backed by a conflict-free
-          replicated data type (CRDT) so every client converges. Scroll or
-          pinch to zoom, drag to pan, and share the link so everyone joins the
-          same board.
+          A shared canvas on a fractal grid: every stroke is an event in an
+          append-only log, merged by a conflict-free replicated data type (CRDT)
+          with separate merge strategies for ranges and metadata. Edits apply
+          instantly, queue while offline, and sync on reconnect. Scroll or pinch
+          to zoom, drag to pan, and share the link so everyone joins the same
+          canvas.
         </p>
 
         <a id="adminLink" href="/admin/" class="admin-link" hidden>Admin</a>

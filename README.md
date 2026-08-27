@@ -225,6 +225,16 @@ session URL, and the raw operation log is one click away as JSONL. Open
 ./scripts/e2e-paint.sh      # vitest unit tests + Playwright end-to-end tests
 ```
 
+#### Related — infinite canvases and zoom-first editors
+
+- [tldraw](https://tldraw.dev) — open-source infinite canvas, real-time collaboration
+- [Excalidraw](https://excalidraw.com) — infinite canvas, CRDT (Yjs) collaboration ([source](https://github.com/excalidraw/excalidraw))
+- [Miro](https://miro.com) — infinite canvas, real-time collaboration
+- [FigJam](https://www.figma.com/figjam/) — infinite canvas, real-time collaboration
+- [InfiniPaint](https://infinipaint.com) — collaborative canvas with no zoom limit
+- [Endless Paper](https://www.endlesspaper.app) — single-user infinite canvas
+- [Prezi](https://prezi.com) — the zoomable-canvas presentation paradigm
+
 ## Quality
 
 Everything is checked by `scripts/quality-gate.sh` and on CI:
