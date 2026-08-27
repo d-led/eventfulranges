@@ -260,6 +260,44 @@ input[type="color"] {
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 
+.backlog {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #e6c07b;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.zen-hud {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: rgba(24, 27, 34, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font:
+    12px/1.4 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.zen-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+}
+
+body.disconnected .zen-dot {
+  background: #f87171;
+}
+
 #reconnectBanner {
   position: fixed;
   top: 0;
@@ -286,12 +324,6 @@ input[type="color"] {
   background: #7a3030;
   border-color: #a04040;
   color: #fff;
-}
-
-body.disconnected #canvas {
-  pointer-events: none;
-  opacity: 0.55;
-  filter: grayscale(0.4);
 }
 
 button:disabled,
@@ -385,9 +417,19 @@ button:disabled:hover {
     border-right: none;
     border-bottom: 1px solid var(--border);
     overflow-y: visible;
+    padding: 12px 14px;
   }
-  #canvas {
-    min-height: 320px;
+  /* The description and badge are noise on a phone: drop them so the board
+     keeps its room. */
+  .lede,
+  .gh {
+    display: none;
+  }
+  /* The board itself must stay at least 80% of the viewport tall, so a phone
+     still has a paint surface to draw on. */
+  #board {
+    min-height: 80vh;
+    min-height: 80dvh;
   }
   #activity {
     height: 160px;
@@ -399,6 +441,48 @@ button:disabled:hover {
   #toolbar button {
     padding: 8px;
   }
+}
+
+/* Focus ("zen") mode: the canvas fills the viewport and the toolbar floats
+   over it, so only the drawing controls remain visible. */
+body.zen main {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "canvas";
+  height: 100vh;
+  height: 100dvh;
+}
+
+body.zen #panel,
+body.zen #activity {
+  display: none;
+}
+
+body.zen #canvas {
+  height: 100%;
+}
+
+body.zen #toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  justify-content: center;
+  background: rgba(24, 27, 34, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+body.zen .zen-hidden {
+  display: none !important;
+}
+
+body.zen .zen-hud {
+  display: flex;
 }
 
 /* GitHub badge in the sidebar. */

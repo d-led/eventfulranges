@@ -47,6 +47,9 @@ const connectedLink = $("connectedLink");
 const meLabel = $("meLabel");
 const undoBtn = $("undoBtn");
 const redoBtn = $("redoBtn");
+const backlogEl = $("backlog");
+const zenBtn = $("zenBtn");
+const zenBacklog = $("zenBacklog");
 
 const ctx = boardEl.getContext("2d");
 
@@ -62,6 +65,9 @@ let reconnectAttempts = 0;
 let reconnectTimer = null;
 let roster = []; // [{user, sessions}] broadcast by the server
 let rosterView = "connected"; // "here" (this session) or "connected" (all)
+let pending = []; // outgoing ops not yet acknowledged by the server, in order
+let pendingIDs = new Set(); // ids of pending ops, for O(1) acknowledgement
+let seen = new Set(); // ids already folded into the local view
 
 const LOG_MAX = 100; // scrolling window: at most this many rendered log items
 const LOG_DEBOUNCE_MS = 150; // coalesce a burst of ops into one summary line
@@ -99,11 +105,16 @@ function materialize() {
   draw();
 }
 
-function applyEntries(entries) {
+function applyEntries(entries, ack = true) {
+  const fresh = [];
   const newAdds = [];
   const newRemoves = [];
   const retracted = new Set();
   for (const e of entries) {
+    if (ack) ackOp(e.id);
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    fresh.push(e);
     if (e.kind === "add") {
       newAdds.push({
         id: e.id,
@@ -116,9 +127,10 @@ function applyEntries(entries) {
     } else if (e.kind === "retract") {
       retracted.add(e.ref);
     }
-    logEntries.push(e);
   }
-  queueLog(entries);
+  if (fresh.length === 0) return;
+  logEntries.push(...fresh);
+  queueLog(fresh);
   if (retracted.size > 0) {
     adds = adds.filter((a) => !retracted.has(a.id));
     removes = removes.filter((r) => !retracted.has(r.id));
@@ -571,14 +583,11 @@ function setConnected(online) {
   connected = online;
   document.body.classList.toggle("disconnected", !online);
   reconnectBanner.hidden = online;
-  rectBtn.disabled = !online;
-  penBtn.disabled = !online;
-  eraseBtn.disabled = !online;
-  eraserBtn.disabled = !online;
-  importJsonlBtn.disabled = !online;
+  importJsonlBtn.disabled = !online; // bulk import still needs the server
   if (online) {
     reconnectAttempts = 0;
     clearReconnectTimer();
+    flushPending();
   }
 }
 
@@ -597,8 +606,8 @@ function scheduleReconnect() {
   const delay = delayFor(reconnectAttempts);
   reconnectAttempts += 1;
   const secs = Math.round(delay / 1000);
-  setStatus(`disconnected — retrying in ${secs}s`);
-  reconnectText.textContent = `Disconnected — retrying in ${secs}s`;
+  setStatus(`disconnected — edits queued, retrying in ${secs}s`);
+  reconnectText.textContent = `Disconnected — edits queued, retrying in ${secs}s`;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
@@ -634,7 +643,11 @@ function connect() {
   socket = ws;
   ws.onopen = () => {
     setConnected(true);
-    setStatus("connected — strokes are shared live");
+    setStatus(
+      pending.length > 0
+        ? `connected — syncing ${pending.length} queued edit${pending.length === 1 ? "" : "s"}…`
+        : "connected — strokes are shared live",
+    );
   };
   ws.onclose = () => {
     setConnected(false);
@@ -665,7 +678,12 @@ function handleMessage(msg) {
     resetLocal();
     if (full.length > 0) {
       applyEntries(full);
+      // Re-apply and re-send the edits the server has not acknowledged yet.
+      for (const cmd of pending) applyLocalCmd(cmd);
+      flushPending();
     } else if (local.length > 0) {
+      pending = [];
+      pendingIDs = new Set();
       replayLocalLog(local);
       setStatus("restored from local copy — syncing…");
     } else {
@@ -688,6 +706,7 @@ function resetLocal() {
   removes = [];
   logEntries = [];
   logPending = [];
+  seen = new Set();
   if (logTimer !== null) {
     clearTimeout(logTimer);
     logTimer = null;
@@ -725,19 +744,109 @@ function loadReserve() {
   }
 }
 
-function replayLocalLog(log) {
-  for (const entry of log) {
-    const cmd = entryToCmd(entry);
-    if (cmd) sendCmd(cmd);
+// pendingKey names the localStorage slot holding the not-yet-acked outbox.
+function pendingKey() {
+  const session = new URLSearchParams(location.search).get("s");
+  return session ? `eventfulranges:paint:pending:${session}` : null;
+}
+
+// savePending persists the outbox so a reload does not drop unsynced edits.
+function savePending() {
+  const key = pendingKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(pending));
+  } catch {
+    // Storage may be unavailable (private mode) or full: the in-memory queue
+    // still keeps the edits alive for as long as the page does.
   }
 }
 
-function sendCmd(cmd) {
-  if (!connected || !socket || socket.readyState !== WebSocket.OPEN) {
-    setStatus("disconnected — reconnect to paint");
-    return;
+function loadPending() {
+  const key = pendingKey();
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
   }
-  socket.send(JSON.stringify(cmd));
+}
+
+function replayLocalLog(log) {
+  for (const entry of log) {
+    const cmd = entryToCmd(entry);
+    if (cmd) {
+      applyLocalCmd(cmd);
+      enqueue(cmd);
+    }
+  }
+  flushPending();
+}
+
+// sendCmd applies one client command to the local view immediately, queues it
+// for the server, and tries to flush the queue. It is the local-first write
+// path: the server catches up in the background.
+function sendCmd(cmd) {
+  applyLocalCmd(cmd);
+  enqueue(cmd);
+  flushPending();
+}
+
+// applyLocalCmd folds one client command into the local view before the server
+// echoes it back, so edits render instantly.
+function applyLocalCmd(cmd) {
+  const kind =
+    cmd.kind === "paint" ? "add" : cmd.kind === "erase" ? "remove" : "retract";
+  const entry = {
+    id: cmd.id,
+    kind,
+    ref: cmd.ref,
+    client: clientID,
+    at: new Date().toISOString(),
+  };
+  if (cmd.data) {
+    entry.data = {
+      min: [cmd.data.x0, cmd.data.y0],
+      max: [cmd.data.x1, cmd.data.y1],
+    };
+  }
+  if (cmd.meta) entry.meta = cmd.meta;
+  applyEntries([entry], false);
+}
+
+// enqueue records one outgoing op that the server has not yet acknowledged.
+function enqueue(cmd) {
+  pending.push(cmd);
+  pendingIDs.add(cmd.id);
+  savePending();
+  updateBacklog();
+}
+
+// ackOp drops an acknowledged op from the outgoing queue.
+function ackOp(id) {
+  if (!pendingIDs.has(id)) return;
+  pendingIDs.delete(id);
+  pending = pending.filter((c) => c.id !== id);
+  savePending();
+  updateBacklog();
+}
+
+// flushPending sends every queued op to the server; duplicates are ignored
+// server-side by operation ID, so re-sending the whole queue is safe.
+function flushPending() {
+  if (!connected || !socket || socket.readyState !== WebSocket.OPEN) return;
+  for (const cmd of pending) {
+    socket.send(JSON.stringify(cmd));
+  }
+}
+
+// updateBacklog shows how many local ops are still waiting for the server.
+function updateBacklog() {
+  backlogEl.hidden = pending.length === 0;
+  backlogEl.textContent = `↻ ${pending.length} op${pending.length === 1 ? "" : "s"} to sync`;
+  zenBacklog.hidden = pending.length === 0;
+  zenBacklog.textContent = `↻ ${pending.length}`;
 }
 
 function setStatus(text) {
@@ -1035,7 +1144,10 @@ async function importJSONL(input) {
 
 function entryToCmd(entry) {
   if (entry.kind === "retract") {
-    return entry.ref ? { kind: "retract", ref: entry.ref } : null;
+    if (!entry.ref) return null;
+    const cmd = { kind: "retract", ref: entry.ref };
+    if (entry.id) cmd.id = entry.id;
+    return cmd;
   }
   const kind =
     entry.kind === "add" ? "paint" : entry.kind === "remove" ? "erase" : null;
@@ -1057,6 +1169,16 @@ penBtn.addEventListener("click", () => setTool("pen"));
 eraseBtn.addEventListener("click", () => setTool("erase"));
 eraserBtn.addEventListener("click", () => setTool("eraser"));
 panBtn.addEventListener("click", () => setTool("pan"));
+
+// zenBtn toggles focus mode: the canvas takes the whole viewport and the
+// toolbar floats over it, so only the drawing controls stay visible.
+zenBtn.addEventListener("click", () => {
+  const zen = document.body.classList.toggle("zen");
+  zenBtn.classList.toggle("active", zen);
+  zenBtn.setAttribute("aria-pressed", String(zen));
+  zenBtn.title = zen ? "Exit focus mode" : "Focus mode: full-screen editing";
+  requestAnimationFrame(resizeCanvas);
+});
 
 strokeColorEl.addEventListener("input", () => {
   strokeColor = strokeColorEl.value;
@@ -1113,6 +1235,9 @@ function boot() {
   resizeCanvas();
   setTool("rect");
   updateGridLabel();
+  pending = loadPending();
+  pendingIDs = new Set(pending.map((c) => c.id));
+  updateBacklog();
   draw();
   connect();
 }

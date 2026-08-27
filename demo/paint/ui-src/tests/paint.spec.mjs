@@ -299,7 +299,7 @@ test("round-trips a picture through JSONL export and import", async ({
   await expect(bob.locator("#log li.add")).toHaveCount(1);
 });
 
-test("freezes mutations while disconnected but keeps local download", async ({
+test("queues edits while disconnected and syncs on reconnect", async ({
   page,
 }) => {
   await page.goto("/ui/");
@@ -309,20 +309,27 @@ test("freezes mutations while disconnected but keeps local download", async ({
   await drawRect(page); // paint while connected so the log has a real entry
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
-  // Drop the connection as if the server vanished: the board freezes, mutation
-  // tools disable, and the local JSONL export stays available.
+  // Drop the connection: drawing keeps working and the edit is queued.
   await page.evaluate(() => window.__eventfulranges.closeSocket());
   await expect(page.locator("#reconnectBanner")).toBeVisible();
-  await expect(page.locator("#toolRect")).toBeDisabled();
-  await expect(page.locator("#downloadJsonl")).toBeEnabled();
 
+  await drawRect(page);
+  await expect(page.locator("#backlog")).toBeVisible();
+  await expect(page.locator("#backlog")).toContainText("1");
+
+  // The queued edit is part of the local log and export before the server
+  // has even acknowledged it.
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.locator("#downloadJsonl").click(),
   ]);
   const content = await readFile(await download.path(), "utf8");
-  const first = JSON.parse(content.trim().split("\n")[0]);
-  expect(first.kind).toBe("add");
+  expect(content.trim().split("\n")).toHaveLength(2);
+
+  // Reconnecting drains the queue and clears the backlog.
+  await page.locator("#reconnectBtn").click();
+  await expect(page.locator("#status")).toContainText("connected");
+  await expect(page.locator("#backlog")).toBeHidden();
 });
 
 test("reconnect button reconnects immediately", async ({ page }) => {
@@ -544,6 +551,48 @@ test("undo retracts only the undoing client's own stroke", async ({ browser }) =
   expect(adds).toHaveLength(2);
   expect(retract.ref).toBe(adds[1].id);
   expect(retract.ref).not.toBe(adds[0].id);
+});
+
+test("focus mode gives the canvas the whole viewport and hides the chrome", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const before = await page.locator("#board").boundingBox();
+
+  await page.locator("#zenBtn").click();
+  await expect(page.locator("body")).toHaveClass(/zen/);
+  await expect(page.locator("#panel")).toBeHidden();
+  await expect(page.locator("#activity")).toBeHidden();
+  await expect(page.locator("#downloadJsonl")).toBeHidden();
+
+  const viewport = page.viewportSize();
+  const full = await page.locator("#board").boundingBox();
+  expect(full.height).toBeGreaterThanOrEqual(viewport.height * 0.8);
+  expect(full.height).toBeGreaterThan(before.height);
+
+  // Drawing still works with the chrome hidden.
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  // Exiting restores the side panel and activity log.
+  await page.locator("#zenBtn").click();
+  await expect(page.locator("body")).not.toHaveClass(/zen/);
+  await expect(page.locator("#panel")).toBeVisible();
+  await expect(page.locator("#activity")).toBeVisible();
+});
+
+test("on a small phone the board stays at least 80% of the viewport tall", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const viewport = page.viewportSize();
+  const box = await page.locator("#board").boundingBox();
+  // The board must cover at least 80% of the viewport (whole pixels; the
+  // browser quantizes layout to 1/64 px, so compare against the floor).
+  expect(box.height).toBeGreaterThanOrEqual(Math.floor(viewport.height * 0.8));
 });
 
 // drawRect drags a 2x2 cell rectangle starting from the board centre, which is
