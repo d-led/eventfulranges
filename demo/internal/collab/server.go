@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -12,6 +13,14 @@ import (
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
+
+// Heartbeat timing: the server pings and expects a pong within pongWait, so a
+// client that vanished without a clean close is evicted from the roster.
+const (
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+)
 
 // emailOf resolves the connected user's identity. Behind oauth2-proxy it
 // arrives as X-Auth-Request-Email; without a proxy the browser sends its local,
@@ -82,6 +91,13 @@ func handleWS(c *gin.Context, s *Sessions) {
 	}
 	defer func() { _ = conn.Close() }()
 
+	// A read deadline plus ping/pong lets the reader detect a peer that
+	// disappeared without a close frame, so its roster entry is released.
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
 	updates := sess.Subscribe()
 	defer sess.Unsubscribe(updates)
 	presence := s.SubscribePresence()
@@ -104,7 +120,26 @@ func handleWS(c *gin.Context, s *Sessions) {
 	done := make(chan struct{})
 	failures := make(chan error, 8)
 	go readClientOps(conn, sess, clientID, done, failures)
+	go pingLoop(conn, done)
 	writeUpdates(conn, updates, presence, failures, done)
+}
+
+// pingLoop sends periodic pings until the connection closes; a ping that
+// cannot be written forces the socket shut so the reader unblocks.
+func pingLoop(conn *websocket.Conn, done <-chan struct{}) {
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+				_ = conn.Close()
+				return
+			}
+		}
+	}
 }
 
 // readClientOps folds the commands this client contributes until the socket

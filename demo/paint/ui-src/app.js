@@ -754,13 +754,19 @@ function updatePresence() {
   const connected = roster.length;
   hereLink.textContent = `${here} here`;
   connectedLink.textContent = `${connected} connected`;
-  meLabel.textContent = session ? ` · you are ${session}` : "";
+  meLabel.textContent = session ? ` · you are ${shortID(session)}` : "";
 }
 
 // currentSession returns the session id from the share URL, the identifier the
 // roster lists, so "you are …" matches what collaborators see.
 function currentSession() {
   return new URLSearchParams(location.search).get("s");
+}
+
+// shortID shortens an identifier to its first five characters, matching the
+// length of the client IDs the activity log already shows.
+function shortID(id) {
+  return id.slice(0, 5);
 }
 
 // ---------- who's here ----------
@@ -809,7 +815,7 @@ function renderRoster() {
   const shown = entries.slice(0, ROSTER_CAP);
   for (const entry of shown) {
     const li = document.createElement("li");
-    li.textContent = `${entry.user} — ${entry.sessions.join(", ")}`;
+    li.textContent = `${entry.user} — ${entry.sessions.map(shortID).join(", ")}`;
     rosterListEl.appendChild(li);
   }
   const more = entries.length - shown.length;
