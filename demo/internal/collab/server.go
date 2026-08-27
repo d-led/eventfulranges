@@ -77,7 +77,7 @@ func NewRouter(sessions *Sessions, fs http.FileSystem, preserve []string) *gin.E
 func handleWS(c *gin.Context, s *Sessions) {
 	id := c.Query("s")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing session id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorField: "missing session id"})
 		return
 	}
 	sess := s.Model(id)

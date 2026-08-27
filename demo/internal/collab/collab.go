@@ -100,6 +100,7 @@ type Sessions struct {
 	total    atomic.Int64
 	presence *pubsub.PubSub[string, Message]
 	roster   *roster
+	seen     *seenUsers
 	factory  func() Model
 	dir      string
 }
@@ -125,6 +126,7 @@ func newSessions(ttl time.Duration, dir string, factory func() Model) *Sessions 
 		models:   cache.New(ttl, cleanup),
 		presence: pubsub.New[string, Message](1024),
 		roster:   newRoster(),
+		seen:     newSeenUsers(),
 		factory:  factory,
 		dir:      dir,
 	}
@@ -156,7 +158,7 @@ func (s *Sessions) Model(id string) *Session {
 			persist = store.append
 		}
 	}
-	sess := newSession(id, m, &s.total, s.presence, s.roster, persist)
+	sess := newSession(id, m, &s.total, s.presence, s.roster, s.seen, persist)
 	s.models.SetDefault(id, sess)
 	return sess
 }
@@ -186,10 +188,11 @@ type Session struct {
 	total    *atomic.Int64
 	presence *pubsub.PubSub[string, Message]
 	roster   *roster
+	seen     *seenUsers
 	persist  func([]Entry) error
 }
 
-func newSession(id string, m Model, total *atomic.Int64, presence *pubsub.PubSub[string, Message], roster *roster, persist func([]Entry) error) *Session {
+func newSession(id string, m Model, total *atomic.Int64, presence *pubsub.PubSub[string, Message], roster *roster, seen *seenUsers, persist func([]Entry) error) *Session {
 	return &Session{
 		id:       id,
 		model:    m,
@@ -197,6 +200,7 @@ func newSession(id string, m Model, total *atomic.Int64, presence *pubsub.PubSub
 		total:    total,
 		presence: presence,
 		roster:   roster,
+		seen:     seen,
 		persist:  persist,
 	}
 }
@@ -261,10 +265,18 @@ func (s *Session) Join(email string) (log []Entry, clients int) {
 	clients = s.clients
 	s.mu.Unlock()
 	s.total.Add(1)
+	s.seen.add(email)
 	s.roster.connect(email, s.id)
 	s.publishPresence(clients)
 	s.publishRoster()
 	return s.model.Log(), clients
+}
+
+// clientCount reports how many watchers are currently connected.
+func (s *Session) clientCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.clients
 }
 
 // Leave unregisters a watcher and publishes the updated presence.
