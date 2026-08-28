@@ -79,6 +79,7 @@ jobs:
         run: ./scripts/kurrent-down.sh
 
   demos:
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -94,6 +95,10 @@ jobs:
         run: ./scripts/demo-network.sh
       - name: Pub/sub demo
         run: ./scripts/demo-pubsub.sh
+      - name: Automerge demo
+        run: ./scripts/demo-automerge.sh
+      - name: Go Automerge demo
+        run: ./scripts/demo-go-automerge.sh
       - name: Web demo (smoke test)
         run: ./scripts/itest-web.sh
       - name: Web demo (Playwright e2e)

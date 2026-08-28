@@ -7,42 +7,42 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 
 	"github.com/d-led/eventfulranges"
 	"github.com/d-led/eventfulranges/store/kurrent"
 	"github.com/d-led/eventfulranges/strategy"
 )
 
-func run(connectionString string) error {
+// run stores the same add/remove pair in KurrentDB and prints the result.
+func run(connectionString string) {
 	ctx := context.Background()
 
 	store, err := kurrent.Open(connectionString)
-	if err != nil {
-		return err
-	}
+	must("open KurrentDB", err)
 	defer func() { _ = store.Close() }()
 
 	set, err := eventfulranges.OpenStore(ctx, store, strategy.LWW)
-	if err != nil {
-		return err
-	}
+	must("open the set", err)
 
-	if _, err := set.Add(ctx, 1, 10); err != nil {
-		return err
-	}
-	if _, err := set.Remove(ctx, 3, 5); err != nil {
-		return err
-	}
+	_, err = set.Add(ctx, 1, 10)
+	must("add [1,10]", err)
+
+	_, err = set.Remove(ctx, 3, 5)
+	must("remove [3,5]", err)
 
 	fmt.Println("materialized:", set.Ranges())
-	return nil
+}
+
+// must aborts the demo with what on error. Demos crash loudly on purpose;
+// production code should propagate errors instead.
+func must(what string, err error) {
+	if err != nil {
+		panic(fmt.Errorf("%s: %w", what, err))
+	}
 }
 
 func main() {
 	conn := flag.String("conn", "esdb://localhost:2113?tls=false", "KurrentDB connection string")
 	flag.Parse()
-	if err := run(*conn); err != nil {
-		log.Fatal(err)
-	}
+	run(*conn)
 }

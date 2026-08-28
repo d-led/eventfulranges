@@ -5,8 +5,6 @@ package main
 import (
 	"os"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestRun(t *testing.T) {
@@ -14,5 +12,5 @@ func TestRun(t *testing.T) {
 	if conn == "" {
 		t.Skip("KURRENTDB_CONNECTION not set; run kurrent-up.sh first")
 	}
-	require.NoError(t, run(conn))
+	run(conn)
 }

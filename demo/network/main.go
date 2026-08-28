@@ -31,12 +31,10 @@ type peer struct {
 	addr   string
 }
 
-func newPeer() (*peer, error) {
+func newPeer() *peer {
 	set, err := eventfulranges.OpenStore(context.Background(), memory.New(), strategy.LWW)
-	if err != nil {
-		return nil, err
-	}
-	return &peer{set: set}, nil
+	must("open the peer set", err)
+	return &peer{set: set}
 }
 
 func (p *peer) handler() http.Handler {
@@ -61,15 +59,12 @@ func (p *peer) handler() http.Handler {
 
 // start listens on 127.0.0.1:port and serves until stop is called. Port 0
 // picks a free ephemeral port, which the tests use.
-func (p *peer) start(port int) error {
+func (p *peer) start(port int) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return err
-	}
+	must("listen on port", err)
 	p.addr = ln.Addr().String()
 	p.server = &http.Server{Handler: p.handler()}
 	go func() { _ = p.server.Serve(ln) }()
-	return nil
 }
 
 func (p *peer) stop() {
@@ -79,87 +74,73 @@ func (p *peer) stop() {
 }
 
 // exchange pushes this peer's operations to the other peer.
-func (p *peer) exchange(ctx context.Context, other string) error {
+func (p *peer) exchange(ctx context.Context, other string) {
 	body, err := json.Marshal(p.set.Ops())
-	if err != nil {
-		return err
-	}
+	must("marshal ops", err)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+other+"/ops", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
+	must("build request", err)
+
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
+	must("send ops", err)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status %s", resp.Status)
+		panic(fmt.Errorf("unexpected status %s", resp.Status))
 	}
-	return nil
 }
 
-func run(ports []int) error {
+// run starts two peers, mutates each, and exchanges ops until they converge.
+func run(ports []int) {
 	ctx := context.Background()
-	a, err := startPeer(ports[0])
-	if err != nil {
-		return err
-	}
+	a := startPeer(ports[0])
 	defer a.stop()
-	b, err := startPeer(ports[1])
-	if err != nil {
-		return err
-	}
+	b := startPeer(ports[1])
 	defer b.stop()
 
-	if err := mutate(ctx, a.set, b.set); err != nil {
-		return err
-	}
-	if err := exchangeBoth(ctx, a, b); err != nil {
-		return err
-	}
-	return reportConvergence(a.set, b.set)
+	mutate(ctx, a.set, b.set)
+	exchangeBoth(ctx, a, b)
+	reportConvergence(a.set, b.set)
 }
 
 // startPeer creates and starts a peer on the given port.
-func startPeer(port int) (*peer, error) {
-	p, err := newPeer()
-	if err != nil {
-		return nil, err
-	}
-	if err := p.start(port); err != nil {
-		return nil, err
-	}
-	return p, nil
+func startPeer(port int) *peer {
+	p := newPeer()
+	p.start(port)
+	return p
 }
 
 // mutate gives each peer its own independent edits.
-func mutate(ctx context.Context, a, b *eventfulranges.RangeSet) error {
-	if _, err := a.Add(ctx, 1, 8); err != nil {
-		return err
-	}
-	if _, err := a.Remove(ctx, 3, 4); err != nil {
-		return err
-	}
-	_, err := b.Add(ctx, 6, 10)
-	return err
+func mutate(ctx context.Context, a, b *eventfulranges.RangeSet) {
+	_, err := a.Add(ctx, 1, 8)
+	must("add [1,8]", err)
+
+	_, err = a.Remove(ctx, 3, 4)
+	must("remove [3,4]", err)
+
+	_, err = b.Add(ctx, 6, 10)
+	must("add [6,10]", err)
 }
 
 // exchangeBoth runs anti-entropy over HTTP in both directions.
-func exchangeBoth(ctx context.Context, a, b *peer) error {
-	if err := a.exchange(ctx, b.addr); err != nil {
-		return err
-	}
-	return b.exchange(ctx, a.addr)
+func exchangeBoth(ctx context.Context, a, b *peer) {
+	a.exchange(ctx, b.addr)
+	b.exchange(ctx, a.addr)
 }
 
-// reportConvergence fails if the peers diverged, otherwise prints the result.
-func reportConvergence(a, b *eventfulranges.RangeSet) error {
+// reportConvergence prints the shared set, panicking if the peers diverged.
+func reportConvergence(a, b *eventfulranges.RangeSet) {
 	if !interval.Equal(a.Ranges(), b.Ranges()) {
-		return fmt.Errorf("peers did not converge: %v vs %v", a.Ranges(), b.Ranges())
+		panic(fmt.Errorf("peers did not converge: %v vs %v", a.Ranges(), b.Ranges()))
 	}
 	fmt.Println("converged to:", a.Ranges())
-	return nil
+}
+
+// must aborts the demo with what on error. Demos crash loudly on purpose;
+// production code should propagate errors instead.
+func must(what string, err error) {
+	if err != nil {
+		panic(fmt.Errorf("%s: %w", what, err))
+	}
 }
 
 func main() {
@@ -177,7 +158,5 @@ func main() {
 	if len(ports) != 2 {
 		log.Fatal("need exactly two ports")
 	}
-	if err := run(ports); err != nil {
-		log.Fatal(err)
-	}
+	run(ports)
 }
