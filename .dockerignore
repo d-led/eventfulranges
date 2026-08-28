@@ -3,6 +3,12 @@
 .gitignore
 .gitattributes
 
+# Go build, test and release artifacts
+.goreleaser-dist
+*.test
+**/*.test
+build
+
 # Node build artifacts and dependencies
 **/node_modules
 **/dist
@@ -13,7 +19,6 @@
 **/data
 
 # Not needed to build demo/paint
-build
 docs
 examples
 scripts
