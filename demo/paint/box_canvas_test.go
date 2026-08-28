@@ -37,22 +37,26 @@ func TestBoxCanvasEraseCarvesFrame(t *testing.T) {
 	require.True(t, space.Contains(boxes, []float64{0.5, 2}), "the frame survives")
 }
 
-func TestBoxCanvasConvergesRegardlessOfOrder(t *testing.T) {
+func TestBoxCanvasLastWriteWins(t *testing.T) {
 	t.Parallel()
-	first := newBoxCanvas()
-	second := newBoxCanvas()
 
-	_, err := first.Paint("", Rect{0, 0, 4, 4}, nil)
+	// A later erase clears the overlapped part of an earlier stroke.
+	paintFirst := newBoxCanvas()
+	_, err := paintFirst.Paint("", Rect{0, 0, 4, 4}, nil)
 	require.NoError(t, err)
-	_, err = first.Erase("", Rect{1, 1, 3, 3}, nil)
+	_, err = paintFirst.Erase("", Rect{1, 1, 3, 3}, nil)
 	require.NoError(t, err)
+	require.False(t, space.Contains(paintFirst.set.Boxes(), []float64{2, 2}),
+		"a later erase clears the middle")
 
-	_, err = second.Erase("", Rect{1, 1, 3, 3}, nil)
+	// A later stroke repaints over an earlier erasure.
+	eraseFirst := newBoxCanvas()
+	_, err = eraseFirst.Erase("", Rect{1, 1, 3, 3}, nil)
 	require.NoError(t, err)
-	_, err = second.Paint("", Rect{0, 0, 4, 4}, nil)
+	_, err = eraseFirst.Paint("", Rect{0, 0, 4, 4}, nil)
 	require.NoError(t, err)
-
-	require.True(t, space.Equal(first.set.Boxes(), second.set.Boxes()))
+	require.True(t, space.Contains(eraseFirst.set.Boxes(), []float64{2, 2}),
+		"a later stroke repaints the erased hole")
 }
 
 func TestBoxCanvasRejectsEmptyBox(t *testing.T) {

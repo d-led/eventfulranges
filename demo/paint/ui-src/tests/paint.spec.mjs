@@ -46,7 +46,9 @@ test("downloads the operation log as JSONL", async ({ page }) => {
   expect(first.data).toHaveProperty("max");
 });
 
-test("one-shot feedback appears as a toast and fades away", async ({ page }) => {
+test("one-shot feedback appears as a toast and fades away", async ({
+  page,
+}) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator("#status")).toContainText("connected");
@@ -387,6 +389,23 @@ test("eraser removes one cell like the pen", async ({ page }) => {
   await expect(page.locator("#log li.remove")).toHaveCount(1);
 });
 
+test("repainting over an erased area materializes", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page); // paint cells (0,0)..(1,1)
+  await expect.poll(() => cellPainted(page, 0, 0)).toBe(true);
+
+  await page.locator("#toolErase").click();
+  await drawRect(page); // erase the same block
+  await expect.poll(() => cellPainted(page, 0, 0)).toBe(false);
+
+  await page.locator("#toolRect").click();
+  await drawRect(page); // repaint: the later stroke must win
+  await expect.poll(() => cellPainted(page, 0, 0)).toBe(true);
+});
+
 test("zoom buttons zoom in, out, and reset", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
@@ -501,8 +520,12 @@ test("roster groups one user's sessions together", async ({ context }) => {
   await expect(list).toContainText(idB.slice(0, 5));
 
   // One user with two sessions appears in a single entry.
-  await expect(a.locator("#rosterList li", { hasText: idA.slice(0, 5) })).toHaveCount(1);
-  await expect(a.locator("#rosterList li", { hasText: idA.slice(0, 5) })).toContainText(idB.slice(0, 5));
+  await expect(
+    a.locator("#rosterList li", { hasText: idA.slice(0, 5) }),
+  ).toHaveCount(1);
+  await expect(
+    a.locator("#rosterList li", { hasText: idA.slice(0, 5) }),
+  ).toContainText(idB.slice(0, 5));
 });
 
 test("undo retracts the last stroke and redo restores it", async ({ page }) => {
@@ -542,7 +565,9 @@ test("undoing an erase restores the erased cell", async ({ page }) => {
   );
 });
 
-test("undo retracts only the undoing client's own stroke", async ({ browser }) => {
+test("undo retracts only the undoing client's own stroke", async ({
+  browser,
+}) => {
   const alice = await browser.newPage();
   await alice.goto("/ui/");
   await alice.waitForURL(/[?&]s=/);
@@ -568,7 +593,10 @@ test("undo retracts only the undoing client's own stroke", async ({ browser }) =
     alice.locator("#downloadJsonl").click(),
   ]);
   const content = await readFile(await download.path(), "utf8");
-  const entries = content.trim().split("\n").map((line) => JSON.parse(line));
+  const entries = content
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
   const adds = entries.filter((e) => e.kind === "add");
   const retract = entries.find((e) => e.kind === "retract");
   expect(adds).toHaveLength(2);
@@ -576,7 +604,9 @@ test("undo retracts only the undoing client's own stroke", async ({ browser }) =
   expect(retract.ref).not.toBe(adds[0].id);
 });
 
-test("focus mode gives the canvas the whole viewport and hides the chrome", async ({ page }) => {
+test("focus mode gives the canvas the whole viewport and hides the chrome", async ({
+  page,
+}) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator("#status")).toContainText("connected");
@@ -610,7 +640,9 @@ test("focus mode gives the canvas the whole viewport and hides the chrome", asyn
   await expectBoardPainted(page);
 });
 
-test("on a small phone the board stays at least 80% of the viewport tall", async ({ page }) => {
+test("on a small phone the board stays at least 80% of the viewport tall", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 375, height: 667 });
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
@@ -698,7 +730,9 @@ test("the admin page does not hold a session open", async ({ browser }) => {
   expect(del.status()).toBe(204);
 
   await admin.reload();
-  await expect(admin.locator("#sessions tr", { hasText: session })).toHaveCount(0);
+  await expect(admin.locator("#sessions tr", { hasText: session })).toHaveCount(
+    0,
+  );
 
   await context.close();
 });
@@ -757,4 +791,20 @@ async function expectBoardPainted(page) {
     const c = document.querySelector("#board");
     return c.getContext("2d").getImageData(1, 1, 1, 1).data[3] > 0;
   });
+}
+
+// cellPainted samples the centre of board cell (ix, iy) under the initial
+// camera (centre 0,0, 24 px per board unit) and reports whether it is the
+// stroke colour rather than the background.
+async function cellPainted(page, ix, iy) {
+  const red = await page.locator("#board").evaluate(
+    (canvas, [x, y]) => {
+      const dpr = window.devicePixelRatio || 1;
+      const px = Math.round(canvas.width / 2 + (x + 0.5) * 24 * dpr);
+      const py = Math.round(canvas.height / 2 + (y + 0.5) * 24 * dpr);
+      return canvas.getContext("2d").getImageData(px, py, 1, 1).data[0];
+    },
+    [ix, iy],
+  );
+  return red > 150;
 }

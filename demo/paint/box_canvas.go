@@ -20,12 +20,11 @@ type boxCanvas struct {
 	set *eventfulranges.BoxSet
 }
 
-// newBoxCanvas opens a fresh in-memory canvas. Additive-wins-lww makes the
-// painted set the union of every stroke minus the union of every erasure, but
-// resolves each point's color by last-write-wins among the strokes covering
-// it, so a later stroke paints over an earlier one regardless of arrival order.
+// newBoxCanvas opens a fresh in-memory canvas. Last-write-wins resolves every
+// point to the most recent operation covering it: a later stroke paints over
+// an earlier erasure, and a later erasure clears an earlier stroke.
 func newBoxCanvas() *boxCanvas {
-	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWinsLWW,
+	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.LWW,
 		eventfulranges.WithBoxSnapshotEvery(0))
 	if err != nil {
 		panic(err) // a fresh in-memory store cannot fail to open

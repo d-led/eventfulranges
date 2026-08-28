@@ -1,4 +1,4 @@
-import { normalize, subtractAll } from "./boxes.js";
+import { subtractAll } from "./boxes.js";
 import {
   MIN_CELL_PX,
   MIN_LEVEL,
@@ -59,9 +59,10 @@ const adminLink = $("adminLink");
 const ctx = boardEl.getContext("2d");
 
 // ---------- state ----------
-let adds = []; // [{id, min, max, color}] painted boxes, one per operation
-let removes = []; // [{id, min, max}] erased boxes, one per operation
+let adds = []; // [{id, seq, min, max, color}] painted boxes, one per operation
+let removes = []; // [{id, seq, min, max}] erased boxes, one per operation
 let boxes = []; // materialized view: [{min, max}]
+let opSeq = 0; // arrival-order counter folded by materialize()
 let logEntries = []; // the full operation log, for JSONL export
 let clientID = "";
 let socket = null;
@@ -95,16 +96,35 @@ let panLast = null;
 let pinch = null; // two-finger gesture: {dist, cx, cy}
 
 // ---------- materialization ----------
-// The browser is a replica: it folds the operation log with additive-wins
-// semantics (union of additions minus union of removals) into the surviving
-// boxes.
+// The browser is a replica: it folds the operation log with last-write-wins
+// semantics — later operations override earlier ones, so a stroke paints over
+// an earlier erasure and an erasure clears an earlier stroke.
 function materialize() {
-  const rems = normalize(removes.map((r) => ({ min: r.min, max: r.max })));
-  const pieces = [];
-  for (const a of adds) {
-    for (const p of subtractAll({ min: a.min, max: a.max }, rems)) {
-      pieces.push({ min: p.min, max: p.max, color: a.color });
+  const ops = [
+    ...adds.map((a) => ({
+      seq: a.seq,
+      kind: "add",
+      min: a.min,
+      max: a.max,
+      color: a.color,
+    })),
+    ...removes.map((r) => ({
+      seq: r.seq,
+      kind: "remove",
+      min: r.min,
+      max: r.max,
+    })),
+  ].sort((x, y) => x.seq - y.seq);
+
+  let pieces = [];
+  for (const op of ops) {
+    const opBox = { min: op.min, max: op.max };
+    const next = [];
+    for (const p of pieces) next.push(...subtractAll(p, [opBox]));
+    if (op.kind === "add") {
+      next.push({ min: op.min, max: op.max, color: op.color });
     }
+    pieces = next;
   }
   boxes = pieces;
   draw();
@@ -123,12 +143,18 @@ function applyEntries(entries, ack = true) {
     if (e.kind === "add") {
       newAdds.push({
         id: e.id,
+        seq: opSeq++,
         min: e.data.min,
         max: e.data.max,
         color: e.meta?.color ?? DEFAULT_COLOR,
       });
     } else if (e.kind === "remove") {
-      newRemoves.push({ id: e.id, min: e.data.min, max: e.data.max });
+      newRemoves.push({
+        id: e.id,
+        seq: opSeq++,
+        min: e.data.min,
+        max: e.data.max,
+      });
     } else if (e.kind === "retract") {
       retracted.add(e.ref);
     }
@@ -200,7 +226,17 @@ function drawGrid(w, h) {
   // Dark halo first, so the grid stays legible over white painted cells.
   strokeGrid(step, offX, offY, cols, rows, w, h, "rgba(9, 11, 16, 0.6)", 2);
   // Light core on top, so the grid stays legible over the dark background.
-  strokeGrid(step, offX, offY, cols, rows, w, h, "rgba(232, 236, 244, 0.25)", 1);
+  strokeGrid(
+    step,
+    offX,
+    offY,
+    cols,
+    rows,
+    w,
+    h,
+    "rgba(232, 236, 244, 0.25)",
+    1,
+  );
 }
 
 function strokeGrid(step, offX, offY, cols, rows, w, h, style, width) {
@@ -498,7 +534,10 @@ function clampScale(next) {
 // effective level stays inside the precision budget at the current position.
 function setGridOffset(next) {
   const base = gridLevel(cam.scale, 0);
-  gridOffset = Math.max(MIN_LEVEL - base, Math.min(next, maxSafeLevel() - base));
+  gridOffset = Math.max(
+    MIN_LEVEL - base,
+    Math.min(next, maxSafeLevel() - base),
+  );
   updateGridLabel();
   draw();
 }
@@ -714,6 +753,7 @@ function handleMessage(msg) {
 function resetLocal() {
   adds = [];
   removes = [];
+  opSeq = 0;
   logEntries = [];
   logPending = [];
   seen = new Set();
