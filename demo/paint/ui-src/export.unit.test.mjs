@@ -261,6 +261,31 @@ describe("renderSVG", () => {
   it("reports an empty board", () => {
     expect(() => renderSVG([])).toThrow(/empty/);
   });
+
+  it("embeds a frozen image layer as an <image> element", () => {
+    const svg = renderSVG([
+      {
+        kind: "add",
+        min: [0, 0],
+        max: [10, 10],
+        color: "#e6e8ee",
+        image: "data:image/png;base64,AAAA",
+        frozen: true,
+      },
+    ]);
+    expect(svg).toContain('<image href="data:image/png;base64,AAAA"');
+    expect(svg).toContain('preserveAspectRatio="none"');
+    expect(svg).not.toContain("<script");
+  });
+
+  it("ignores a non-data-URL image in the metadata", () => {
+    const svg = renderSVG([
+      { kind: "add", min: [0, 0], max: [2, 2], color: "#ff0000", image: '"><script>' },
+    ]);
+    expect(svg).not.toContain("<image");
+    expect(svg).not.toContain("<script");
+    expect(svg).toContain('fill="#ff0000"');
+  });
 });
 
 describe("suggestDimensions", () => {

@@ -121,12 +121,21 @@ func (c *boxCanvas) Layers() []Layer {
 	front := c.set.Layers()
 	out := make([]Layer, 0, len(front))
 	for _, l := range front {
+		var m struct {
+			Image  string `json:"image"`
+			Frozen bool   `json:"frozen"`
+		}
+		if len(l.Box.Meta) > 0 {
+			_ = json.Unmarshal(l.Box.Meta, &m)
+		}
 		out = append(out, Layer{
-			X0:    l.Box.Min[0],
-			Y0:    l.Box.Min[1],
-			X1:    l.Box.Max[0],
-			Y1:    l.Box.Max[1],
-			Color: layerColor(l.Box.Meta, l.Kind),
+			X0:     l.Box.Min[0],
+			Y0:     l.Box.Min[1],
+			X1:     l.Box.Max[0],
+			Y1:     l.Box.Max[1],
+			Color:  layerColor(l.Box.Meta, l.Kind),
+			Image:  m.Image,
+			Frozen: m.Frozen,
 		})
 	}
 	return out

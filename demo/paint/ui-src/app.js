@@ -93,6 +93,7 @@ const importForm = $("importForm");
 const importFileInput = $("importFileInput");
 const importPixelSize = $("importPixelSize");
 const importClear = $("importClear");
+const importFrozen = $("importFrozen");
 const importError = $("importError");
 const importCancel = $("importCancel");
 const importGo = $("importGo");
@@ -170,6 +171,8 @@ function allOps() {
       min: a.min,
       max: a.max,
       color: a.color,
+      image: a.image,
+      frozen: a.frozen,
     })),
     ...removes.map((r) => ({
       id: r.id,
@@ -215,6 +218,8 @@ function applyEntries(entries, ack = true) {
         min: e.data.min,
         max: e.data.max,
         color: e.meta?.color ?? DEFAULT_COLOR,
+        image: e.meta?.image ?? null,
+        frozen: e.meta?.frozen ?? false,
       });
     } else if (e.kind === "remove") {
       newRemoves.push({
@@ -318,8 +323,19 @@ function drawBoxes(w, h) {
     const sw = (b.max[0] - b.min[0]) * px;
     const sh = (b.max[1] - b.min[1]) * px;
     if (sx + sw < 0 || sx > w || sy + sh < 0 || sy > h) continue;
-    ctx.fillStyle = b.kind === "remove" ? BOARD_BACKGROUND : b.color;
-    ctx.fillRect(sx, sy, sw, sh);
+    if (b.image) {
+      const rec = imageFor(b.image);
+      if (rec.el.complete && rec.el.naturalWidth > 0) {
+        ctx.drawImage(rec.el, sx, sy, sw, sh);
+      } else {
+        ctx.fillStyle = b.color;
+        ctx.fillRect(sx, sy, sw, sh);
+        rec.promise.then(draw); // repaint once the bytes decode
+      }
+    } else {
+      ctx.fillStyle = b.kind === "remove" ? BOARD_BACKGROUND : b.color;
+      ctx.fillRect(sx, sy, sw, sh);
+    }
     if (pendingIDs.has(b.id)) {
       // Speculative pixels: drawn at full strength, but the dashed amber
       // frame marks the cell as not yet acknowledged until the server echoes
@@ -1537,14 +1553,14 @@ async function exportImage(format, width, height) {
 
 // exportClientRaster draws the board on a browser canvas and encodes it,
 // resolving to null when the browser cannot encode the requested size.
-function exportClientRaster(format, width, height, view) {
+async function exportClientRaster(format, width, height, view) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   // Browsers cap the canvas backing store; a silently clamped size means the
   // client cannot rasterize it.
   if (canvas.width !== width || canvas.height !== height) {
-    return Promise.resolve(null);
+    return null;
   }
   const jpeg = format === "jpeg";
   const c = canvas.getContext("2d");
@@ -1556,6 +1572,11 @@ function exportClientRaster(format, width, height, view) {
   }
   for (const b of boxes) {
     const r = snapRect(projectBox(b, view));
+    if (b.image) {
+      const img = await imageFor(b.image).promise;
+      c.drawImage(img, r.x, r.y, r.w, r.h);
+      continue;
+    }
     if (b.kind === "remove") {
       // An erase clears to transparent for PNG; JPEG repaints the background.
       if (jpeg) {
@@ -1661,8 +1682,37 @@ function rasterPixels(bitmap, width, height) {
   return { data, width, height };
 }
 
-async function importImage(file, pixelSize, clear) {
+async function importImage(file, pixelSize, clear, frozen) {
   if (!connected) throw new Error("disconnected — reconnect to import");
+  if (frozen) {
+    if (file.size > MAX_IMPORT_BYTES) {
+      throw new Error(
+        `file too large — max ${MAX_IMPORT_BYTES / 1024 / 1024} MB`,
+      );
+    }
+    const dataUrl = await readAsDataURL(file);
+    const { width, height } = await imageSize(file);
+    const t = importTransform(pixelSize, width, height);
+    const cmds = [];
+    if (clear) {
+      const erase = clearCmd();
+      if (erase) cmds.push(erase);
+    }
+    cmds.push({
+      id: newOpID(),
+      kind: "paint",
+      data: {
+        x0: t.ox,
+        y0: t.oy,
+        x1: t.ox + width * t.cell,
+        y1: t.oy + height * t.cell,
+      },
+      meta: { color: DEFAULT_COLOR, image: dataUrl, frozen: true },
+    });
+    commitImport(cmds);
+    notify(`imported image (${width} × ${height} px, frozen)`);
+    return;
+  }
   const { cells: raw, width, height, factor } = await rasterize(file);
   if (raw.length === 0) throw new Error("image has no opaque pixels");
 
@@ -1691,20 +1741,7 @@ async function importImage(file, pixelSize, clear) {
     });
   }
 
-  // Fold every command into the local view in one pass, so one materialize
-  // suffices instead of one per cell.
-  applyEntries(cmds.map(cmdToEntry), false);
-  pending.push(...cmds);
-  for (const cmd of cmds) pendingIDs.add(cmd.id);
-  savePending();
-  updateBacklog();
-  flushPending();
-
-  // The whole import is one undoable stroke.
-  undoStack.push(cmds);
-  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
-  redoStack = [];
-  updateUndoRedo();
+  commitImport(cmds);
 
   if (pixelSize === "1:1") {
     fitBoxes([{ min: [0, 0], max: [width, height] }]);
@@ -1713,6 +1750,21 @@ async function importImage(file, pixelSize, clear) {
   notify(
     `imported image (${cells.length} cell${cells.length === 1 ? "" : "s"}${downscaled})`,
   );
+}
+
+// commitImport folds the import's commands into the local view, queues them for
+// the server, and records the whole import as one undoable stroke.
+function commitImport(cmds) {
+  applyEntries(cmds.map(cmdToEntry), false);
+  pending.push(...cmds);
+  for (const cmd of cmds) pendingIDs.add(cmd.id);
+  savePending();
+  updateBacklog();
+  flushPending();
+  undoStack.push(cmds);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack = [];
+  updateUndoRedo();
 }
 
 // importTransform returns the board scale (board units per image pixel) and
@@ -1731,12 +1783,58 @@ function importTransform(pixelSize, imgW, imgH) {
   return { cell: 1, ox: 0, oy: 0 };
 }
 
-// viewTopLeft returns the board coordinates of the viewport's top-left corner.
+// viewTopLeft returns the board coordinates of the viewport's top-left corner,
+// snapped down to the current grid so an import lands on a grid line.
 function viewTopLeft() {
+  const cell = gridSize(cam.scale, gridOffset);
   return {
-    ox: cam.x - boardEl.width / cam.scale / 2,
-    oy: cam.y - boardEl.height / cam.scale / 2,
+    ox: Math.floor((cam.x - boardEl.width / cam.scale / 2) / cell) * cell,
+    oy: Math.floor((cam.y - boardEl.height / cam.scale / 2) / cell) * cell,
   };
+}
+
+// ---------- embedded images ----------
+// A frozen import stores its source bytes as a data URL in the box metadata;
+// decode once and cache the image for the renderer and the exporters.
+const imageCache = new Map(); // dataUrl -> {el, promise}
+
+function imageFor(src) {
+  let rec = imageCache.get(src);
+  if (!rec) {
+    const el = new Image();
+    const promise = new Promise((resolve, reject) => {
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("could not decode the image"));
+    });
+    el.src = src;
+    rec = { el, promise };
+    imageCache.set(src, rec);
+  }
+  return rec;
+}
+
+// readAsDataURL returns the file's bytes as a data URL, so the original image
+// travels in the log without re-encoding.
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("could not read the image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+// imageSize decodes just enough of the file to read its pixel dimensions.
+async function imageSize(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("could not read the image");
+  }
+  const { width, height } = bitmap;
+  bitmap.close();
+  return { width, height };
 }
 
 // clearCmd erases the union of everything painted so far, or null when the
@@ -1754,6 +1852,7 @@ function clearCmd() {
 // ---------- import dialog ----------
 function openImportDialog() {
   importClear.checked = settings.importClear ?? false;
+  importFrozen.checked = settings.importFrozen ?? false;
   importPixelSize.value = ["1:1", "grid", "pixels"].includes(
     settings.importPixelSize,
   )
@@ -1781,9 +1880,15 @@ async function submitImport() {
   }
   setImportBusy(true);
   try {
-    await importImage(file, importPixelSize.value, importClear.checked);
+    await importImage(
+      file,
+      importPixelSize.value,
+      importClear.checked,
+      importFrozen.checked,
+    );
     settings.importPixelSize = importPixelSize.value;
     settings.importClear = importClear.checked;
+    settings.importFrozen = importFrozen.checked;
     saveSettings();
     closeImportDialog();
   } catch (err) {

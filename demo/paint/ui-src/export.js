@@ -162,11 +162,19 @@ export function sanitizeColor(color, fallback = DEFAULT_COLOR) {
   return typeof color === "string" && COLOR_RE.test(color) ? color : fallback;
 }
 
+// isImageDataURL accepts only the data URLs our own importer embeds, so a
+// peer's metadata can never smuggle markup or script into the SVG.
+function isImageDataURL(src) {
+  return typeof src === "string" && src.startsWith("data:image/");
+}
+
 // renderSVG serializes the layered front as one <rect> per layer in board
-// coordinates. The viewBox carries the drawing's bounds and there is no fixed
-// pixel size, so the SVG scales losslessly in any viewer and the export never
-// needs a width or height. Removes erase by painting the board background, so
-// the SVG matches the board exactly; the grid is never drawn.
+// coordinates. Frozen image layers become <image> elements drawing their source
+// bytes; everything else is a rect. The viewBox carries the drawing's bounds
+// and there is no fixed pixel size, so the SVG scales losslessly in any viewer
+// and the export never needs a width or height. Removes erase by painting the
+// board background, so the SVG matches the board exactly; the grid is never
+// drawn.
 export function renderSVG(boxes) {
   const b = boundsOf(boxes);
   if (!b) throw new Error("nothing to export — the board is empty");
@@ -176,6 +184,12 @@ export function renderSVG(boxes) {
   ];
   for (const box of boxes) {
     const r = projectBox(box, view);
+    if (isImageDataURL(box.image)) {
+      rects.push(
+        `<image href="${box.image}" x="${fmt(r.x)}" y="${fmt(r.y)}" width="${fmt(r.w)}" height="${fmt(r.h)}" preserveAspectRatio="none"/>`,
+      );
+      continue;
+    }
     const fill = box.kind === "remove" ? BACKGROUND : sanitizeColor(box.color);
     rects.push(
       `<rect x="${fmt(r.x)}" y="${fmt(r.y)}" width="${fmt(r.w)}" height="${fmt(r.h)}" fill="${fill}"/>`,

@@ -78,6 +78,21 @@ func TestBoxCanvasPaintsSubdividedCell(t *testing.T) {
 	require.False(t, c.set.Contains([]float64{0.5, 0.5}), "the cell is half-open")
 }
 
+func TestBoxCanvasLayersCarryImageMeta(t *testing.T) {
+	t.Parallel()
+	c := newBoxCanvas()
+
+	_, err := c.Paint("", Rect{0, 0, 4, 4},
+		json.RawMessage(`{"color":"#e6e8ee","image":"data:image/png;base64,AAAA","frozen":true}`))
+	require.NoError(t, err)
+
+	layers := c.Layers()
+	require.Len(t, layers, 1)
+	require.Equal(t, "data:image/png;base64,AAAA", layers[0].Image)
+	require.True(t, layers[0].Frozen)
+	require.Equal(t, "#e6e8ee", layers[0].Color)
+}
+
 func TestBoxCanvasResolvesColorPerPoint(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()

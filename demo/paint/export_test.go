@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
 	"reflect"
@@ -95,6 +97,22 @@ func TestRenderLayersPaintOrder(t *testing.T) {
 	r, g, _, _ := img.At(40, 40).RGBA()
 	require.Equal(t, uint32(0), r)
 	require.Equal(t, uint32(0xffff), g)
+}
+
+func TestRenderFrozenImageLayer(t *testing.T) {
+	t.Parallel()
+	// A 1x1 red PNG, embedded as the frozen layer's source bytes.
+	src := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	src.Set(0, 0, color.RGBA{R: 0xff, A: 0xff})
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, src))
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	layers := []Layer{{X0: 0, Y0: 0, X1: 10, Y1: 10, Color: "#e6e8ee", Image: dataURL, Frozen: true}}
+	img := renderPNG(t, layers, 100, 100)
+	r, _, _, a := img.At(50, 50).RGBA()
+	require.Equal(t, uint32(0xffff), r) // the red image fills the whole layer
+	require.Equal(t, uint32(0xffff), a)
 }
 
 func TestProjectLayersEmpty(t *testing.T) {

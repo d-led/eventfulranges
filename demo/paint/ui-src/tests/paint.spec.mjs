@@ -676,6 +676,49 @@ test("imports a detailed photo by downscaling it to fit", async ({ page }) => {
   await expect(page.locator("#importDialog")).not.toBeVisible();
 });
 
+test("imports a photo frozen as a single image layer", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // A 4x4 red PNG.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 4;
+    c.height = 4;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 4, 4);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importFrozen").check();
+  await page.locator("#importFileInput").setInputFiles({
+    name: "photo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await page.locator("#importGo").click();
+
+  await expect(page.locator("#toast")).toContainText("frozen");
+  // One log entry — the whole photo is one rectangle with its bytes in the
+  // metadata, not one box per pixel.
+  await expect(page.locator("#log li.add")).toHaveCount(1);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const entries = (await readFile(await download.path(), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(entries).toHaveLength(1);
+  expect(entries[0].meta.frozen).toBe(true);
+  expect(entries[0].meta.image).toContain("data:image/png;base64,");
+});
+
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

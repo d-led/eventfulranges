@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"image"
 	"image/color"
@@ -12,6 +14,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -93,11 +96,13 @@ func contentType(format string) string {
 	return "image/png"
 }
 
-// layerRect is one layer projected into pixel space, in paint order.
+// layerRect is one layer projected into pixel space, in paint order. A frozen
+// image layer keeps its decoded bitmap in img instead of a flat color.
 type layerRect struct {
 	y0, y1, x0, x1 int
 	color          color.RGBA
 	erase          bool
+	img            image.Image
 }
 
 // projectLayers fits the layered front into a width × height view with the
@@ -123,9 +128,16 @@ func projectLayers(layers []Layer, width, height int) ([]layerRect, error) {
 		if r.x1 <= r.x0 || r.y1 <= r.y0 {
 			continue
 		}
-		if l.Color == "" {
+		switch {
+		case l.Image != "":
+			if img, err := decodeImageDataURL(l.Image); err == nil {
+				r.img = img
+			} else {
+				r.color = rgbaHex(l.Color)
+			}
+		case l.Color == "":
 			r.erase = true
-		} else {
+		default:
 			r.color = rgbaHex(l.Color)
 		}
 		rects = append(rects, r)
@@ -208,6 +220,10 @@ func (m *streamImage) renderRow(y int) {
 		if y < r.y0 || y >= r.y1 {
 			continue
 		}
+		if r.img != nil {
+			m.blitImage(r, y)
+			continue
+		}
 		switch {
 		case r.erase && m.transparent:
 			m.fillSpan(r.x0, r.x1, color.RGBA{}) // erase repaints transparent
@@ -217,6 +233,39 @@ func (m *streamImage) renderRow(y int) {
 			m.fillSpan(r.x0, r.x1, r.color)
 		}
 	}
+}
+
+// blitImage samples one row of the rect's decoded image, scaled to the rect,
+// into the current row buffer.
+func (m *streamImage) blitImage(r layerRect, y int) {
+	b := r.img.Bounds()
+	iw, ih := b.Dx(), b.Dy()
+	if iw <= 0 || ih <= 0 || r.x1 <= r.x0 || r.y1 <= r.y0 {
+		return
+	}
+	sy := b.Min.Y + (y-r.y0)*ih/(r.y1-r.y0)
+	for x := r.x0; x < r.x1; x++ {
+		sx := b.Min.X + (x-r.x0)*iw/(r.x1-r.x0)
+		c := color.RGBAModel.Convert(r.img.At(sx, sy)).(color.RGBA)
+		i := x * 4
+		m.row[i], m.row[i+1], m.row[i+2], m.row[i+3] = c.R, c.G, c.B, c.A
+	}
+}
+
+// decodeImageDataURL decodes a "data:<mime>;base64,<data>" URL into an image,
+// so a frozen import can be rendered server-side without re-encoding.
+func decodeImageDataURL(s string) (image.Image, error) {
+	const marker = ";base64,"
+	i := strings.Index(s, marker)
+	if i < 0 {
+		return nil, errors.New("bad image data URL")
+	}
+	data, err := base64.StdEncoding.DecodeString(s[i+len(marker):])
+	if err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	return img, err
 }
 
 func (m *streamImage) fillSpan(x0, x1 int, c color.RGBA) {
@@ -232,7 +281,7 @@ func layerBounds(layers []Layer) (min0, min1, bw, bh float64) {
 	min0, min1 = math.Inf(1), math.Inf(1)
 	max0, max1 := math.Inf(-1), math.Inf(-1)
 	for _, l := range layers {
-		if l.Color == "" {
+		if l.Color == "" && l.Image == "" {
 			continue
 		}
 		min0 = math.Min(min0, l.X0)
