@@ -496,6 +496,25 @@ test("rejects a raster export larger than the server can render", async ({
   await expect(page.locator("#exportDialog")).toBeVisible();
 });
 
+test("the server renders a raster export on demand", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const result = await page.evaluate(async () => {
+    const s = new URLSearchParams(location.search).get("s");
+    const res = await fetch(`/api/export?s=${s}&format=png&w=800&h=800`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    return { status: res.status, sig: [...buf.subarray(0, 8)] };
+  });
+  expect(result.status).toBe(200);
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A.
+  expect(result.sig).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
 test("presence separates this session from all connected", async ({
   browser,
 }) => {
