@@ -18,47 +18,76 @@ import (
 	"github.com/d-led/eventfulranges/demo/internal/collab"
 )
 
-// maxExportSide caps a server-side raster export and matches the client's
-// documented maximum, so client and server agree on one limit. Streaming keeps
-// memory bounded regardless of size; the cap bounds encode time instead.
-const maxExportSide = 40000
+const (
+	// maxExportSide caps a server-side raster export and matches the client's
+	// documented maximum, so client and server agree on one limit. Streaming
+	// keeps memory bounded regardless of size; the cap bounds encode time.
+	maxExportSide = 40000
+
+	formatPNG  = "png"
+	formatJPEG = "jpeg"
+	errorKey   = "error"
+)
 
 var boardBackground = color.RGBA{R: 0x0e, G: 0x10, B: 0x15, A: 0xff}
+
+// exportParams is the validated request for one raster export.
+type exportParams struct {
+	format        string
+	width, height int
+}
 
 // exportHandler streams the session's materialized board as a PNG or JPEG.
 func exportHandler(sessions *collab.Sessions) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		sess := sessions.Model(c.Query("s"))
-		b, ok := sess.Model().(*board)
+		params, errMsg := parseExportParams(c)
+		if errMsg != "" {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: errMsg})
+			return
+		}
+		b, ok := sessionBoard(sessions, c.Query("s"))
 		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{"error": "unknown session"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: "unknown session"})
 			return
 		}
-		format := c.DefaultQuery("format", "png")
-		width, errW := strconv.Atoi(c.DefaultQuery("w", "0"))
-		height, errH := strconv.Atoi(c.DefaultQuery("h", "0"))
-		if errW != nil || errH != nil || width <= 0 || height <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "bad dimensions"})
-			return
-		}
-		if width > maxExportSide || height > maxExportSide {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "image too large — max 40000 px per side"})
-			return
-		}
-		rects, err := projectLayers(b.Layers(), width, height)
+		rects, err := projectLayers(b.Layers(), params.width, params.height)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 			return
 		}
-		c.Header("Content-Type", contentType(format))
-		if err := encodeRaster(c.Writer, rects, format, width, height); err != nil {
+		c.Header("Content-Type", contentType(params.format))
+		if err := encodeRaster(c.Writer, rects, params.format, params.width, params.height); err != nil {
 			log.Printf("paint: export encode: %v", err)
 		}
 	}
 }
 
+// parseExportParams reads and validates the request parameters, returning a
+// user-facing error message when they are not acceptable.
+func parseExportParams(c *gin.Context) (exportParams, string) {
+	format := c.DefaultQuery("format", formatPNG)
+	if format != formatPNG && format != formatJPEG {
+		return exportParams{}, "unsupported format"
+	}
+	width, errW := strconv.Atoi(c.DefaultQuery("w", "0"))
+	height, errH := strconv.Atoi(c.DefaultQuery("h", "0"))
+	if errW != nil || errH != nil || width <= 0 || height <= 0 {
+		return exportParams{}, "bad dimensions"
+	}
+	if width > maxExportSide || height > maxExportSide {
+		return exportParams{}, "image too large — max 40000 px per side"
+	}
+	return exportParams{format: format, width: width, height: height}, ""
+}
+
+// sessionBoard resolves a session id to its materializable board.
+func sessionBoard(sessions *collab.Sessions, id string) (*board, bool) {
+	b, ok := sessions.Model(id).Model().(*board)
+	return b, ok
+}
+
 func contentType(format string) string {
-	if format == "jpeg" {
+	if format == formatJPEG {
 		return "image/jpeg"
 	}
 	return "image/png"
@@ -123,11 +152,11 @@ func encodeRaster(w io.Writer, rects []layerRect, format string, width, height i
 		rects:       rects,
 		width:       width,
 		height:      height,
-		transparent: format == "png",
+		transparent: format == formatPNG,
 		row:         make([]uint8, width*4),
 		rowY:        -1,
 	}
-	if format == "jpeg" {
+	if format == formatJPEG {
 		return jpeg.Encode(w, img, &jpeg.Options{Quality: 92})
 	}
 	return png.Encode(w, img)
@@ -201,38 +230,25 @@ func (m *streamImage) fillSpan(x0, x1 int, c color.RGBA) {
 // layerBounds returns the painted drawing's bounding box; erases never widen
 // the frame.
 func layerBounds(layers []Layer) (min0, min1, bw, bh float64) {
-	first := true
-	var max0, max1 float64
+	min0, min1 = math.Inf(1), math.Inf(1)
+	max0, max1 := math.Inf(-1), math.Inf(-1)
 	for _, l := range layers {
 		if l.Color == "" {
 			continue
 		}
-		if first {
-			min0, min1, max0, max1 = l.X0, l.Y0, l.X1, l.Y1
-			first = false
-			continue
-		}
-		if l.X0 < min0 {
-			min0 = l.X0
-		}
-		if l.Y0 < min1 {
-			min1 = l.Y0
-		}
-		if l.X1 > max0 {
-			max0 = l.X1
-		}
-		if l.Y1 > max1 {
-			max1 = l.Y1
-		}
+		min0 = math.Min(min0, l.X0)
+		min1 = math.Min(min1, l.Y0)
+		max0 = math.Max(max0, l.X1)
+		max1 = math.Max(max1, l.Y1)
 	}
-	if first {
+	if math.IsInf(min0, 1) {
 		return 0, 0, 0, 0
 	}
 	return min0, min1, max0 - min0, max1 - min1
 }
 
 // rgbaHex parses "#rrggbb"; anything else falls back to the default stroke
-// colour the browser uses.
+// color the browser uses.
 func rgbaHex(s string) color.RGBA {
 	fallback := color.RGBA{R: 0xe6, G: 0xe8, B: 0xee, A: 0xff}
 	if len(s) != 7 || s[0] != '#' {

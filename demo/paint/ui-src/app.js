@@ -104,6 +104,7 @@ let pendingIDs = new Set(); // ids of pending ops, for O(1) acknowledgement
 let seen = new Set(); // ids already folded into the local view
 let paintBatch = []; // pen/eraser commands waiting for the debounced flush
 let paintBatchTimer = null;
+let drawQueued = false; // a repaint is already scheduled for the next frame
 
 const LOG_MAX = 100; // scrolling window: at most this many rendered log items
 const LOG_DEBOUNCE_MS = 150; // coalesce a burst of ops into one summary line
@@ -241,13 +242,57 @@ function resizeCanvas() {
   return { w, h };
 }
 
+// draw schedules one repaint on the next animation frame, coalescing the many
+// synchronous call sites (mouse moves, zooms, batch flushes) into a single
+// canvas pass per frame so a busy stroke never paints more than it must.
 function draw() {
+  if (drawQueued) return;
+  drawQueued = true;
+  requestAnimationFrame(() => {
+    drawQueued = false;
+    render();
+  });
+}
+
+function render() {
   const { w, h } = resizeCanvas();
   ctx.fillStyle = BOARD_BACKGROUND;
   ctx.fillRect(0, 0, w, h);
   drawBoxes(w, h);
   drawGrid(w, h);
   drawPreview(w, h);
+  drawPendingStroke(w, h);
+}
+
+// drawPendingStroke paints the cells of the stroke in progress, before they are
+// folded into the view, so the pen and eraser give instant feedback under the
+// cursor instead of waiting for the next batch flush.
+function drawPendingStroke(w, h) {
+  if (paintBatch.length === 0) return;
+  const px = cam.scale;
+  for (const cmd of paintBatch) {
+    if (!cmd.data) continue;
+    const sx = (cmd.data.x0 - cam.x) * px + w / 2;
+    const sy = (cmd.data.y0 - cam.y) * px + h / 2;
+    const sw = (cmd.data.x1 - cmd.data.x0) * px;
+    const sh = (cmd.data.y1 - cmd.data.y0) * px;
+    if (sx + sw < 0 || sx > w || sy + sh < 0 || sy > h) continue;
+    ctx.fillStyle =
+      cmd.kind === "erase"
+        ? BOARD_BACKGROUND
+        : (cmd.meta?.color ?? DEFAULT_COLOR);
+    ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = "#f5c542";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(
+      sx + 0.75,
+      sy + 0.75,
+      Math.max(0, sw - 1.5),
+      Math.max(0, sh - 1.5),
+    );
+    ctx.setLineDash([]);
+  }
 }
 
 function drawBoxes(w, h) {
@@ -426,6 +471,7 @@ function brushSend(r) {
 // window, so a fast pen sweep does not re-materialize per cell.
 function queuePaint(cmd) {
   paintBatch.push(cmd);
+  draw(); // schedule a repaint so the in-progress cell appears immediately
   if (paintBatchTimer === null) {
     paintBatchTimer = setTimeout(flushPaintBatch, PAINT_BATCH_MS);
   }

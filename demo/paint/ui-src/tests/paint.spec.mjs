@@ -513,6 +513,26 @@ test("the server renders a raster export on demand", async ({ page }) => {
   expect(result.sig).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
+test("the server rejects invalid export requests", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const result = await page.evaluate(async () => {
+    const s = new URLSearchParams(location.search).get("s");
+    const bogus = await fetch(`/api/export?s=${s}&format=bogus&w=800&h=800`);
+    const big = await fetch(`/api/export?s=${s}&format=png&w=40001&h=800`);
+    const negative = await fetch(`/api/export?s=${s}&format=png&w=-10&h=800`);
+    return { bogus: bogus.status, big: big.status, negative: negative.status };
+  });
+  expect(result.bogus).toBe(400);
+  expect(result.big).toBe(400);
+  expect(result.negative).toBe(400);
+});
+
 test("presence separates this session from all connected", async ({
   browser,
 }) => {

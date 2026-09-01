@@ -45,7 +45,7 @@ func TestRenderLayers(t *testing.T) {
 	require.Equal(t, 100, img.Bounds().Dx())
 	require.Equal(t, 100, img.Bounds().Dy())
 
-	// 10 board units scale to 100 px, so one unit is 10 px. The centre
+	// 10 board units scale to 100 px, so one unit is 10 px. The center
 	// (board 5,5) lies inside the erase hole.
 	r, _, _, a := img.At(10, 10).RGBA() // board (1,1): the painted square
 	require.Equal(t, uint32(0xffff), r)

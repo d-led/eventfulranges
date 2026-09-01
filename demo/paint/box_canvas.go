@@ -115,8 +115,8 @@ func boxDetail(b space.Box) string {
 }
 
 // Layers returns the materialized front in paint order for server-side
-// rendering: one rectangle per surviving stroke, with its colour, or an erase
-// (empty Colour) that repaints the background.
+// rendering: one rectangle per surviving stroke, with its color, or an erase
+// (empty Color) that repaints the background.
 func (c *boxCanvas) Layers() []Layer {
 	front := c.set.Layers()
 	out := make([]Layer, 0, len(front))
@@ -132,8 +132,8 @@ func (c *boxCanvas) Layers() []Layer {
 	return out
 }
 
-// layerColor extracts the stroke colour from a box's metadata; an erase (or a
-// stroke with no valid colour) renders as the background.
+// layerColor extracts the stroke color from a box's metadata; an erase (or a
+// stroke with no valid color) renders as the background.
 func layerColor(meta json.RawMessage, kind sop.Kind) string {
 	if kind != sop.KindAdd {
 		return ""

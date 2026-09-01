@@ -32,7 +32,7 @@ type Event struct {
 }
 
 // Layer is one rectangle of the materialized board in paint order: a stroke
-// with its colour, or an erase (Color empty) that repaints the background.
+// with its color, or an erase (Color empty) that repaints the background.
 type Layer struct {
 	X0, Y0, X1, Y1 float64
 	Color          string
