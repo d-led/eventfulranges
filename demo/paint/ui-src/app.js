@@ -18,12 +18,8 @@ import {
   resolveDimensions,
   suggestDimensions,
   fitExport,
-  projectBox,
   renderSVG,
   sanitizeColor,
-  snapRect,
-  checkRasterSize,
-  BACKGROUND,
 } from "./export.js";
 
 // ---------- DOM ----------
@@ -1394,53 +1390,18 @@ async function exportImage(format, width, height) {
     return;
   }
 
-  const raster = checkRasterSize(width, height);
-  if (!raster.ok) throw new Error(raster.error);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  // Browsers cap the canvas backing store; a silently clamped size would
-  // export a different image than requested, so refuse instead.
-  if (canvas.width !== width || canvas.height !== height) {
-    throw new Error("this size is too large for the browser to rasterize");
+  // Raster exports are rendered server-side: the Go server materializes the
+  // authoritative view and encodes it itself, so there is no browser canvas
+  // size limit.
+  const session = new URLSearchParams(location.search).get("s");
+  const url = `/api/export?s=${encodeURIComponent(session)}&format=${format}&w=${width}&h=${height}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "export failed");
   }
-  const jpeg = format === "jpeg";
-  const c = canvas.getContext("2d");
-  // PNG keeps empty space transparent; JPEG has no alpha, so it fills the
-  // flat board background instead.
-  if (jpeg) {
-    c.fillStyle = BACKGROUND;
-    c.fillRect(0, 0, width, height);
-  }
-  for (const b of boxes) {
-    const r = snapRect(projectBox(b, view));
-    if (b.kind === "remove") {
-      // An erase clears to transparent for PNG; JPEG repaints the background.
-      if (jpeg) {
-        c.fillStyle = BACKGROUND;
-        c.fillRect(r.x, r.y, r.w, r.h);
-      } else {
-        c.clearRect(r.x, r.y, r.w, r.h);
-      }
-      continue;
-    }
-    c.fillStyle = sanitizeColor(b.color);
-    c.fillRect(r.x, r.y, r.w, r.h);
-  }
-  const blob = await new Promise((resolve) =>
-    canvas.toBlob(
-      resolve,
-      jpeg ? "image/jpeg" : "image/png",
-      jpeg ? 0.92 : undefined,
-    ),
-  );
-  if (!blob) {
-    throw new Error(
-      "this browser could not encode an image this large — try SVG or a smaller size",
-    );
-  }
-  downloadBlob(blob, jpeg ? "board.jpg" : "board.png");
+  const blob = await res.blob();
+  downloadBlob(blob, format === "jpeg" ? "board.jpg" : "board.png");
 }
 
 function downloadBlob(blob, filename) {

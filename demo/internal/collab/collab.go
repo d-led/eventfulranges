@@ -233,6 +233,12 @@ func (s *Session) Snapshot() json.RawMessage {
 	return s.snapshot()
 }
 
+// Model exposes the session's underlying model, so a demo can materialize the
+// view server-side (for example to render a large raster export).
+func (s *Session) Model() Model {
+	return s.model
+}
+
 func (s *Session) snapshot() json.RawMessage {
 	state := s.model.Snapshot()
 	if state == nil {

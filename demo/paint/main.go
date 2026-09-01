@@ -36,6 +36,7 @@ func main() {
 	log.Printf("eventfulranges ± infinite paint %s (branch %s, commit %s) listening on %s", version, branch, commit, *addr)
 	log.Printf("open %s", collab.UIURL(*addr))
 	router := collab.NewRouter(sessions, GetFS(), nil)
+	router.GET("/api/export", exportHandler(sessions))
 	collab.RegisterAdminRoutes(router, sessions, parseAdminList(os.Getenv("ADMIN_EMAILS")), GetFS())
 	if err := router.Run(*addr); err != nil {
 		log.Fatal(err)

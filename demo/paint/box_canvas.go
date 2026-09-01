@@ -113,3 +113,36 @@ func boxData(b space.Box) json.RawMessage {
 func boxDetail(b space.Box) string {
 	return fmt.Sprintf("[%g,%g) x [%g,%g)", b.Min[0], b.Max[0], b.Min[1], b.Max[1])
 }
+
+// Layers returns the materialized front in paint order for server-side
+// rendering: one rectangle per surviving stroke, with its colour, or an erase
+// (empty Colour) that repaints the background.
+func (c *boxCanvas) Layers() []Layer {
+	front := c.set.Layers()
+	out := make([]Layer, 0, len(front))
+	for _, l := range front {
+		out = append(out, Layer{
+			X0:    l.Box.Min[0],
+			Y0:    l.Box.Min[1],
+			X1:    l.Box.Max[0],
+			Y1:    l.Box.Max[1],
+			Color: layerColor(l.Box.Meta, l.Kind),
+		})
+	}
+	return out
+}
+
+// layerColor extracts the stroke colour from a box's metadata; an erase (or a
+// stroke with no valid colour) renders as the background.
+func layerColor(meta json.RawMessage, kind sop.Kind) string {
+	if kind != sop.KindAdd {
+		return ""
+	}
+	var m struct {
+		Color string `json:"color"`
+	}
+	if len(meta) > 0 {
+		_ = json.Unmarshal(meta, &m)
+	}
+	return m.Color
+}

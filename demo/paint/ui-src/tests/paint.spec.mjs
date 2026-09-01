@@ -252,16 +252,6 @@ test("exports a PNG with a transparent background", async ({ page }) => {
   await drawRect(page);
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
-  // Intercept the raster canvas so the test can sample pixel alpha directly,
-  // without decoding the PNG file.
-  await page.evaluate(() => {
-    const original = HTMLCanvasElement.prototype.toBlob;
-    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
-      window.__lastExportCanvas = this;
-      return original.call(this, callback, type, quality);
-    };
-  });
-
   await page.locator("#exportBtn").click();
   // Letterbox the square drawing so the margins stay empty and unpainted.
   await page.locator("#exportRatio").uncheck();
@@ -274,17 +264,32 @@ test("exports a PNG with a transparent background", async ({ page }) => {
   ]);
   expect(download.suggestedFilename()).toBe("board.png");
 
-  const corner = await page.evaluate(() => {
-    const c = window.__lastExportCanvas;
-    return c.getContext("2d").getImageData(0, 0, 1, 1).data;
-  });
-  expect(corner[3]).toBe(0); // empty space is transparent
-
-  const center = await page.evaluate(() => {
-    const c = window.__lastExportCanvas;
-    return c.getContext("2d").getImageData(320, 240, 1, 1).data;
-  });
-  expect(center[3]).toBe(255); // the painted square is opaque
+  // Decode the downloaded PNG in the page and sample its alpha: the margins
+  // are transparent and the painted square is opaque.
+  const bytes = await readFile(await download.path());
+  const sample = await page.evaluate(async (b64) => {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = `data:image/png;base64,${b64}`;
+    });
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const corner = ctx.getImageData(0, 0, 1, 1).data;
+    const center = ctx.getImageData(
+      Math.floor(c.width / 2),
+      Math.floor(c.height / 2),
+      1,
+      1,
+    ).data;
+    return { corner: [...corner], center: [...center] };
+  }, bytes.toString("base64"));
+  expect(sample.corner[3]).toBe(0); // empty space is transparent
+  expect(sample.center[3]).toBe(255); // the painted square is opaque
 });
 
 test("remembers the selected colour across reloads", async ({ page }) => {
@@ -469,7 +474,9 @@ test("rejects an export smaller than the minimum", async ({ page }) => {
   await expect(page.locator("#exportDialog")).toBeVisible();
 });
 
-test("rejects a raster export too large for the browser", async ({ page }) => {
+test("rejects a raster export larger than the server can render", async ({
+  page,
+}) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator("#status")).toContainText("connected");
@@ -478,14 +485,14 @@ test("rejects a raster export too large for the browser", async ({ page }) => {
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
   await page.locator("#exportBtn").click();
-  // A square bigger than any browser canvas side must be refused up front,
+  // A square bigger than the server's render cap must be refused up front,
   // before allocating the raster backing store.
   await page.locator("#exportWidth").fill("20000");
   await page.locator("#exportHeight").fill("20000");
   await page.locator("#exportGo").click();
 
   await expect(page.locator("#exportError")).toBeVisible();
-  await expect(page.locator("#exportError")).toContainText("SVG");
+  await expect(page.locator("#exportError")).toContainText("too large");
   await expect(page.locator("#exportDialog")).toBeVisible();
 });
 

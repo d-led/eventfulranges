@@ -160,6 +160,13 @@ func (b *board) Log() []collab.Entry {
 	return append([]collab.Entry(nil), b.log...)
 }
 
+// Layers returns the board's materialized front for server-side rendering.
+func (b *board) Layers() []Layer {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.canvas.Layers()
+}
+
 // Snapshot returns nil: the whiteboard exposes only its log, and browsers
 // materialize the view themselves.
 func (b *board) Snapshot() any {

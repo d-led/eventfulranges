@@ -9,11 +9,8 @@ import {
   suggestDimensions,
   fitExport,
   projectBox,
-  snapRect,
   sanitizeColor,
   renderSVG,
-  checkRasterSize,
-  maxRasterSide,
 } from "./export.js";
 
 const box = (x0, y0, x1, y1) => ({ min: [x0, y0], max: [x1, y1] });
@@ -50,26 +47,6 @@ describe("parseDimensions", () => {
   it("rejects fractional or non-numeric sizes", () => {
     expect(parseDimensions("800.5", "600").ok).toBe(false);
     expect(parseDimensions("wide", "600").ok).toBe(false);
-  });
-});
-
-describe("checkRasterSize", () => {
-  it("accepts sizes inside the browser's canvas limit", () => {
-    expect(checkRasterSize(1000, 1000, 16384)).toEqual({ ok: true });
-    expect(checkRasterSize(16384, 16384, 16384)).toEqual({ ok: true });
-  });
-
-  it("rejects sizes whose side exceeds the limit", () => {
-    const res = checkRasterSize(20000, 20000, 16384);
-    expect(res.ok).toBe(false);
-    expect(res.error).toContain("16384");
-    expect(res.error).toContain("SVG");
-  });
-
-  it("falls back to MAX_WIDTH without a document", () => {
-    expect(maxRasterSide()).toBe(MAX_WIDTH);
-    expect(checkRasterSize(MAX_WIDTH, MAX_HEIGHT)).toEqual({ ok: true });
-    expect(checkRasterSize(MAX_WIDTH + 1, MAX_HEIGHT).ok).toBe(false);
   });
 });
 
@@ -157,23 +134,6 @@ describe("projectBox", () => {
       w: 200,
       h: 200,
     });
-  });
-});
-
-describe("snapRect", () => {
-  it("rounds to whole pixels", () => {
-    expect(snapRect({ x: 0.4, y: 1.5, w: 9.6, h: 4.4 })).toEqual({
-      x: 0,
-      y: 2,
-      w: 10,
-      h: 4,
-    });
-  });
-
-  it("keeps adjacent boxes sharing a boundary seam-free", () => {
-    const left = snapRect({ x: 0, y: 0, w: 10.4, h: 10 });
-    const right = snapRect({ x: 10.4, y: 0, w: 9.6, h: 10 });
-    expect(left.x + left.w).toBe(right.x); // identical rounded edge, no gap or overlap
   });
 });
 

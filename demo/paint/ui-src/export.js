@@ -9,43 +9,6 @@ export const MIN_HEIGHT = 480;
 export const MAX_WIDTH = 40000;
 export const MAX_HEIGHT = 40000;
 
-// maxRasterSide returns the largest width or height this browser can rasterize
-// on a single canvas side. Browsers silently clamp oversized canvas sides, so
-// the probe grows until the canvas stops honouring the requested size. Outside
-// a browser (unit tests) it falls back to MAX_WIDTH, keeping pure validation
-// deterministic.
-let cachedMaxSide = null;
-export function maxRasterSide() {
-  if (cachedMaxSide !== null) return cachedMaxSide;
-  if (typeof document === "undefined") return MAX_WIDTH;
-  const c = document.createElement("canvas");
-  let lo = 1;
-  let hi = 65536;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    c.width = mid;
-    c.height = 1;
-    if (c.width === mid) lo = mid;
-    else hi = mid - 1;
-  }
-  cachedMaxSide = lo;
-  return lo;
-}
-
-// checkRasterSize reports whether a raster export of width × height can be
-// encoded by this browser. The limit is probed once; SVG has no raster limit
-// and bypasses this check. Callers may pass an explicit maxSide to test the
-// validation without touching a canvas.
-export function checkRasterSize(width, height, maxSide = maxRasterSide()) {
-  if (width > maxSide || height > maxSide) {
-    return {
-      ok: false,
-      error: `this browser tops out at ${maxSide} px per side — try SVG or a smaller size`,
-    };
-  }
-  return { ok: true };
-}
-
 // BACKGROUND is the board background filled on raster exports, so a PNG or
 // JPEG matches what the board shows. SVG exports stay transparent.
 export const BACKGROUND = "#0e1015";
@@ -129,17 +92,6 @@ export function projectBox(b, view) {
     w: (b.max[0] - b.min[0]) * view.scale,
     h: (b.max[1] - b.min[1]) * view.scale,
   };
-}
-
-// snapRect rounds a pixel rectangle to whole pixels by rounding its edges
-// independently, so adjacent boxes share exact boundaries and raster exports
-// do not show antialiasing seams between them.
-export function snapRect(r) {
-  const x0 = Math.round(r.x);
-  const y0 = Math.round(r.y);
-  const x1 = Math.round(r.x + r.w);
-  const y1 = Math.round(r.y + r.h);
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 // sanitizeColor keeps only the #rrggbb values the browser's color input can

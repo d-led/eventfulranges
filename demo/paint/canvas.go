@@ -31,6 +31,13 @@ type Event struct {
 	Detail string
 }
 
+// Layer is one rectangle of the materialized board in paint order: a stroke
+// with its colour, or an erase (Color empty) that repaints the background.
+type Layer struct {
+	X0, Y0, X1, Y1 float64
+	Color          string
+}
+
 // Canvas is the swappable CRDT backend of the whiteboard: it folds paint and
 // erase strokes into an event-sourced range set and returns the events they
 // produced. Meta is arbitrary JSON-object metadata (for example a stroke
@@ -43,4 +50,5 @@ type Canvas interface {
 	Paint(id string, r Rect, meta json.RawMessage) ([]Event, error)
 	Erase(id string, r Rect, meta json.RawMessage) ([]Event, error)
 	Retract(id, ref string) ([]Event, error)
+	Layers() []Layer
 }
