@@ -246,6 +246,74 @@ test("disables the export button while a server render is in flight", async ({
   await expect(page.locator("#exportGo")).toHaveText("Export");
 });
 
+test("exports one pixel per cell at the current grid level", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page); // a 2x2 cell block
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportPixelSize").selectOption("grid");
+  await expect(page.locator("#exportSizeFields")).toBeHidden();
+  await expect(page.locator("#exportRatioField")).toBeHidden();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  const bytes = await readFile(await download.path());
+  expect(bytes.readUInt32BE(16)).toBe(2); // 2 cells wide → 2 px
+  expect(bytes.readUInt32BE(20)).toBe(2); // 2 cells tall → 2 px
+
+  // The pixel-size choice is remembered across reloads.
+  await page.reload();
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+  await page.locator("#exportBtn").click();
+  await expect(page.locator("#exportPixelSize")).toHaveValue("grid");
+});
+
+test("fits the drawing into the current viewport pixels", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportPixelSize").selectOption("pixels");
+  const [w, h] = await page
+    .locator("#board")
+    .evaluate((c) => [c.width, c.height]);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  const bytes = await readFile(await download.path());
+  expect(bytes.readUInt32BE(16)).toBe(w); // the whole viewport wide
+  expect(bytes.readUInt32BE(20)).toBe(h); // the whole viewport tall
+});
+
+test("hides the pixel-size selector for SVG export", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportFormat").selectOption("svg");
+  await expect(page.locator("#exportPixelSizeField")).toBeHidden();
+  await expect(page.locator("#exportSizeFields")).toBeHidden();
+});
+
 test("exports the board as a PNG", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

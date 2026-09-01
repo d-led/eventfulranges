@@ -7,6 +7,7 @@ import {
   parseDimensions,
   resolveDimensions,
   suggestDimensions,
+  gridExportSize,
   fitExport,
   projectBox,
   snapRect,
@@ -85,6 +86,37 @@ describe("resolveDimensions", () => {
 
   it("reports an empty board when keeping the ratio", () => {
     expect(resolveDimensions([], 800, 600, true).ok).toBe(false);
+  });
+});
+
+describe("gridExportSize", () => {
+  it("maps one board cell to one pixel", () => {
+    expect(gridExportSize([box(0, 0, 4, 2)], 1)).toEqual({
+      ok: true,
+      width: 4,
+      height: 2,
+    });
+  });
+
+  it("scales with the current cell size", () => {
+    // A half-unit cell (grid level 1) doubles the pixel density.
+    expect(gridExportSize([box(0, 0, 4, 2)], 0.5)).toEqual({
+      ok: true,
+      width: 8,
+      height: 4,
+    });
+  });
+
+  it("rounds a sub-cell drawing up to at least one pixel", () => {
+    expect(gridExportSize([box(0, 0, 0.3, 0.3)], 1)).toEqual({
+      ok: true,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("reports an empty board", () => {
+    expect(gridExportSize([], 1).ok).toBe(false);
   });
 });
 

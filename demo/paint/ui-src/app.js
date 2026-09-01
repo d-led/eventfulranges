@@ -17,12 +17,15 @@ import {
   parseDimensions,
   resolveDimensions,
   suggestDimensions,
+  gridExportSize,
   fitExport,
   projectBox,
   renderSVG,
   sanitizeColor,
   snapRect,
   checkRasterSize,
+  MAX_WIDTH,
+  MAX_HEIGHT,
   BACKGROUND,
 } from "./export.js";
 
@@ -82,6 +85,8 @@ const exportGo = $("exportGo");
 const exportSizeFields = $("exportSizeFields");
 const exportRatioField = $("exportRatioField");
 const exportHint = $("exportHint");
+const exportPixelSize = $("exportPixelSize");
+const exportPixelSizeField = $("exportPixelSizeField");
 const importImageBtn = $("importImageBtn");
 const importImageInput = $("importImageInput");
 const importImageClear = $("importImageClear");
@@ -1381,6 +1386,9 @@ function openExportDialog() {
     ? settings.format
     : "png";
   exportRatio.checked = settings.keepRatio ?? true;
+  exportPixelSize.value = ["1:1", "grid", "pixels"].includes(settings.pixelSize)
+    ? settings.pixelSize
+    : "1:1";
   syncExportFields();
   showExportError(null);
   if (!exportDialog.open) exportDialog.showModal();
@@ -1415,28 +1423,25 @@ async function submitExport() {
     return;
   }
 
-  const parsed = parseDimensions(exportWidth.value, exportHeight.value);
-  if (!parsed.ok) {
-    showExportError(parsed.error);
-    return;
-  }
-  const size = resolveDimensions(
-    boxes,
-    parsed.width,
-    parsed.height,
-    exportRatio.checked,
-  );
+  const { size, custom } = rasterExportSize(exportPixelSize.value);
   if (!size.ok) {
     showExportError(size.error);
+    return;
+  }
+  if (size.width > MAX_WIDTH || size.height > MAX_HEIGHT) {
+    showExportError(`too large for export — max ${MAX_WIDTH} px per side`);
     return;
   }
   setExportBusy(true);
   try {
     await exportImage(format, size.width, size.height);
     settings.format = format;
-    settings.width = parsed.width;
-    settings.height = parsed.height;
-    settings.keepRatio = exportRatio.checked;
+    settings.pixelSize = exportPixelSize.value;
+    if (custom) {
+      settings.width = custom.width;
+      settings.height = custom.height;
+      settings.keepRatio = custom.keepRatio;
+    }
     saveSettings();
     closeExportDialog();
     notify(
@@ -1447,6 +1452,34 @@ async function submitExport() {
   } finally {
     setExportBusy(false);
   }
+}
+
+// rasterExportSize resolves the pixel size for one raster export. The custom
+// mode uses the width/height fields; "grid" maps one current grid cell to one
+// pixel; "pixels" fits the drawing into the current viewport. `custom` carries
+// the raw fields to persist, only when they were used.
+function rasterExportSize(pixelSize) {
+  if (pixelSize === "grid") {
+    return { size: gridExportSize(boxes, gridSize(cam.scale, gridOffset)) };
+  }
+  if (pixelSize === "pixels") {
+    return { size: { ok: true, width: boardEl.width, height: boardEl.height } };
+  }
+  const parsed = parseDimensions(exportWidth.value, exportHeight.value);
+  if (!parsed.ok) return { size: parsed };
+  return {
+    size: resolveDimensions(
+      boxes,
+      parsed.width,
+      parsed.height,
+      exportRatio.checked,
+    ),
+    custom: {
+      width: parsed.width,
+      height: parsed.height,
+      keepRatio: exportRatio.checked,
+    },
+  };
 }
 
 // setExportBusy disables the export button and relabels it while a request is
@@ -1460,9 +1493,11 @@ function setExportBusy(busy) {
 // fixed resolution, leaving only the format selector.
 function syncExportFields() {
   const svg = exportFormat.value === "svg";
-  exportSizeFields.hidden = svg;
-  exportRatioField.hidden = svg;
-  exportHint.hidden = svg;
+  const custom = !svg && exportPixelSize.value === "1:1";
+  exportPixelSizeField.hidden = svg;
+  exportSizeFields.hidden = !custom;
+  exportRatioField.hidden = !custom;
+  exportHint.hidden = !custom;
 }
 
 function extension(format) {
@@ -1802,6 +1837,7 @@ downloadJsonlBtn.addEventListener("click", () => {
 exportBtn.addEventListener("click", openExportDialog);
 exportCancel.addEventListener("click", closeExportDialog);
 exportFormat.addEventListener("change", syncExportFields);
+exportPixelSize.addEventListener("change", syncExportFields);
 exportForm.addEventListener("submit", (e) => {
   e.preventDefault();
   submitExport();

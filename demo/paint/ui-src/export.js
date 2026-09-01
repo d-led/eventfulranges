@@ -87,6 +87,20 @@ export function resolveDimensions(boxes, width, height, keepRatio) {
   };
 }
 
+// gridExportSize returns the raster size that maps one board cell of side
+// `cell` to exactly one pixel, keeping a drawing exported at the current grid
+// level crisp. The output is exactly the drawing's bounds at this density, so
+// it anchors to the top-left with no letterbox.
+export function gridExportSize(boxes, cell) {
+  const b = boundsOf(boxes);
+  if (!b) return { ok: false, error: "nothing to export — the board is empty" };
+  return {
+    ok: true,
+    width: Math.max(1, Math.round(b.bw / cell)),
+    height: Math.max(1, Math.round(b.bh / cell)),
+  };
+}
+
 // suggestDimensions proposes a default export size that keeps the drawing's
 // aspect ratio, with the long side near target, clamped to the allowed range.
 export function suggestDimensions(boxes, target = 1600) {

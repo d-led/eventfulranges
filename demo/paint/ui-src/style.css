@@ -648,6 +648,7 @@ body.zen .zen-hud {
 }
 
 /* The explicit flex/block displays above override the UA's [hidden] rule. */
+.export-field[hidden],
 .export-row[hidden],
 .export-check[hidden],
 .export-hint[hidden] {
