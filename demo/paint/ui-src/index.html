@@ -133,6 +133,10 @@
             <button id="downloadJsonl" class="zen-hidden" title="Save the board as a JSONL log">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             </button>
+            <button id="exportBtn" class="zen-hidden" title="Export the board as PNG, JPEG, or SVG">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Z" /></svg>
+              <span class="btn-text">Export</span>
+            </button>
             <input type="file" id="importJsonlInput" accept=".jsonl,application/x-ndjson,application/json" hidden />
           </div>
           <div class="toolbar-group">
@@ -158,6 +162,40 @@
         <ol id="log"></ol>
       </section>
     </main>
+
+    <dialog id="exportDialog" class="export-dialog">
+      <form id="exportForm" novalidate>
+        <h2>Export board</h2>
+        <label class="export-field">
+          <span>Format</span>
+          <select id="exportFormat">
+            <option value="png" selected>PNG</option>
+            <option value="jpeg">JPEG</option>
+            <option value="svg">SVG</option>
+          </select>
+        </label>
+        <div class="export-row">
+          <label class="export-field">
+            <span>Width</span>
+            <input id="exportWidth" type="number" min="640" max="40000" step="1" inputmode="numeric" />
+          </label>
+          <label class="export-field">
+            <span>Height</span>
+            <input id="exportHeight" type="number" min="480" max="40000" step="1" inputmode="numeric" />
+          </label>
+        </div>
+        <label class="export-check">
+          <input type="checkbox" id="exportRatio" checked />
+          <span>Keep the drawing's aspect ratio — width and height are maximums</span>
+        </label>
+        <p id="exportError" class="export-error" hidden></p>
+        <p class="export-hint">640 × 480 to 40000 × 40000 pixels</p>
+        <div class="export-row export-actions">
+          <button type="button" id="exportCancel">Cancel</button>
+          <button type="submit" id="exportGo" class="primary">Export</button>
+        </div>
+      </form>
+    </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 

@@ -71,6 +71,93 @@ test("one-shot feedback appears as a toast and fades away", async ({
   });
 });
 
+test("exports the board as an SVG without the grid", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportFormat").selectOption("svg");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("board.svg");
+
+  const content = await readFile(await download.path(), "utf8");
+  expect(content).toContain("<svg");
+  expect(content).toContain("<rect");
+  expect(content).not.toContain("<line");
+});
+
+test("exports the board as a PNG", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await expect(page.locator("#exportFormat")).toHaveValue("png");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("board.png");
+
+  const bytes = await readFile(await download.path());
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A.
+  expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page); // a 2x2 cell block: square bounds
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  // 2000 x 1000 as maximums: the square drawing keeps 1:1, so the result is
+  // 1000 x 1000.
+  await page.locator("#exportWidth").fill("2000");
+  await page.locator("#exportHeight").fill("1000");
+  await page.locator("#exportRatio").check();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  const bytes = await readFile(await download.path());
+  expect(bytes.readUInt32BE(16)).toBe(1000); // IHDR width
+  expect(bytes.readUInt32BE(20)).toBe(1000); // IHDR height
+});
+
+test("rejects an export smaller than the minimum", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportWidth").fill("100");
+  await page.locator("#exportHeight").fill("100");
+  await page.locator("#exportGo").click();
+
+  await expect(page.locator("#exportError")).toBeVisible();
+  await expect(page.locator("#exportError")).toContainText("minimum");
+  await expect(page.locator("#exportDialog")).toBeVisible();
+});
+
 test("presence separates this session from all connected", async ({
   browser,
 }) => {

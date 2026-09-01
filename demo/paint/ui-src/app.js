@@ -11,6 +11,16 @@ import {
   fitCamera,
 } from "./grid.js";
 import { delayFor } from "./backoff.js";
+import {
+  parseDimensions,
+  resolveDimensions,
+  suggestDimensions,
+  fitExport,
+  projectBox,
+  renderSVG,
+  sanitizeColor,
+  BACKGROUND,
+} from "./export.js";
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -55,6 +65,15 @@ const zenBtn = $("zenBtn");
 const zenBacklog = $("zenBacklog");
 const toastEl = $("toast");
 const adminLink = $("adminLink");
+const exportBtn = $("exportBtn");
+const exportDialog = $("exportDialog");
+const exportForm = $("exportForm");
+const exportFormat = $("exportFormat");
+const exportWidth = $("exportWidth");
+const exportHeight = $("exportHeight");
+const exportRatio = $("exportRatio");
+const exportError = $("exportError");
+const exportCancel = $("exportCancel");
 
 const ctx = boardEl.getContext("2d");
 
@@ -1155,6 +1174,116 @@ function downloadJSONL() {
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- export ----------
+// The board can be saved as PNG, JPEG, or SVG at a caller-chosen size. The
+// drawing is fit with a "contain" transform — never stretched or clipped —
+// and the grid is never drawn, so the file carries only the painted cells.
+function openExportDialog() {
+  if (boxes.length === 0) {
+    notify("nothing to export — draw something first");
+    return;
+  }
+  const size = suggestDimensions(boxes);
+  exportWidth.value = size.width;
+  exportHeight.value = size.height;
+  exportFormat.value = "png";
+  exportRatio.checked = true;
+  showExportError(null);
+  if (!exportDialog.open) exportDialog.showModal();
+}
+
+function closeExportDialog() {
+  exportDialog.close();
+}
+
+function showExportError(message) {
+  exportError.textContent = message ?? "";
+  exportError.hidden = !message;
+}
+
+function submitExport() {
+  const parsed = parseDimensions(exportWidth.value, exportHeight.value);
+  if (!parsed.ok) {
+    showExportError(parsed.error);
+    return;
+  }
+  const size = resolveDimensions(
+    boxes,
+    parsed.width,
+    parsed.height,
+    exportRatio.checked,
+  );
+  if (!size.ok) {
+    showExportError(size.error);
+    return;
+  }
+  const format = exportFormat.value;
+  exportImage(format, size.width, size.height)
+    .then(() => {
+      closeExportDialog();
+      notify(
+        `exported board.${extension(format)} (${size.width} × ${size.height})`,
+      );
+    })
+    .catch((err) => showExportError(err.message || "export failed"));
+}
+
+function extension(format) {
+  return format === "jpeg" ? "jpg" : format;
+}
+
+async function exportImage(format, width, height) {
+  const view = fitExport(boxes, width, height);
+  if (!view.ok) throw new Error(view.error);
+
+  if (format === "svg") {
+    downloadBlob(
+      new Blob([renderSVG(boxes, width, height, view)], {
+        type: "image/svg+xml",
+      }),
+      "board.svg",
+    );
+    return;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  // Browsers cap the canvas backing store; a silently clamped size would
+  // export a different image than requested, so refuse instead.
+  if (canvas.width !== width || canvas.height !== height) {
+    throw new Error("this size is too large for the browser to rasterize");
+  }
+  const c = canvas.getContext("2d");
+  c.fillStyle = BACKGROUND;
+  c.fillRect(0, 0, width, height);
+  for (const b of boxes) {
+    const r = projectBox(b, view);
+    c.fillStyle = sanitizeColor(b.color);
+    c.fillRect(r.x, r.y, r.w, r.h);
+  }
+  const jpeg = format === "jpeg";
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob(
+      resolve,
+      jpeg ? "image/jpeg" : "image/png",
+      jpeg ? 0.92 : undefined,
+    ),
+  );
+  if (!blob) throw new Error("could not encode the image");
+  downloadBlob(blob, jpeg ? "board.jpg" : "board.png");
+}
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
 async function importJSONL(input) {
   if (!connected) {
     setStatus("disconnected — reconnect to import");
@@ -1280,6 +1409,17 @@ copyShareBtn.addEventListener("click", async () => {
 downloadJsonlBtn.addEventListener("click", () => {
   downloadJSONL();
   notify(`downloaded board.jsonl (${logEntries.length} ops)`);
+});
+
+exportBtn.addEventListener("click", openExportDialog);
+exportCancel.addEventListener("click", closeExportDialog);
+exportForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  submitExport();
+});
+// Clicking the backdrop closes the dialog without exporting.
+exportDialog.addEventListener("click", (e) => {
+  if (e.target === exportDialog) closeExportDialog();
 });
 
 newSessionBtn.addEventListener("click", () => location.replace("/ui/"));

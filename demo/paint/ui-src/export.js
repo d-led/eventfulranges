@@ -1,0 +1,142 @@
+// Board export: turn the materialized painted boxes into PNG, JPEG, or SVG at
+// a caller-chosen size. The drawing is fit with a "contain" transform, so its
+// aspect ratio is preserved and it is never stretched or clipped. The grid is
+// never rendered, so the file carries only the painted cells.
+import { bounds } from "./grid.js";
+
+export const MIN_WIDTH = 640;
+export const MIN_HEIGHT = 480;
+export const MAX_WIDTH = 40000;
+export const MAX_HEIGHT = 40000;
+
+// BACKGROUND is the board background filled on raster exports, so a PNG or
+// JPEG matches what the board shows. SVG exports stay transparent.
+export const BACKGROUND = "#0e1015";
+
+// The fallback color for entries whose metadata carries no valid color.
+const DEFAULT_COLOR = "#e6e8ee";
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+// parseDimensions validates the requested size: whole numbers inside the
+// allowed range.
+export function parseDimensions(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isInteger(w) || !Number.isInteger(h)) {
+    return { ok: false, error: "width and height must be whole numbers" };
+  }
+  if (w < MIN_WIDTH || h < MIN_HEIGHT) {
+    return { ok: false, error: `minimum size is ${MIN_WIDTH} × ${MIN_HEIGHT}` };
+  }
+  if (w > MAX_WIDTH || h > MAX_HEIGHT) {
+    return { ok: false, error: `maximum size is ${MAX_WIDTH} × ${MAX_HEIGHT}` };
+  }
+  return { ok: true, width: w, height: h };
+}
+
+// resolveDimensions returns the final pixel size. When keepRatio is true the
+// drawing's bounding-box aspect ratio wins and width/height are treated as
+// maximums, so the image is shrunk (never grown) to fit inside them. When
+// false the requested dimensions are used exactly.
+export function resolveDimensions(boxes, width, height, keepRatio) {
+  if (!keepRatio) return { ok: true, width, height };
+  const b = boundsOf(boxes);
+  if (!b) return { ok: false, error: "nothing to export — the board is empty" };
+  const scale = Math.min(width / b.bw, height / b.bh);
+  return {
+    ok: true,
+    width: Math.max(1, Math.round(b.bw * scale)),
+    height: Math.max(1, Math.round(b.bh * scale)),
+  };
+}
+
+// suggestDimensions proposes a default export size that keeps the drawing's
+// aspect ratio, with the long side near target, clamped to the allowed range.
+export function suggestDimensions(boxes, target = 1600) {
+  const b = boundsOf(boxes);
+  if (!b) return { width: 1920, height: 1080 };
+  const wide = b.bw >= b.bh;
+  const width = wide ? target : (target * b.bw) / b.bh;
+  const height = wide ? (target * b.bh) / b.bw : target;
+  return {
+    width: clampInt(width, MIN_WIDTH, MAX_WIDTH),
+    height: clampInt(height, MIN_HEIGHT, MAX_HEIGHT),
+  };
+}
+
+// fitExport maps the drawing onto a width × height image with a contain fit:
+// the drawing keeps its aspect ratio, is centred, and the remainder is
+// background. It returns the transform (offset and pixels per board unit)
+// plus the bounds origin, or an error when there is nothing to export.
+export function fitExport(boxes, width, height, pad = 0) {
+  const b = boundsOf(boxes);
+  if (!b) return { ok: false, error: "nothing to export — the board is empty" };
+  const availW = Math.max(1, width - 2 * pad);
+  const availH = Math.max(1, height - 2 * pad);
+  const scale = Math.min(availW / b.bw, availH / b.bh);
+  return {
+    ok: true,
+    min0: b.min0,
+    min1: b.min1,
+    scale,
+    ox: (width - b.bw * scale) / 2,
+    oy: (height - b.bh * scale) / 2,
+  };
+}
+
+// projectBox maps one box to its pixel rectangle in the export view.
+export function projectBox(b, view) {
+  return {
+    x: (b.min[0] - view.min0) * view.scale + view.ox,
+    y: (b.min[1] - view.min1) * view.scale + view.oy,
+    w: (b.max[0] - b.min[0]) * view.scale,
+    h: (b.max[1] - b.min[1]) * view.scale,
+  };
+}
+
+// sanitizeColor keeps only the #rrggbb values the browser's color input can
+// produce, so an imported log cannot smuggle markup into the SVG.
+export function sanitizeColor(color, fallback = DEFAULT_COLOR) {
+  return typeof color === "string" && COLOR_RE.test(color) ? color : fallback;
+}
+
+// renderSVG serializes the board as one <rect> per painted piece. No grid and
+// no background rect: the SVG is transparent wherever nothing is painted.
+export function renderSVG(boxes, width, height, view) {
+  const rects = [];
+  for (const b of boxes) {
+    const r = projectBox(b, view);
+    rects.push(
+      `<rect x="${fmt(r.x)}" y="${fmt(r.y)}" width="${fmt(r.w)}" height="${fmt(r.h)}" fill="${sanitizeColor(b.color)}"/>`,
+    );
+  }
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    rects.join("") +
+    `</svg>`
+  );
+}
+
+// boundsOf returns the drawing's bounding box — origin plus width and height —
+// or null when the board is empty or its bounds are degenerate.
+function boundsOf(boxes) {
+  const b = bounds(boxes);
+  if (!b) return null;
+  const bw = b.max[0] - b.min[0];
+  const bh = b.max[1] - b.min[1];
+  if (!Number.isFinite(bw) || !Number.isFinite(bh) || bw <= 0 || bh <= 0) {
+    return null;
+  }
+  return { min0: b.min[0], min1: b.min[1], bw, bh };
+}
+
+// fmt renders a pixel coordinate with enough precision for sub-pixel fidelity
+// and without the floating-point noise that would bloat the markup.
+function fmt(v) {
+  return Number(v.toPrecision(8)).toString();
+}
+
+// clampInt rounds and clamps a suggested dimension into the allowed range.
+function clampInt(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, Math.round(v)));
+}
