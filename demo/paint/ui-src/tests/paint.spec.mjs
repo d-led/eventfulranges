@@ -474,9 +474,7 @@ test("rejects an export smaller than the minimum", async ({ page }) => {
   await expect(page.locator("#exportDialog")).toBeVisible();
 });
 
-test("rejects a raster export larger than the server can render", async ({
-  page,
-}) => {
+test("rejects an export larger than the maximum", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator("#status")).toContainText("connected");
@@ -485,14 +483,14 @@ test("rejects a raster export larger than the server can render", async ({
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
   await page.locator("#exportBtn").click();
-  // A square bigger than the server's render cap must be refused up front,
-  // before allocating the raster backing store.
-  await page.locator("#exportWidth").fill("20000");
-  await page.locator("#exportHeight").fill("20000");
+  // The maximum side is shared by the client and the server, so anything above
+  // it is refused before any raster is allocated.
+  await page.locator("#exportWidth").fill("40001");
+  await page.locator("#exportHeight").fill("40001");
   await page.locator("#exportGo").click();
 
   await expect(page.locator("#exportError")).toBeVisible();
-  await expect(page.locator("#exportError")).toContainText("too large");
+  await expect(page.locator("#exportError")).toContainText("maximum");
   await expect(page.locator("#exportDialog")).toBeVisible();
 });
 

@@ -18,10 +18,10 @@ import (
 	"github.com/d-led/eventfulranges/demo/internal/collab"
 )
 
-// maxExportSide caps a server-side raster export so one board cannot exhaust
-// memory. It is well above what browsers rasterize, so the server export is
-// strictly more capable than the client canvas.
-const maxExportSide = 16384
+// maxExportSide caps a server-side raster export and matches the client's
+// documented maximum, so client and server agree on one limit. Streaming keeps
+// memory bounded regardless of size; the cap bounds encode time instead.
+const maxExportSide = 40000
 
 var boardBackground = color.RGBA{R: 0x0e, G: 0x10, B: 0x15, A: 0xff}
 
@@ -42,7 +42,7 @@ func exportHandler(sessions *collab.Sessions) gin.HandlerFunc {
 			return
 		}
 		if width > maxExportSide || height > maxExportSide {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "image too large — max 16384 px per side"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "image too large — max 40000 px per side"})
 			return
 		}
 		rects, err := projectLayers(b.Layers(), width, height)
