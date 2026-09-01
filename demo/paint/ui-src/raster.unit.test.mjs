@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxesFromRaster } from "./raster.js";
+import { boxesFromRaster, scaleBoxes } from "./raster.js";
 
 const RED = "#ff0000";
 const BLUE = "#0000ff";
@@ -77,6 +77,31 @@ describe("boxesFromRaster", () => {
     const data = new Uint8ClampedArray([255, 0, 0, 100]); // red, alpha 100
     expect(boxesFromRaster(data, 1, 1)).toEqual([
       { min: [0, 0], max: [1, 1], color: "#ff0000" },
+    ]);
+  });
+});
+
+describe("scaleBoxes", () => {
+  const boxes = [
+    { min: [0, 0], max: [2, 1], color: "#ff0000" },
+    { min: [2, 0], max: [3, 2], color: "#0000ff" },
+  ];
+
+  it("leaves boxes untouched at identity scale and origin", () => {
+    expect(scaleBoxes(boxes, 1, 0, 0)).toEqual(boxes);
+  });
+
+  it("scales every edge by the cell size", () => {
+    expect(scaleBoxes(boxes, 0.5, 0, 0)).toEqual([
+      { min: [0, 0], max: [1, 0.5], color: "#ff0000" },
+      { min: [1, 0], max: [1.5, 1], color: "#0000ff" },
+    ]);
+  });
+
+  it("shifts the drawing to the given origin", () => {
+    expect(scaleBoxes(boxes, 1, 10, -5)).toEqual([
+      { min: [10, -5], max: [12, -4], color: "#ff0000" },
+      { min: [12, -5], max: [13, -3], color: "#0000ff" },
     ]);
   });
 });

@@ -474,11 +474,13 @@ test("imports a PNG as merged cells", async ({ page }) => {
     return c.toDataURL("image/png");
   });
 
-  await page.locator("#importImageInput").setInputFiles({
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importFileInput").setInputFiles({
     name: "solid.png",
     mimeType: "image/png",
     buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
   });
+  await page.locator("#importGo").click();
 
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
@@ -502,7 +504,8 @@ test("clears the board before importing when asked", async ({ page }) => {
   await drawRect(page); // paint a 2x2 block first
   await expect(page.locator("#log li.add").first()).toContainText("add");
 
-  await page.locator("#importImageClear").check();
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importClear").check();
 
   // A 1x1 blue PNG.
   const dataUrl = await page.evaluate(() => {
@@ -514,11 +517,12 @@ test("clears the board before importing when asked", async ({ page }) => {
     ctx.fillRect(0, 0, 1, 1);
     return c.toDataURL("image/png");
   });
-  await page.locator("#importImageInput").setInputFiles({
+  await page.locator("#importFileInput").setInputFiles({
     name: "dot.png",
     mimeType: "image/png",
     buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
   });
+  await page.locator("#importGo").click();
 
   // Wait until all three ops land (the painted block, the clear, the pixel).
   await expect
@@ -544,6 +548,93 @@ test("clears the board before importing when asked", async ({ page }) => {
   expect(entries[1].data).toEqual({ min: [0, 0], max: [2, 2] }); // clears the old block
   expect(entries[2].data).toEqual({ min: [0, 0], max: [1, 1] });
   expect(entries[2].meta).toEqual({ color: "#0000ff" });
+});
+
+test("imports one pixel per cell at the current grid level", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#zoomIn").click(); // level 1 → cells of 0.5 board units
+
+  // A 1x1 red PNG.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 1, 1);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importPixelSize").selectOption("grid");
+  await page.locator("#importFileInput").setInputFiles({
+    name: "dot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await page.locator("#importGo").click();
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const first = JSON.parse(
+    (await readFile(await download.path(), "utf8")).trim().split("\n")[0],
+  );
+  // One image pixel becomes one current grid cell: 0.5 board units wide.
+  expect(first.data.max[0] - first.data.min[0]).toBeCloseTo(0.5, 6);
+  expect(first.data.max[1] - first.data.min[1]).toBeCloseTo(0.5, 6);
+});
+
+test("fits an imported image into the current viewport", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // A 2x2 solid red PNG.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 2;
+    c.height = 2;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 2, 2);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importPixelSize").selectOption("pixels");
+  await page.locator("#importFileInput").setInputFiles({
+    name: "square.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await page.locator("#importGo").click();
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const first = JSON.parse(
+    (await readFile(await download.path(), "utf8")).trim().split("\n")[0],
+  );
+  // The square image is contained in the viewport: its board span equals the
+  // smaller viewport side (canvas px / 24 px per board unit at the start).
+  const [w, h] = await page
+    .locator("#board")
+    .evaluate((c) => [c.width, c.height]);
+  const fit = Math.min(w / 24, h / 24);
+  expect(first.data.max[0] - first.data.min[0]).toBeCloseTo(fit, 6);
+  expect(first.data.max[1] - first.data.min[1]).toBeCloseTo(fit, 6);
 });
 
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {

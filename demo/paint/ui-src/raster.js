@@ -41,6 +41,17 @@ export function boxesFromRaster(data, width, height) {
   return boxes;
 }
 
+// scaleBoxes maps imported boxes from image pixels (one pixel per board unit)
+// onto the board at the given cell size and origin, so an import can land at
+// the current grid resolution or fit the current viewport.
+export function scaleBoxes(boxes, cell, ox, oy) {
+  return boxes.map((b) => ({
+    min: [b.min[0] * cell + ox, b.min[1] * cell + oy],
+    max: [b.max[0] * cell + ox, b.max[1] * cell + oy],
+    color: b.color,
+  }));
+}
+
 // rowRuns returns the horizontal runs of opaque pixels in one row, as
 // {x, w, color}. Transparent pixels break runs and produce nothing.
 function rowRuns(data, width, y) {

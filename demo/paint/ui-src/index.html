@@ -141,12 +141,7 @@
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               <span class="btn-text">Import</span>
             </button>
-            <label class="import-clear" title="Start with an empty canvas before importing an image">
-              <input type="checkbox" id="importImageClear" />
-              <span>new canvas</span>
-            </label>
             <input type="file" id="importJsonlInput" accept=".jsonl,application/x-ndjson,application/json" hidden />
-            <input type="file" id="importImageInput" accept="image/png,image/jpeg" hidden />
           </div>
           <div class="toolbar-group">
             <button id="zenBtn" title="Focus mode: full-screen editing" aria-pressed="false">
@@ -210,6 +205,33 @@
         <div class="export-row export-actions">
           <button type="button" id="exportCancel">Cancel</button>
           <button type="submit" id="exportGo" class="primary">Export</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="importDialog" class="export-dialog">
+      <form id="importForm" novalidate>
+        <h2>Import image</h2>
+        <label class="export-field">
+          <span>Image</span>
+          <input type="file" id="importFileInput" accept="image/png,image/jpeg" />
+        </label>
+        <label class="export-field">
+          <span>Pixel size</span>
+          <select id="importPixelSize">
+            <option value="1:1" selected>1:1 — 1 pixel = 1 cell</option>
+            <option value="grid">Current grid — 1 pixel = 1 cell</option>
+            <option value="pixels">Current pixels — fit the viewport</option>
+          </select>
+        </label>
+        <label class="export-check">
+          <input type="checkbox" id="importClear" />
+          <span>New canvas — clear the board first</span>
+        </label>
+        <p id="importError" class="export-error" hidden></p>
+        <div class="export-row export-actions">
+          <button type="button" id="importCancel">Cancel</button>
+          <button type="submit" id="importGo" class="primary">Import</button>
         </div>
       </form>
     </dialog>

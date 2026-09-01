@@ -1,5 +1,5 @@
 import { front, layerOnTop } from "./boxes.js";
-import { boxesFromRaster } from "./raster.js";
+import { boxesFromRaster, scaleBoxes } from "./raster.js";
 import {
   MIN_CELL_PX,
   MIN_LEVEL,
@@ -88,8 +88,14 @@ const exportHint = $("exportHint");
 const exportPixelSize = $("exportPixelSize");
 const exportPixelSizeField = $("exportPixelSizeField");
 const importImageBtn = $("importImageBtn");
-const importImageInput = $("importImageInput");
-const importImageClear = $("importImageClear");
+const importDialog = $("importDialog");
+const importForm = $("importForm");
+const importFileInput = $("importFileInput");
+const importPixelSize = $("importPixelSize");
+const importClear = $("importClear");
+const importError = $("importError");
+const importCancel = $("importCancel");
+const importGo = $("importGo");
 
 const ctx = boardEl.getContext("2d");
 
@@ -1595,31 +1601,30 @@ function downloadBlob(blob, filename) {
 }
 
 // ---------- image import ----------
-// A PNG or JPEG is rasterized into board cells at one pixel per board unit,
-// with contiguous runs of the same colour merged into rectangles, so a flat
-// region becomes a single box. When "new canvas" is checked the board is
-// cleared first.
-async function importImage(file) {
-  if (!connected) {
-    setStatus("disconnected — reconnect to import");
-    return;
-  }
+// A PNG or JPEG is rasterized into board boxes (one pixel per board unit) and
+// then scaled onto the board: 1:1 keeps one pixel per cell, "grid" makes one
+// pixel one current grid cell, and "pixels" fits the image into the viewport.
+// Contiguous runs of the same colour merge into rectangles, so a flat region
+// becomes a single box. When "new canvas" is checked the board is cleared first.
+async function importImage(file, pixelSize, clear) {
+  if (!connected) throw new Error("disconnected — reconnect to import");
   // The file size is the first, cheapest protection: reject before decoding.
   if (file.size > MAX_IMPORT_BYTES) {
-    notify(`file too large — max ${MAX_IMPORT_BYTES / 1024 / 1024} MB`);
-    return;
+    throw new Error(
+      `file too large — max ${MAX_IMPORT_BYTES / 1024 / 1024} MB`,
+    );
   }
   let bitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    notify("could not read the image");
-    return;
+    throw new Error("could not read the image");
   }
   if (bitmap.width > MAX_IMPORT_DIM || bitmap.height > MAX_IMPORT_DIM) {
-    notify(`image too large — max ${MAX_IMPORT_DIM} × ${MAX_IMPORT_DIM} px`);
     bitmap.close();
-    return;
+    throw new Error(
+      `image too large — max ${MAX_IMPORT_DIM} × ${MAX_IMPORT_DIM} px`,
+    );
   }
   const canvas = document.createElement("canvas");
   canvas.width = bitmap.width;
@@ -1629,21 +1634,23 @@ async function importImage(file) {
   bitmap.close();
   const { width, height } = canvas;
   const imageData = c.getImageData(0, 0, width, height);
-  const cells = boxesFromRaster(imageData.data, width, height);
+  const raw = boxesFromRaster(imageData.data, width, height);
   canvas.width = 0; // release the decoded pixels; only the merged cells remain
-  if (cells.length === 0) {
-    notify("image has no opaque pixels");
-    return;
-  }
-  if (cells.length > MAX_IMPORT_BOXES) {
-    notify(
-      `image too detailed (${cells.length} cells) — try a smaller or flatter image`,
+  if (raw.length === 0) throw new Error("image has no opaque pixels");
+  if (raw.length > MAX_IMPORT_BOXES) {
+    throw new Error(
+      `image too detailed (${raw.length} cells) — try a smaller or flatter image`,
     );
-    return;
   }
 
+  const t = importTransform(pixelSize, width, height);
+  const cells =
+    t.cell === 1 && t.ox === 0 && t.oy === 0
+      ? raw
+      : scaleBoxes(raw, t.cell, t.ox, t.oy);
+
   const cmds = [];
-  if (importImageClear.checked) {
+  if (clear) {
     const erase = clearCmd();
     if (erase) cmds.push(erase);
   }
@@ -1676,10 +1683,36 @@ async function importImage(file) {
   redoStack = [];
   updateUndoRedo();
 
-  fitBoxes([{ min: [0, 0], max: [width, height] }]);
+  if (pixelSize === "1:1") {
+    fitBoxes([{ min: [0, 0], max: [width, height] }]);
+  }
   notify(
     `imported image (${cells.length} cell${cells.length === 1 ? "" : "s"})`,
   );
+}
+
+// importTransform returns the board scale (board units per image pixel) and
+// origin for one import: 1:1 starts at the origin, "grid" uses the current
+// grid cell at the viewport's top-left, and "pixels" fits the image into the
+// viewport at its top-left.
+function importTransform(pixelSize, imgW, imgH) {
+  if (pixelSize === "grid") {
+    return { cell: gridSize(cam.scale, gridOffset), ...viewTopLeft() };
+  }
+  if (pixelSize === "pixels") {
+    const viewW = boardEl.width / cam.scale;
+    const viewH = boardEl.height / cam.scale;
+    return { cell: Math.min(viewW / imgW, viewH / imgH), ...viewTopLeft() };
+  }
+  return { cell: 1, ox: 0, oy: 0 };
+}
+
+// viewTopLeft returns the board coordinates of the viewport's top-left corner.
+function viewTopLeft() {
+  return {
+    ox: cam.x - boardEl.width / cam.scale / 2,
+    oy: cam.y - boardEl.height / cam.scale / 2,
+  };
 }
 
 // clearCmd erases the union of everything painted so far, or null when the
@@ -1692,6 +1725,55 @@ function clearCmd() {
     kind: "erase",
     data: { x0: b.min[0], y0: b.min[1], x1: b.max[0], y1: b.max[1] },
   };
+}
+
+// ---------- import dialog ----------
+function openImportDialog() {
+  importClear.checked = settings.importClear ?? false;
+  importPixelSize.value = ["1:1", "grid", "pixels"].includes(
+    settings.importPixelSize,
+  )
+    ? settings.importPixelSize
+    : "1:1";
+  showImportError(null);
+  if (!importDialog.open) importDialog.showModal();
+}
+
+function closeImportDialog() {
+  importDialog.close();
+  importFileInput.value = "";
+}
+
+function showImportError(message) {
+  importError.textContent = message ?? "";
+  importError.hidden = !message;
+}
+
+async function submitImport() {
+  const file = importFileInput.files && importFileInput.files[0];
+  if (!file) {
+    showImportError("choose an image first");
+    return;
+  }
+  setImportBusy(true);
+  try {
+    await importImage(file, importPixelSize.value, importClear.checked);
+    settings.importPixelSize = importPixelSize.value;
+    settings.importClear = importClear.checked;
+    saveSettings();
+    closeImportDialog();
+  } catch (err) {
+    showImportError(err.message || "import failed");
+  } finally {
+    setImportBusy(false);
+  }
+}
+
+// setImportBusy disables the import button and relabels it while a decode is
+// in flight, mirroring the export dialog's feedback.
+function setImportBusy(busy) {
+  importGo.disabled = busy;
+  importGo.textContent = busy ? "Importing…" : "Import";
 }
 
 async function importJSONL(input) {
@@ -1796,15 +1878,15 @@ importJsonlInput.addEventListener("change", () =>
   importJSONL(importJsonlInput),
 );
 
-importImageBtn.addEventListener("click", () => importImageInput.click());
-importImageInput.addEventListener("change", async () => {
-  const file = importImageInput.files && importImageInput.files[0];
-  importImageInput.value = "";
-  if (file) await importImage(file);
+importImageBtn.addEventListener("click", openImportDialog);
+importCancel.addEventListener("click", closeImportDialog);
+importForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  submitImport();
 });
-importImageClear.addEventListener("change", () => {
-  settings.importClear = importImageClear.checked;
-  saveSettings();
+// Clicking the backdrop closes the dialog without importing.
+importDialog.addEventListener("click", (e) => {
+  if (e.target === importDialog) closeImportDialog();
 });
 
 gridPlus.addEventListener("click", () => setGridOffset(gridOffset + 1));
@@ -1858,7 +1940,6 @@ function boot() {
   settings = loadSettings();
   strokeColor = sanitizeColor(settings.color);
   strokeColorEl.value = strokeColor;
-  importImageClear.checked = settings.importClear ?? false;
   resizeCanvas();
   setTool("rect");
   updateGridLabel();
