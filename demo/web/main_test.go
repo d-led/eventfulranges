@@ -344,16 +344,16 @@ func exampleOps(dims int) []clientOp {
 	}
 	ops := make([]clientOp, 0, ipow(side, dims)+1)
 	for code := 0; code < ipow(side, dims); code++ {
-		min := make([]float64, dims)
-		max := make([]float64, dims)
+		lo := make([]float64, dims)
+		hi := make([]float64, dims)
 		c := code
 		for d := 0; d < dims; d++ {
 			v := c % side
 			c /= side
-			min[d] = float64(v)
-			max[d] = float64(v + 1)
+			lo[d] = float64(v)
+			hi[d] = float64(v + 1)
 		}
-		ops = append(ops, clientOp{Kind: "add", Min: min, Max: max})
+		ops = append(ops, clientOp{Kind: "add", Min: lo, Max: hi})
 	}
 	lo := make([]float64, dims)
 	hi := make([]float64, dims)

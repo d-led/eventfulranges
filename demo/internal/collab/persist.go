@@ -20,7 +20,7 @@ type sessionStore struct {
 // openSessionStore returns a store rooted at dir, creating it if needed. The
 // session id is already URL-safe base32, so it doubles as a file name.
 func openSessionStore(dir, id string) (*sessionStore, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, err
 	}
 	return &sessionStore{path: filepath.Join(dir, id+".jsonl")}, nil
@@ -58,7 +58,7 @@ func (st *sessionStore) append(entries []Entry) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	file, err := os.OpenFile(st.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(st.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}

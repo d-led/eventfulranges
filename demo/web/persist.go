@@ -20,7 +20,8 @@ type hubStore struct {
 // openHubStore returns a store rooted at dir, creating it if needed. Session
 // ids are URL-safe base32, so they double as file names.
 func openHubStore(dir, id string) (*hubStore, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// #nosec G703 -- dir is the fixed session root and id is URL-safe base32
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, err
 	}
 	return &hubStore{path: filepath.Join(dir, id+".jsonl")}, nil
@@ -32,6 +33,7 @@ func (st *hubStore) load() ([]opRecord, error) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
+	// #nosec G703 -- st.path is dir/id.jsonl where id is URL-safe base32
 	file, err := os.Open(st.path)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -58,7 +60,7 @@ func (st *hubStore) append(rec opRecord) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	file, err := os.OpenFile(st.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(st.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}

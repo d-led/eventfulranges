@@ -104,14 +104,14 @@ func New(kind Kind, box space.Box) Op {
 	return Op{ID: newID(), Kind: kind, Box: box}
 }
 
-// Add builds an Add op over the half-open box [min, max).
-func Add(min, max []float64) Op {
-	return New(KindAdd, space.NewBox(min, max))
+// Add builds an Add op over the half-open box [lo, hi).
+func Add(lo, hi []float64) Op {
+	return New(KindAdd, space.NewBox(lo, hi))
 }
 
-// Remove builds a Remove op over the half-open box [min, max).
-func Remove(min, max []float64) Op {
-	return New(KindRemove, space.NewBox(min, max))
+// Remove builds a Remove op over the half-open box [lo, hi).
+func Remove(lo, hi []float64) Op {
+	return New(KindRemove, space.NewBox(lo, hi))
 }
 
 // Retract builds a Retract op that cancels the operation named ref, carrying

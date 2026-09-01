@@ -63,9 +63,9 @@ func (c *boxCanvas) Retract(id, ref string) ([]Event, error) {
 
 // fold appends one half-open box operation and reports the event it produced.
 func (c *boxCanvas) fold(kind, id string, r Rect, meta json.RawMessage) ([]Event, error) {
-	min := []float64{r.X0, r.Y0}
-	max := []float64{r.X1, r.Y1}
-	o, err := c.apply(kind, id, min, max, meta)
+	lo := []float64{r.X0, r.Y0}
+	hi := []float64{r.X1, r.Y1}
+	o, err := c.apply(kind, id, lo, hi, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -80,13 +80,13 @@ func (c *boxCanvas) fold(kind, id string, r Rect, meta json.RawMessage) ([]Event
 // apply appends one box under the given command kind, carrying meta. When id
 // is non-empty it overrides the generated operation ID, so the client can
 // retract this exact edit later.
-func (c *boxCanvas) apply(kind, id string, min, max []float64, meta json.RawMessage) (sop.Op, error) {
+func (c *boxCanvas) apply(kind, id string, lo, hi []float64, meta json.RawMessage) (sop.Op, error) {
 	var o sop.Op
 	switch kind {
 	case cmdPaint:
-		o = sop.Add(min, max)
+		o = sop.Add(lo, hi)
 	case cmdErase:
-		o = sop.Remove(min, max)
+		o = sop.Remove(lo, hi)
 	default:
 		return sop.Op{}, fmt.Errorf("paint: unknown command %q", kind)
 	}

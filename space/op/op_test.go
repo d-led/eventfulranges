@@ -123,10 +123,10 @@ func TestConstructors(t *testing.T) {
 	})
 	t.Run("constructors copy input slices", func(t *testing.T) {
 		t.Parallel()
-		min := []float64{0, 0}
-		max := []float64{1, 1}
-		o := op.Add(min, max)
-		min[0] = 100
+		lo := []float64{0, 0}
+		hi := []float64{1, 1}
+		o := op.Add(lo, hi)
+		lo[0] = 100
 		require.Equal(t, float64(0), o.Box.Min[0])
 	})
 	t.Run("ids are unique", func(t *testing.T) {

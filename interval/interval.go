@@ -125,9 +125,9 @@ func (iv Interval) String() string {
 }
 
 // Overlaps reports whether the intervals share at least one point.
-func (a Interval) Overlaps(b Interval) bool {
-	lo, loB := maxStart(a, b)
-	hi, hiB := minEnd(a, b)
+func (iv Interval) Overlaps(b Interval) bool {
+	lo, loB := maxStart(iv, b)
+	hi, hiB := minEnd(iv, b)
 	if lo > hi {
 		return false
 	}
@@ -139,18 +139,18 @@ func (a Interval) Overlaps(b Interval) bool {
 
 // Touches reports whether the intervals meet at exactly one endpoint point
 // that belongs to at least one of them, without sharing it.
-func (a Interval) Touches(b Interval) bool {
+func (iv Interval) Touches(b Interval) bool {
 	switch {
-	case a.End == b.Start:
-		if a.EndBound == Open && b.StartBound == Open {
+	case iv.End == b.Start:
+		if iv.EndBound == Open && b.StartBound == Open {
 			return false
 		}
-		return !a.Overlaps(b)
-	case b.End == a.Start:
-		if b.EndBound == Open && a.StartBound == Open {
+		return !iv.Overlaps(b)
+	case b.End == iv.Start:
+		if b.EndBound == Open && iv.StartBound == Open {
 			return false
 		}
-		return !a.Overlaps(b)
+		return !iv.Overlaps(b)
 	}
 	return false
 }

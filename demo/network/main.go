@@ -63,7 +63,10 @@ func (p *peer) start(port int) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	must("listen on port", err)
 	p.addr = ln.Addr().String()
-	p.server = &http.Server{Handler: p.handler()}
+	p.server = &http.Server{
+		Handler:           p.handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	go func() { _ = p.server.Serve(ln) }()
 }
 

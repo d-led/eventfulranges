@@ -90,9 +90,9 @@ func Materialize(s Strategy, ops []op.Op) []interval.Interval {
 	case LWW, FWW:
 		return ToIntervals(Segments(s, ops))
 	case AdditiveWins:
-		return interval.Difference(intervalsOf(ops, op.KindAdd), intervalsOf(ops, op.KindRemove))
+		return interval.Difference(IntervalsOf(ops, op.KindAdd), IntervalsOf(ops, op.KindRemove))
 	case GrowOnly:
-		return intervalsOf(ops, op.KindAdd)
+		return IntervalsOf(ops, op.KindAdd)
 	}
 	return nil
 }
@@ -133,7 +133,8 @@ func ToIntervals(segs []Segment) []interval.Interval {
 	return interval.Normalize(ivs)
 }
 
-func intervalsOf(ops []op.Op, kind op.Kind) []interval.Interval {
+// IntervalsOf returns the normalized intervals of the operations of one kind.
+func IntervalsOf(ops []op.Op, kind op.Kind) []interval.Interval {
 	ivs := make([]interval.Interval, 0, len(ops))
 	for _, o := range ops {
 		if o.Kind == kind {

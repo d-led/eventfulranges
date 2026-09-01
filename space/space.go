@@ -42,8 +42,8 @@ type Box struct {
 
 // NewBox builds a box from the given lower and upper corners. Both slices are
 // copied, so the caller keeps ownership of the originals.
-func NewBox(min, max []float64) Box {
-	return Box{Min: append([]float64(nil), min...), Max: append([]float64(nil), max...)}
+func NewBox(lo, hi []float64) Box {
+	return Box{Min: append([]float64(nil), lo...), Max: append([]float64(nil), hi...)}
 }
 
 // WithMeta returns a copy of b carrying the given metadata.

@@ -147,12 +147,7 @@ func (e *Engine) Overlaps(b space.Box) bool {
 func (e *Engine) Ops() []op.Op {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	out := make([]op.Op, 0, len(e.ops))
-	for _, o := range e.ops {
-		out = append(out, o)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	return e.opsList()
 }
 
 // Op returns the known operation with the given ID, if any.
@@ -334,11 +329,11 @@ func (e *Engine) materializeAll() {
 		e.setView(strategy.Materialize(e.strategy, ops))
 	case strategy.AdditiveWins:
 		effective := strategy.Effective(ops)
-		e.adds = boxesOf(effective, op.KindAdd, e.metaMerge)
-		e.removes = boxesOf(effective, op.KindRemove, e.metaMerge)
+		e.adds = strategy.BoxesOf(effective, op.KindAdd, e.metaMerge)
+		e.removes = strategy.BoxesOf(effective, op.KindRemove, e.metaMerge)
 		e.setView(space.DifferenceMerged(e.adds, e.removes, e.metaMerge))
 	case strategy.GrowOnly:
-		e.adds = boxesOf(strategy.Effective(ops), op.KindAdd, e.metaMerge)
+		e.adds = strategy.BoxesOf(strategy.Effective(ops), op.KindAdd, e.metaMerge)
 		e.setView(e.adds)
 	}
 }
@@ -350,17 +345,6 @@ func (e *Engine) deriveDims() {
 		e.dims = o.Box.Dims()
 		return
 	}
-}
-
-// boxesOf returns the normalized boxes of the operations of one kind.
-func boxesOf(ops []op.Op, kind op.Kind, merge meta.Merge) []space.Box {
-	boxes := make([]space.Box, 0, len(ops))
-	for _, o := range ops {
-		if o.Kind == kind {
-			boxes = append(boxes, o.Box)
-		}
-	}
-	return space.NormalizeMerged(boxes, merge)
 }
 
 // opsList returns the known operations sorted by ID.

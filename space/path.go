@@ -105,19 +105,19 @@ func (p Path) Span(b Box) (Span, bool) {
 }
 
 // entryExit returns the half-open t-interval [entry, exit) where the path
-// coordinate from → to lies inside the box coordinate [min, max). ok is false
+// coordinate from → to lies inside the box coordinate [lo, hi). ok is false
 // when a constant coordinate lies outside the half-open interval; a constant
 // coordinate inside contributes the full [0, 1) range, imposing no
 // constraint on t.
-func entryExit(from, to, min, max float64) (entry, exit float64, ok bool) {
+func entryExit(from, to, lo, hi float64) (entry, exit float64, ok bool) {
 	d := to - from
 	if d == 0 {
-		return 0, 1, from >= min && from < max
+		return 0, 1, from >= lo && from < hi
 	}
 	if d > 0 {
-		return (min - from) / d, (max - from) / d, true // enters at min, exits at max
+		return (lo - from) / d, (hi - from) / d, true // enters at lo, exits at hi
 	}
-	return (max - from) / d, (min - from) / d, true // enters at max, exits at min
+	return (hi - from) / d, (lo - from) / d, true // enters at hi, exits at lo
 }
 
 // Crossed returns the boxes the path crosses with positive length, in

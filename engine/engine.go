@@ -268,24 +268,13 @@ func (e *Engine) materializeAll() {
 		e.segments = strategy.Segments(e.strategy, ops)
 		e.view = strategy.ToIntervals(e.segments)
 	case strategy.AdditiveWins:
-		e.adds = intervalsOf(ops, op.KindAdd)
-		e.removes = intervalsOf(ops, op.KindRemove)
+		e.adds = strategy.IntervalsOf(ops, op.KindAdd)
+		e.removes = strategy.IntervalsOf(ops, op.KindRemove)
 		e.view = interval.Difference(e.adds, e.removes)
 	case strategy.GrowOnly:
-		e.adds = intervalsOf(ops, op.KindAdd)
+		e.adds = strategy.IntervalsOf(ops, op.KindAdd)
 		e.view = e.adds
 	}
-}
-
-// intervalsOf returns the normalized intervals of the operations of one kind.
-func intervalsOf(ops []op.Op, kind op.Kind) []interval.Interval {
-	ivs := make([]interval.Interval, 0, len(ops))
-	for _, o := range ops {
-		if o.Kind == kind {
-			ivs = append(ivs, o.Interval)
-		}
-	}
-	return interval.Normalize(ivs)
 }
 
 // opsList returns the known operations sorted by ID.

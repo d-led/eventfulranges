@@ -102,10 +102,10 @@ const (
 
 // apply folds one anonymous operation into the shared view and broadcasts the
 // new state. Tests use it to exercise the model without a client identity.
-func (h *hub) apply(kind opKind, min, max []float64) (view, error) {
+func (h *hub) apply(kind opKind, lo, hi []float64) (view, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	v, err := h.foldLocked(kind, min, max)
+	v, err := h.foldLocked(kind, lo, hi)
 	if err != nil {
 		return view{}, err
 	}
@@ -115,14 +115,14 @@ func (h *hub) apply(kind opKind, min, max []float64) (view, error) {
 
 // record applies one operation attributed to a client, appends it to the
 // activity log, and broadcasts the log entry together with the new state.
-func (h *hub) record(clientID string, kind opKind, min, max []float64) (view, error) {
+func (h *hub) record(clientID string, kind opKind, lo, hi []float64) (view, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	v, err := h.foldLocked(kind, min, max)
+	v, err := h.foldLocked(kind, lo, hi)
 	if err != nil {
 		return view{}, err
 	}
-	rec := opRecord{Client: clientID, Kind: string(kind), Min: min, Max: max, At: time.Now()}
+	rec := opRecord{Client: clientID, Kind: string(kind), Min: lo, Max: hi, At: time.Now()}
 	h.ops = append(h.ops, rec)
 	h.persistRecord(rec)
 	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
@@ -211,8 +211,8 @@ func (h *hub) unsubscribe(ch chan serverMsg) {
 
 // foldLocked validates and folds one operation, returning the new view. The
 // caller must hold h.mu.
-func (h *hub) foldLocked(kind opKind, min, max []float64) (view, error) {
-	b := space.NewBox(min, max)
+func (h *hub) foldLocked(kind opKind, lo, hi []float64) (view, error) {
+	b := space.NewBox(lo, hi)
 	if err := b.Validate(); err != nil {
 		return view{}, err
 	}
@@ -223,11 +223,11 @@ func (h *hub) foldLocked(kind opKind, min, max []float64) (view, error) {
 	}
 	switch kind {
 	case opAdd:
-		if _, err := h.set.Add(context.Background(), min, max); err != nil {
+		if _, err := h.set.Add(context.Background(), lo, hi); err != nil {
 			return view{}, err
 		}
 	case opRemove:
-		if _, err := h.set.Remove(context.Background(), min, max); err != nil {
+		if _, err := h.set.Remove(context.Background(), lo, hi); err != nil {
 			return view{}, err
 		}
 	default:

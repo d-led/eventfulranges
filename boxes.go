@@ -75,32 +75,32 @@ func (b *BoxSet) ApplyAll(ctx context.Context, ops []sop.Op) error {
 	return b.engine.ApplyAll(ctx, ops)
 }
 
-// Add applies an addition over the half-open box [min, max) and returns the
+// Add applies an addition over the half-open box [lo, hi) and returns the
 // applied op.
-func (b *BoxSet) Add(ctx context.Context, min, max []float64) (sop.Op, error) {
-	o := sop.Add(min, max)
+func (b *BoxSet) Add(ctx context.Context, lo, hi []float64) (sop.Op, error) {
+	o := sop.Add(lo, hi)
 	return o, b.engine.Apply(ctx, o)
 }
 
-// AddWithMeta applies an addition over the half-open box [min, max) carrying
+// AddWithMeta applies an addition over the half-open box [lo, hi) carrying
 // JSON-object metadata, and returns the applied op.
-func (b *BoxSet) AddWithMeta(ctx context.Context, min, max []float64, m json.RawMessage) (sop.Op, error) {
-	o := sop.Add(min, max)
+func (b *BoxSet) AddWithMeta(ctx context.Context, lo, hi []float64, m json.RawMessage) (sop.Op, error) {
+	o := sop.Add(lo, hi)
 	o.Box = o.Box.WithMeta(m)
 	return o, b.engine.Apply(ctx, o)
 }
 
-// Remove applies a removal over the half-open box [min, max) and returns the
+// Remove applies a removal over the half-open box [lo, hi) and returns the
 // applied op.
-func (b *BoxSet) Remove(ctx context.Context, min, max []float64) (sop.Op, error) {
-	o := sop.Remove(min, max)
+func (b *BoxSet) Remove(ctx context.Context, lo, hi []float64) (sop.Op, error) {
+	o := sop.Remove(lo, hi)
 	return o, b.engine.Apply(ctx, o)
 }
 
-// RemoveWithMeta applies a removal over the half-open box [min, max) carrying
+// RemoveWithMeta applies a removal over the half-open box [lo, hi) carrying
 // JSON-object metadata, and returns the applied op.
-func (b *BoxSet) RemoveWithMeta(ctx context.Context, min, max []float64, m json.RawMessage) (sop.Op, error) {
-	o := sop.Remove(min, max)
+func (b *BoxSet) RemoveWithMeta(ctx context.Context, lo, hi []float64, m json.RawMessage) (sop.Op, error) {
+	o := sop.Remove(lo, hi)
 	o.Box = o.Box.WithMeta(m)
 	return o, b.engine.Apply(ctx, o)
 }

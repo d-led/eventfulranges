@@ -107,15 +107,15 @@ func MaterializeMerged(s Strategy, ops []op.Op, merge meta.Merge) []space.Box {
 	case LWW, FWW:
 		return ToBoxes(Segments(s, ops))
 	case AdditiveWins:
-		return space.DifferenceMerged(boxesOf(ops, op.KindAdd, merge), boxesOf(ops, op.KindRemove, merge), merge)
+		return space.DifferenceMerged(BoxesOf(ops, op.KindAdd, merge), BoxesOf(ops, op.KindRemove, merge), merge)
 	case AdditiveWinsLWW:
 		// The shape is the additive union of additions, but each point's
 		// metadata is decided by the latest addition covering it. Partition
 		// the additions by LWW, then carve out the removals.
 		adds := ToBoxes(Segments(LWW, opsOf(ops, op.KindAdd)))
-		return space.DifferenceMerged(adds, boxesOf(ops, op.KindRemove, merge), merge)
+		return space.DifferenceMerged(adds, BoxesOf(ops, op.KindRemove, merge), merge)
 	case GrowOnly:
-		return boxesOf(ops, op.KindAdd, merge)
+		return BoxesOf(ops, op.KindAdd, merge)
 	}
 	return nil
 }
@@ -179,7 +179,8 @@ func ToBoxes(segs []Segment) []space.Box {
 	return space.Normalize(boxes)
 }
 
-func boxesOf(ops []op.Op, kind op.Kind, merge meta.Merge) []space.Box {
+// BoxesOf returns the normalized boxes of the operations of one kind.
+func BoxesOf(ops []op.Op, kind op.Kind, merge meta.Merge) []space.Box {
 	boxes := make([]space.Box, 0, len(ops))
 	for _, o := range ops {
 		if o.Kind == kind {

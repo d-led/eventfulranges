@@ -34,7 +34,7 @@ type Store struct {
 // stream lives in boxes.stream.jsonl and carries both operations and
 // snapshots.
 func Open(dir string) (*Store, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, err
 	}
 	return &Store{opsPath: filepath.Join(dir, "boxes.stream.jsonl")}, nil
@@ -52,7 +52,7 @@ func (s *Store) Append(_ context.Context, expectedVersion int64, events []op.Op)
 	if version != expectedVersion {
 		return store.ErrVersionConflict
 	}
-	file, err := os.OpenFile(s.opsPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(s.opsPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -61,10 +61,7 @@ func (s *Store) Append(_ context.Context, expectedVersion int64, events []op.Op)
 	if appendLines == nil {
 		appendLines = s.appendEvents
 	}
-	if err := appendLines(file, events); err != nil {
-		return err
-	}
-	return nil
+	return appendLines(file, events)
 }
 
 // appendEvents writes the serialized events as JSON Lines.
@@ -102,7 +99,7 @@ func (s *Store) read(fromVersion int64) ([]op.Op, int64, error) {
 func (s *Store) SaveSnapshot(_ context.Context, data []byte, version int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	file, err := os.OpenFile(s.opsPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(s.opsPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -181,7 +178,7 @@ func snapshotPayload(version int64, data []byte) ([]byte, error) {
 // writeAtomic replaces path with data through a temporary file and rename.
 func writeAtomic(path string, data []byte) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
