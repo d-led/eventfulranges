@@ -1,11 +1,39 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// renderPNG streams the layers through the real encoder and decodes the result
+// so a test samples the exact bytes a client would receive.
+func renderPNG(t *testing.T, layers []Layer, w, h int) image.Image {
+	t.Helper()
+	rects, err := projectLayers(layers, w, h)
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	require.NoError(t, encodeRaster(&buf, rects, "png", w, h))
+	img, err := png.Decode(&buf)
+	require.NoError(t, err)
+	return img
+}
+
+func renderJPEG(t *testing.T, layers []Layer, w, h int) image.Image {
+	t.Helper()
+	rects, err := projectLayers(layers, w, h)
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	require.NoError(t, encodeRaster(&buf, rects, "jpeg", w, h))
+	img, err := jpeg.Decode(&buf)
+	require.NoError(t, err)
+	return img
+}
 
 func TestRenderLayers(t *testing.T) {
 	t.Parallel()
@@ -13,8 +41,7 @@ func TestRenderLayers(t *testing.T) {
 		{X0: 0, Y0: 0, X1: 10, Y1: 10, Color: "#ff0000"},
 		{X0: 4, Y0: 4, X1: 6, Y1: 6, Color: ""}, // erase
 	}
-	img, err := renderLayers(layers, "png", 100, 100)
-	require.NoError(t, err)
+	img := renderPNG(t, layers, 100, 100)
 	require.Equal(t, 100, img.Bounds().Dx())
 	require.Equal(t, 100, img.Bounds().Dy())
 
@@ -32,23 +59,34 @@ func TestRenderLayersLetterboxesOnBackground(t *testing.T) {
 	// A 2:1 drawing in a square image letterboxes above and below; JPEG fills
 	// the margins with the opaque board background.
 	layers := []Layer{{X0: 0, Y0: 0, X1: 10, Y1: 5, Color: "#ff0000"}}
-	img, err := renderLayers(layers, "jpeg", 100, 100)
-	require.NoError(t, err)
+	img := renderJPEG(t, layers, 100, 100)
 
 	r, _, _, a := img.At(50, 10).RGBA() // above the drawing
 	require.Equal(t, uint32(0xffff), a)
-	require.NotEqual(t, uint32(0xffff), r) // dark background, not red
-	r, _, _, _ = img.At(50, 50).RGBA()     // the drawing itself
-	require.Equal(t, uint32(0xffff), r)
+	require.Less(t, r, uint32(0x8000))    // dark background, not red
+	r, _, _, _ = img.At(50, 50).RGBA()    // the drawing itself
+	require.Greater(t, r, uint32(0xf000)) // red-dominant despite JPEG loss
 }
 
-func TestRenderLayersEmpty(t *testing.T) {
+func TestRenderLayersEraseLargerThanFrame(t *testing.T) {
 	t.Parallel()
-	_, err := renderLayers(nil, "png", 100, 100)
+	// An erase wider than the painted frame must be clamped, not clipped.
+	layers := []Layer{
+		{X0: 0, Y0: 0, X1: 2, Y1: 2, Color: "#ff0000"},
+		{X0: -10, Y0: -10, X1: 20, Y1: 20, Color: ""},
+	}
+	img := renderPNG(t, layers, 100, 100)
+	_, _, _, a := img.At(50, 50).RGBA()
+	require.Equal(t, uint32(0), a) // everything erased
+}
+
+func TestProjectLayersEmpty(t *testing.T) {
+	t.Parallel()
+	_, err := projectLayers(nil, 100, 100)
 	require.Error(t, err)
 
 	// Erases widen nothing, so a board of only erases is empty too.
-	_, err = renderLayers([]Layer{{X0: 0, Y0: 0, X1: 4, Y1: 4, Color: ""}}, "png", 100, 100)
+	_, err = projectLayers([]Layer{{X0: 0, Y0: 0, X1: 4, Y1: 4, Color: ""}}, 100, 100)
 	require.Error(t, err)
 }
 

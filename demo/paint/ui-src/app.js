@@ -18,8 +18,12 @@ import {
   resolveDimensions,
   suggestDimensions,
   fitExport,
+  projectBox,
   renderSVG,
   sanitizeColor,
+  snapRect,
+  checkRasterSize,
+  BACKGROUND,
 } from "./export.js";
 
 // ---------- DOM ----------
@@ -1390,9 +1394,63 @@ async function exportImage(format, width, height) {
     return;
   }
 
-  // Raster exports are rendered server-side: the Go server materializes the
-  // authoritative view and encodes it itself, so there is no browser canvas
-  // size limit.
+  // A raster small enough for the browser canvas renders locally; a larger one
+  // (or one the browser cannot encode after all) goes to the server, which
+  // materializes the authoritative view and has no canvas size limit.
+  if (checkRasterSize(width, height).ok) {
+    const blob = await exportClientRaster(format, width, height, view);
+    if (blob) {
+      downloadBlob(blob, format === "jpeg" ? "board.jpg" : "board.png");
+      return;
+    }
+  }
+  await exportServerRaster(format, width, height);
+}
+
+// exportClientRaster draws the board on a browser canvas and encodes it,
+// resolving to null when the browser cannot encode the requested size.
+function exportClientRaster(format, width, height, view) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  // Browsers cap the canvas backing store; a silently clamped size means the
+  // client cannot rasterize it.
+  if (canvas.width !== width || canvas.height !== height) {
+    return Promise.resolve(null);
+  }
+  const jpeg = format === "jpeg";
+  const c = canvas.getContext("2d");
+  // PNG keeps empty space transparent; JPEG has no alpha, so it fills the
+  // flat board background instead.
+  if (jpeg) {
+    c.fillStyle = BACKGROUND;
+    c.fillRect(0, 0, width, height);
+  }
+  for (const b of boxes) {
+    const r = snapRect(projectBox(b, view));
+    if (b.kind === "remove") {
+      // An erase clears to transparent for PNG; JPEG repaints the background.
+      if (jpeg) {
+        c.fillStyle = BACKGROUND;
+        c.fillRect(r.x, r.y, r.w, r.h);
+      } else {
+        c.clearRect(r.x, r.y, r.w, r.h);
+      }
+      continue;
+    }
+    c.fillStyle = sanitizeColor(b.color);
+    c.fillRect(r.x, r.y, r.w, r.h);
+  }
+  return new Promise((resolve) =>
+    canvas.toBlob(
+      resolve,
+      jpeg ? "image/jpeg" : "image/png",
+      jpeg ? 0.92 : undefined,
+    ),
+  );
+}
+
+async function exportServerRaster(format, width, height) {
   const session = new URLSearchParams(location.search).get("s");
   const url = `/api/export?s=${encodeURIComponent(session)}&format=${format}&w=${width}&h=${height}`;
   const res = await fetch(url);

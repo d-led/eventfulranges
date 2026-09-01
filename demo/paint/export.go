@@ -1,15 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/jpeg"
 	"image/png"
+	"io"
+	"log"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -44,17 +45,15 @@ func exportHandler(sessions *collab.Sessions) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "image too large — max 16384 px per side"})
 			return
 		}
-		img, err := renderLayers(b.Layers(), format, width, height)
+		rects, err := projectLayers(b.Layers(), width, height)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		encoded, err := encodeImage(img, format)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "encode failed"})
-			return
+		c.Header("Content-Type", contentType(format))
+		if err := encodeRaster(c.Writer, rects, format, width, height); err != nil {
+			log.Printf("paint: export encode: %v", err)
 		}
-		c.Data(http.StatusOK, contentType(format), encoded)
 	}
 }
 
@@ -65,20 +64,17 @@ func contentType(format string) string {
 	return "image/png"
 }
 
-// encodeImage renders the image in the requested format; png is the fallback.
-func encodeImage(img *image.RGBA, format string) ([]byte, error) {
-	var buf bytes.Buffer
-	if format == "jpeg" {
-		err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 92})
-		return buf.Bytes(), err
-	}
-	err := png.Encode(&buf, img)
-	return buf.Bytes(), err
+// layerRect is one layer projected into pixel space, ready for the y-sweep.
+type layerRect struct {
+	y0, y1, x0, x1 int
+	color          color.RGBA
+	erase          bool
 }
 
-// renderLayers rasterizes the layered front into a width × height RGBA image
-// with the same contain fit the browser uses, so the file matches the board.
-func renderLayers(layers []Layer, format string, width, height int) (*image.RGBA, error) {
+// projectLayers fits the layered front into a width × height view with the
+// same contain transform the browser uses, and returns the pixel rectangles in
+// bottom-to-top paint order, sorted by their top edge for the sweep.
+func projectLayers(layers []Layer, width, height int) ([]layerRect, error) {
 	min0, min1, bw, bh := layerBounds(layers)
 	if bw <= 0 || bh <= 0 {
 		return nil, errors.New("nothing to export")
@@ -87,38 +83,119 @@ func renderLayers(layers []Layer, format string, width, height int) (*image.RGBA
 	ox := (float64(width) - bw*scale) / 2
 	oy := (float64(height) - bh*scale) / 2
 
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	transparent := format == "png"
-	if !transparent {
-		draw.Draw(img, img.Bounds(), image.NewUniform(boardBackground), image.Point{}, draw.Src)
-	}
+	rects := make([]layerRect, 0, len(layers))
 	for _, l := range layers {
-		r := projectLayer(l, min0, min1, scale, ox, oy)
-		if r.Empty() {
+		r := layerRect{
+			x0: clamp(int(math.Round((l.X0-min0)*scale+ox)), width),
+			x1: clamp(int(math.Round((l.X1-min0)*scale+ox)), width),
+			y0: clamp(int(math.Round((l.Y0-min1)*scale+oy)), height),
+			y1: clamp(int(math.Round((l.Y1-min1)*scale+oy)), height),
+		}
+		if r.x1 <= r.x0 || r.y1 <= r.y0 {
 			continue
 		}
 		if l.Color == "" {
-			// An erase repaints the background: transparent for PNG, the flat
-			// board background for JPEG.
-			if transparent {
-				draw.Draw(img, r, image.Transparent, image.Point{}, draw.Src)
-			} else {
-				draw.Draw(img, r, image.NewUniform(boardBackground), image.Point{}, draw.Src)
-			}
-			continue
+			r.erase = true
+		} else {
+			r.color = rgbaHex(l.Color)
 		}
-		draw.Draw(img, r, image.NewUniform(rgbaHex(l.Color)), image.Point{}, draw.Src)
+		rects = append(rects, r)
 	}
-	return img, nil
+	sort.Slice(rects, func(i, j int) bool { return rects[i].y0 < rects[j].y0 })
+	return rects, nil
 }
 
-// projectLayer maps one layer box to its pixel rectangle in the export view.
-func projectLayer(l Layer, min0, min1, scale, ox, oy float64) image.Rectangle {
-	x0 := int(math.Round((l.X0-min0)*scale + ox))
-	y0 := int(math.Round((l.Y0-min1)*scale + oy))
-	x1 := int(math.Round((l.X1-min0)*scale + ox))
-	y1 := int(math.Round((l.Y1-min1)*scale + oy))
-	return image.Rect(x0, y0, x1, y1)
+func clamp(v, hi int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// encodeRaster writes the projected rectangles as a PNG or JPEG, rendering one
+// row at a time through a lazy image so the whole raster never lives in memory
+// at once.
+func encodeRaster(w io.Writer, rects []layerRect, format string, width, height int) error {
+	img := &streamImage{
+		rects:       rects,
+		width:       width,
+		height:      height,
+		transparent: format == "png",
+		row:         make([]uint8, width*4),
+		rowY:        -1,
+	}
+	if format == "jpeg" {
+		return jpeg.Encode(w, img, &jpeg.Options{Quality: 92})
+	}
+	return png.Encode(w, img)
+}
+
+// streamImage implements image.Image by rendering one row on demand. The
+// standard PNG and JPEG encoders pull pixels top-to-bottom, so the active
+// rectangles are swept by y and only the current row is buffered.
+type streamImage struct {
+	rects       []layerRect
+	width       int
+	height      int
+	transparent bool
+
+	row    []uint8
+	rowY   int
+	addIdx int
+	active []int
+}
+
+func (m *streamImage) ColorModel() color.Model { return color.RGBAModel }
+
+func (m *streamImage) Bounds() image.Rectangle { return image.Rect(0, 0, m.width, m.height) }
+
+func (m *streamImage) At(x, y int) color.Color {
+	if y != m.rowY {
+		m.renderRow(y)
+		m.rowY = y
+	}
+	i := x * 4
+	return color.RGBA{R: m.row[i], G: m.row[i+1], B: m.row[i+2], A: m.row[i+3]}
+}
+
+func (m *streamImage) renderRow(y int) {
+	if m.transparent {
+		clear(m.row)
+	} else {
+		m.fillSpan(0, m.width, boardBackground)
+	}
+	for m.addIdx < len(m.rects) && m.rects[m.addIdx].y0 <= y {
+		m.active = append(m.active, m.addIdx)
+		m.addIdx++
+	}
+	kept := m.active[:0]
+	for _, idx := range m.active {
+		if m.rects[idx].y1 > y {
+			kept = append(kept, idx)
+		}
+	}
+	m.active = kept
+	for _, idx := range m.active {
+		r := m.rects[idx]
+		switch {
+		case r.erase && m.transparent:
+			m.fillSpan(r.x0, r.x1, color.RGBA{}) // erase repaints transparent
+		case r.erase:
+			m.fillSpan(r.x0, r.x1, boardBackground)
+		default:
+			m.fillSpan(r.x0, r.x1, r.color)
+		}
+	}
+}
+
+func (m *streamImage) fillSpan(x0, x1 int, c color.RGBA) {
+	for x := x0; x < x1; x++ {
+		i := x * 4
+		m.row[i], m.row[i+1], m.row[i+2], m.row[i+3] = c.R, c.G, c.B, c.A
+	}
 }
 
 // layerBounds returns the painted drawing's bounding box; erases never widen
