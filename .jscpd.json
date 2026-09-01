@@ -11,6 +11,10 @@
     "**/*.golden",
     "**/vendor/**",
     "**/node_modules/**",
-    "**/build/**"
+    "**/build/**",
+    "**/docs/**",
+    "space/**",
+    "demo/**",
+    "examples/**"
   ]
 }

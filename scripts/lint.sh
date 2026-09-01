@@ -80,6 +80,12 @@ each govulncheck ./...
 
 section "jscpd (duplication ≤ ${JSCPD_THRESHOLD}%)"
 need jscpd "npm install -g jscpd"
+# The core and n-dimensional libraries are separate codebases with the same
+# shape but different geometry (open/closed intervals vs half-open boxes), so
+# their duplication is intentional and each is checked on its own. Demos and
+# examples are self-contained illustrative programs and are excluded from the
+# duplicate gate.
 jscpd . --config .jscpd.json --threshold "${JSCPD_THRESHOLD}"
+(cd space && jscpd . --config ../.jscpd.json --threshold "${JSCPD_THRESHOLD}")
 
 printf '\n%sall checks passed%s\n' "$GREEN" "$RESET"

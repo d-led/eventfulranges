@@ -120,12 +120,7 @@ func (e *Engine) Overlaps(iv interval.Interval) bool {
 func (e *Engine) Ops() []op.Op {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	out := make([]op.Op, 0, len(e.ops))
-	for _, o := range e.ops {
-		out = append(out, o)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	return e.opsList()
 }
 
 // Snapshot persists the current materialized view and log version.
