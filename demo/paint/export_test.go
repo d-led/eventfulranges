@@ -81,6 +81,22 @@ func TestRenderLayersEraseLargerThanFrame(t *testing.T) {
 	require.Equal(t, uint32(0), a) // everything erased
 }
 
+func TestRenderLayersPaintOrder(t *testing.T) {
+	t.Parallel()
+	// A later stroke drawn above an earlier one must overdraw it, even though
+	// it starts at a smaller y: the row is painted in layer order, not in
+	// top-edge order.
+	layers := []Layer{
+		{X0: 0, Y0: 2, X1: 10, Y1: 10, Color: "#ff0000"}, // bottom, red
+		{X0: 0, Y0: 0, X1: 8, Y1: 8, Color: "#00ff00"},   // top, green
+	}
+	img := renderPNG(t, layers, 100, 100)
+	// Board (4,4) lies inside both; the green top layer must win.
+	r, g, _, _ := img.At(40, 40).RGBA()
+	require.Equal(t, uint32(0), r)
+	require.Equal(t, uint32(0xffff), g)
+}
+
 func TestProjectLayersEmpty(t *testing.T) {
 	t.Parallel()
 	_, err := projectLayers(nil, 100, 100)
@@ -113,7 +129,7 @@ func TestBoxCanvasLayers(t *testing.T) {
 
 func TestEstimateRasterMemory(t *testing.T) {
 	t.Parallel()
-	perLayer := uint64(reflect.TypeOf(layerRect{}).Size() + reflect.TypeOf(int(0)).Size())
+	perLayer := uint64(reflect.TypeOf(layerRect{}).Size())
 
 	t.Run("is one row plus one rectangle per layer", func(t *testing.T) {
 		t.Parallel()

@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/http"
 	"reflect"
-	"sort"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -94,7 +93,7 @@ func contentType(format string) string {
 	return "image/png"
 }
 
-// layerRect is one layer projected into pixel space, ready for the y-sweep.
+// layerRect is one layer projected into pixel space, in paint order.
 type layerRect struct {
 	y0, y1, x0, x1 int
 	color          color.RGBA
@@ -102,8 +101,8 @@ type layerRect struct {
 }
 
 // projectLayers fits the layered front into a width × height view with the
-// same contain transform the browser uses, and returns the pixel rectangles in
-// bottom-to-top paint order, sorted by their top edge for the sweep.
+// same contain transform the browser uses, returning the pixel rectangles in
+// bottom-to-top paint order so later strokes overdraw earlier ones.
 func projectLayers(layers []Layer, width, height int) ([]layerRect, error) {
 	min0, min1, bw, bh := layerBounds(layers)
 	if bw <= 0 || bh <= 0 {
@@ -131,7 +130,6 @@ func projectLayers(layers []Layer, width, height int) ([]layerRect, error) {
 		}
 		rects = append(rects, r)
 	}
-	sort.Slice(rects, func(i, j int) bool { return rects[i].y0 < rects[j].y0 })
 	return rects, nil
 }
 
@@ -151,7 +149,7 @@ func clamp(v, hi int) int {
 // to the client, so the full raster is not held in memory.
 func estimateRasterMemory(width, layerCount uint64) uint64 {
 	row := width * 4 // one RGBA row
-	perLayer := uint64(reflect.TypeOf(layerRect{}).Size() + reflect.TypeOf(int(0)).Size())
+	perLayer := uint64(reflect.TypeOf(layerRect{}).Size())
 	return row + layerCount*perLayer
 }
 
@@ -174,18 +172,16 @@ func encodeRaster(w io.Writer, rects []layerRect, format string, width, height i
 }
 
 // streamImage implements image.Image by rendering one row on demand. The
-// standard PNG and JPEG encoders pull pixels top-to-bottom, so the active
-// rectangles are swept by y and only the current row is buffered.
+// standard PNG and JPEG encoders pull pixels top-to-bottom, so each row is
+// painted in layer order and only that row is buffered.
 type streamImage struct {
 	rects       []layerRect
 	width       int
 	height      int
 	transparent bool
 
-	row    []uint8
-	rowY   int
-	addIdx int
-	active []int
+	row  []uint8
+	rowY int
 }
 
 func (m *streamImage) ColorModel() color.Model { return color.RGBAModel }
@@ -207,19 +203,11 @@ func (m *streamImage) renderRow(y int) {
 	} else {
 		m.fillSpan(0, m.width, boardBackground)
 	}
-	for m.addIdx < len(m.rects) && m.rects[m.addIdx].y0 <= y {
-		m.active = append(m.active, m.addIdx)
-		m.addIdx++
-	}
-	kept := m.active[:0]
-	for _, idx := range m.active {
-		if m.rects[idx].y1 > y {
-			kept = append(kept, idx)
+	// Paint bottom-to-top, so a later stroke overdraws an earlier one.
+	for _, r := range m.rects {
+		if y < r.y0 || y >= r.y1 {
+			continue
 		}
-	}
-	m.active = kept
-	for _, idx := range m.active {
-		r := m.rects[idx]
 		switch {
 		case r.erase && m.transparent:
 			m.fillSpan(r.x0, r.x1, color.RGBA{}) // erase repaints transparent
