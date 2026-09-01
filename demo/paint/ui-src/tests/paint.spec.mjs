@@ -92,6 +92,11 @@ test("exports the board as an SVG without the grid", async ({ page }) => {
   expect(content).toContain("<svg");
   expect(content).toContain("<rect");
   expect(content).not.toContain("<line");
+  // SVG is vector: the <svg> element carries only a viewBox, no fixed pixels.
+  const open = content.match(/<svg [^>]*>/)[0];
+  expect(open).not.toContain("width=");
+  expect(open).not.toContain("height=");
+  expect(open).toContain("viewBox=");
 });
 
 test("exports layered strokes without carving the base square", async ({
@@ -198,6 +203,47 @@ test("overdrawing a big square with a small one layers instead of carving", asyn
   // One background rect, the whole 5x5 square, and the one cell on top: the
   // base square is layered, never carved into strips.
   expect((content.match(/<rect /g) ?? []).length).toBe(3);
+});
+
+test("disables the export button while a server render is in flight", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  // A side above the browser's canvas limit always defers to the server.
+  await page.locator("#exportWidth").fill("40000");
+  await page.locator("#exportHeight").fill("40000");
+
+  // Hold the server render so the in-flight state is observable, then answer
+  // with a tiny PNG so the test never waits on a real 40000px render.
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/export*", async (route) => {
+    await gate;
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    });
+  });
+
+  const downloading = page.waitForEvent("download");
+  await page.locator("#exportGo").click();
+  await expect(page.locator("#exportGo")).toBeDisabled();
+  await expect(page.locator("#exportGo")).toContainText("Exporting");
+  release();
+  const download = await downloading;
+  await download.path(); // consume the download
+  await expect(page.locator("#exportGo")).toBeEnabled();
+  await expect(page.locator("#exportGo")).toHaveText("Export");
 });
 
 test("exports the board as a PNG", async ({ page }) => {

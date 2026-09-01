@@ -78,6 +78,10 @@ const exportHeight = $("exportHeight");
 const exportRatio = $("exportRatio");
 const exportError = $("exportError");
 const exportCancel = $("exportCancel");
+const exportGo = $("exportGo");
+const exportSizeFields = $("exportSizeFields");
+const exportRatioField = $("exportRatioField");
+const exportHint = $("exportHint");
 const importImageBtn = $("importImageBtn");
 const importImageInput = $("importImageInput");
 const importImageClear = $("importImageClear");
@@ -1377,6 +1381,7 @@ function openExportDialog() {
     ? settings.format
     : "png";
   exportRatio.checked = settings.keepRatio ?? true;
+  syncExportFields();
   showExportError(null);
   if (!exportDialog.open) exportDialog.showModal();
 }
@@ -1390,7 +1395,26 @@ function showExportError(message) {
   exportError.hidden = !message;
 }
 
-function submitExport() {
+async function submitExport() {
+  const format = exportFormat.value;
+
+  // SVG is vector: it needs no size, so it skips the dimension fields entirely.
+  if (format === "svg") {
+    setExportBusy(true);
+    try {
+      await exportImage(format, 0, 0);
+      settings.format = format;
+      saveSettings();
+      closeExportDialog();
+      notify("exported board.svg (vector — any size)");
+    } catch (err) {
+      showExportError(err.message || "export failed");
+    } finally {
+      setExportBusy(false);
+    }
+    return;
+  }
+
   const parsed = parseDimensions(exportWidth.value, exportHeight.value);
   if (!parsed.ok) {
     showExportError(parsed.error);
@@ -1406,20 +1430,39 @@ function submitExport() {
     showExportError(size.error);
     return;
   }
-  const format = exportFormat.value;
-  exportImage(format, size.width, size.height)
-    .then(() => {
-      settings.format = format;
-      settings.width = parsed.width;
-      settings.height = parsed.height;
-      settings.keepRatio = exportRatio.checked;
-      saveSettings();
-      closeExportDialog();
-      notify(
-        `exported board.${extension(format)} (${size.width} × ${size.height})`,
-      );
-    })
-    .catch((err) => showExportError(err.message || "export failed"));
+  setExportBusy(true);
+  try {
+    await exportImage(format, size.width, size.height);
+    settings.format = format;
+    settings.width = parsed.width;
+    settings.height = parsed.height;
+    settings.keepRatio = exportRatio.checked;
+    saveSettings();
+    closeExportDialog();
+    notify(
+      `exported board.${extension(format)} (${size.width} × ${size.height})`,
+    );
+  } catch (err) {
+    showExportError(err.message || "export failed");
+  } finally {
+    setExportBusy(false);
+  }
+}
+
+// setExportBusy disables the export button and relabels it while a request is
+// in flight, so a slow server-side render is visibly acknowledged.
+function setExportBusy(busy) {
+  exportGo.disabled = busy;
+  exportGo.textContent = busy ? "Exporting…" : "Export";
+}
+
+// syncExportFields hides the pixel size controls when the chosen format has no
+// fixed resolution, leaving only the format selector.
+function syncExportFields() {
+  const svg = exportFormat.value === "svg";
+  exportSizeFields.hidden = svg;
+  exportRatioField.hidden = svg;
+  exportHint.hidden = svg;
 }
 
 function extension(format) {
@@ -1427,18 +1470,16 @@ function extension(format) {
 }
 
 async function exportImage(format, width, height) {
-  const view = fitExport(boxes, width, height);
-  if (!view.ok) throw new Error(view.error);
-
   if (format === "svg") {
     downloadBlob(
-      new Blob([renderSVG(boxes, width, height, view)], {
-        type: "image/svg+xml",
-      }),
+      new Blob([renderSVG(boxes)], { type: "image/svg+xml" }),
       "board.svg",
     );
     return;
   }
+
+  const view = fitExport(boxes, width, height);
+  if (!view.ok) throw new Error(view.error);
 
   // A raster small enough for the browser canvas renders locally; a larger one
   // (or one the browser cannot encode after all) goes to the server, which
@@ -1760,6 +1801,7 @@ downloadJsonlBtn.addEventListener("click", () => {
 
 exportBtn.addEventListener("click", openExportDialog);
 exportCancel.addEventListener("click", closeExportDialog);
+exportFormat.addEventListener("change", syncExportFields);
 exportForm.addEventListener("submit", (e) => {
   e.preventDefault();
   submitExport();

@@ -148,22 +148,27 @@ export function sanitizeColor(color, fallback = DEFAULT_COLOR) {
   return typeof color === "string" && COLOR_RE.test(color) ? color : fallback;
 }
 
-// renderSVG serializes the layered front as one <rect> per layer, painted in
-// order over an opaque board background. Removes erase by painting that same
-// background, so the SVG matches the board exactly; the grid is never drawn.
-export function renderSVG(boxes, width, height, view) {
+// renderSVG serializes the layered front as one <rect> per layer in board
+// coordinates. The viewBox carries the drawing's bounds and there is no fixed
+// pixel size, so the SVG scales losslessly in any viewer and the export never
+// needs a width or height. Removes erase by painting the board background, so
+// the SVG matches the board exactly; the grid is never drawn.
+export function renderSVG(boxes) {
+  const b = boundsOf(boxes);
+  if (!b) throw new Error("nothing to export — the board is empty");
+  const view = { min0: b.min0, min1: b.min1, scale: 1, ox: 0, oy: 0 };
   const rects = [
-    `<rect x="0" y="0" width="${width}" height="${height}" fill="${BACKGROUND}"/>`,
+    `<rect x="0" y="0" width="${fmt(b.bw)}" height="${fmt(b.bh)}" fill="${BACKGROUND}"/>`,
   ];
-  for (const b of boxes) {
-    const r = projectBox(b, view);
-    const fill = b.kind === "remove" ? BACKGROUND : sanitizeColor(b.color);
+  for (const box of boxes) {
+    const r = projectBox(box, view);
+    const fill = box.kind === "remove" ? BACKGROUND : sanitizeColor(box.color);
     rects.push(
       `<rect x="${fmt(r.x)}" y="${fmt(r.y)}" width="${fmt(r.w)}" height="${fmt(r.h)}" fill="${fill}"/>`,
     );
   }
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(b.bw)} ${fmt(b.bh)}">` +
     rects.join("") +
     `</svg>`
   );

@@ -183,7 +183,7 @@
             <option value="svg">SVG</option>
           </select>
         </label>
-        <div class="export-row">
+        <div class="export-row" id="exportSizeFields">
           <label class="export-field">
             <span>Width</span>
             <input id="exportWidth" type="number" min="640" max="40000" step="1" inputmode="numeric" />
@@ -193,12 +193,12 @@
             <input id="exportHeight" type="number" min="480" max="40000" step="1" inputmode="numeric" />
           </label>
         </div>
-        <label class="export-check">
+        <label class="export-check" id="exportRatioField">
           <input type="checkbox" id="exportRatio" checked />
           <span>Keep the drawing's aspect ratio — width and height are maximums</span>
         </label>
         <p id="exportError" class="export-error" hidden></p>
-        <p class="export-hint">640 × 480 to 40000 × 40000 pixels</p>
+        <p class="export-hint" id="exportHint">640 × 480 to 40000 × 40000 pixels</p>
         <div class="export-row export-actions">
           <button type="button" id="exportCancel">Cancel</button>
           <button type="submit" id="exportGo" class="primary">Export</button>

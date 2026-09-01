@@ -190,46 +190,44 @@ describe("sanitizeColor", () => {
 
 describe("renderSVG", () => {
   it("renders one rect per painted piece and no grid", () => {
-    const view = fitExport([box(0, 0, 10, 10)], 100, 100);
-    const svg = renderSVG([box(0, 0, 10, 10)], 100, 100, view);
+    const svg = renderSVG([box(0, 0, 10, 10)]);
     expect(svg).toContain(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">',
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">',
     );
     expect(svg).toContain(
-      '<rect x="0" y="0" width="100" height="100" fill="#e6e8ee"/>',
+      '<rect x="0" y="0" width="10" height="10" fill="#e6e8ee"/>',
     );
     expect(svg).not.toContain("<line");
     expect(svg).not.toContain("<path");
     expect(svg).not.toContain("stroke");
   });
 
+  it("has no fixed pixel size", () => {
+    const open = renderSVG([box(0, 0, 10, 10)]).match(/<svg [^>]*>/)[0];
+    expect(open).not.toContain("width=");
+    expect(open).not.toContain("height=");
+    expect(open).toContain('viewBox="0 0 10 10"');
+  });
+
   it("replaces markup smuggled in via imported colors", () => {
-    const view = fitExport([box(0, 0, 1, 1)], 10, 10);
-    const svg = renderSVG(
-      [{ min: [0, 0], max: [1, 1], color: '"><script>' }],
-      10,
-      10,
-      view,
-    );
+    const svg = renderSVG([{ min: [0, 0], max: [1, 1], color: '"><script>' }]);
     expect(svg).not.toContain("<script");
     expect(svg).toContain('fill="#e6e8ee"');
   });
 
   it("paints layers in order over an opaque background", () => {
-    const view = fitExport([box(0, 0, 10, 10)], 100, 100);
-    const svg = renderSVG(
-      [
-        { kind: "add", min: [0, 0], max: [10, 10], color: "#112233" },
-        { kind: "remove", min: [4, 4], max: [6, 6] },
-      ],
-      100,
-      100,
-      view,
-    );
+    const svg = renderSVG([
+      { kind: "add", min: [0, 0], max: [10, 10], color: "#112233" },
+      { kind: "remove", min: [4, 4], max: [6, 6] },
+    ]);
     const fills = [...svg.matchAll(/<rect [^>]*fill="([^"]+)"[^>]*\/>/g)].map(
       (m) => m[1],
     );
     expect(fills).toEqual(["#0e1015", "#112233", "#0e1015"]);
+  });
+
+  it("reports an empty board", () => {
+    expect(() => renderSVG([])).toThrow(/empty/);
   });
 });
 
