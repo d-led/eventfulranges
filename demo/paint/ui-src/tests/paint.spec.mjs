@@ -637,6 +637,45 @@ test("fits an imported image into the current viewport", async ({ page }) => {
   expect(first.data.max[1] - first.data.min[1]).toBeCloseTo(fit, 6);
 });
 
+test("imports a detailed photo by downscaling it to fit", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // 256x256 noise: every neighbouring pixel differs in R (x) and G (y), so a
+  // full-size raster would merge into 65k cells — far above the box budget.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 256;
+    const ctx = c.getContext("2d");
+    const id = ctx.createImageData(256, 256);
+    for (let y = 0; y < 256; y++) {
+      for (let x = 0; x < 256; x++) {
+        const i = (y * 256 + x) * 4;
+        id.data[i] = x & 255;
+        id.data[i + 1] = y & 255;
+        id.data[i + 2] = (x ^ y) & 255;
+        id.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(id, 0, 0);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importFileInput").setInputFiles({
+    name: "noise.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await page.locator("#importGo").click();
+
+  // The import succeeds at a smaller size instead of being rejected.
+  await expect(page.locator("#toast")).toContainText("at 128 × 128 px");
+  await expect(page.locator("#importDialog")).not.toBeVisible();
+});
+
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

@@ -1606,8 +1606,13 @@ function downloadBlob(blob, filename) {
 // pixel one current grid cell, and "pixels" fits the image into the viewport.
 // Contiguous runs of the same colour merge into rectangles, so a flat region
 // becomes a single box. When "new canvas" is checked the board is cleared first.
-async function importImage(file, pixelSize, clear) {
-  if (!connected) throw new Error("disconnected — reconnect to import");
+
+// rasterize decodes a file into merged board boxes at a resolution whose box
+// count fits the board's budget, halving the size until it does. A photo that
+// would explode into millions of cells is imported at a smaller size instead of
+// being rejected as too detailed. It returns the boxes, the effective pixel
+// size, and the downscale factor (1 means full resolution).
+async function rasterize(file) {
   // The file size is the first, cheapest protection: reject before decoding.
   if (file.size > MAX_IMPORT_BYTES) {
     throw new Error(
@@ -1626,22 +1631,40 @@ async function importImage(file, pixelSize, clear) {
       `image too large — max ${MAX_IMPORT_DIM} × ${MAX_IMPORT_DIM} px`,
     );
   }
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const c = canvas.getContext("2d");
-  c.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  const { width, height } = canvas;
-  const imageData = c.getImageData(0, 0, width, height);
-  const raw = boxesFromRaster(imageData.data, width, height);
-  canvas.width = 0; // release the decoded pixels; only the merged cells remain
-  if (raw.length === 0) throw new Error("image has no opaque pixels");
-  if (raw.length > MAX_IMPORT_BOXES) {
-    throw new Error(
-      `image too detailed (${raw.length} cells) — try a smaller or flatter image`,
-    );
+
+  let factor = 1;
+  let width = bitmap.width;
+  let height = bitmap.height;
+  let px = rasterPixels(bitmap, width, height);
+  let cells = boxesFromRaster(px.data, px.width, px.height);
+  while (cells.length > MAX_IMPORT_BOXES && (width > 1 || height > 1)) {
+    factor /= 2;
+    width = Math.max(1, Math.round(bitmap.width * factor));
+    height = Math.max(1, Math.round(bitmap.height * factor));
+    px = rasterPixels(bitmap, width, height);
+    cells = boxesFromRaster(px.data, px.width, px.height);
   }
+  bitmap.close();
+  return { cells, width, height, factor };
+}
+
+// rasterPixels draws a bitmap at width × height and returns its flat RGBA data
+// and dimensions, releasing the scratch canvas's backing store.
+function rasterPixels(bitmap, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const c = canvas.getContext("2d");
+  c.drawImage(bitmap, 0, 0, width, height);
+  const data = c.getImageData(0, 0, width, height).data;
+  canvas.width = 0; // release the decoded pixels
+  return { data, width, height };
+}
+
+async function importImage(file, pixelSize, clear) {
+  if (!connected) throw new Error("disconnected — reconnect to import");
+  const { cells: raw, width, height, factor } = await rasterize(file);
+  if (raw.length === 0) throw new Error("image has no opaque pixels");
 
   const t = importTransform(pixelSize, width, height);
   const cells =
@@ -1686,8 +1709,9 @@ async function importImage(file, pixelSize, clear) {
   if (pixelSize === "1:1") {
     fitBoxes([{ min: [0, 0], max: [width, height] }]);
   }
+  const downscaled = factor < 1 ? ` at ${width} × ${height} px` : "";
   notify(
-    `imported image (${cells.length} cell${cells.length === 1 ? "" : "s"})`,
+    `imported image (${cells.length} cell${cells.length === 1 ? "" : "s"}${downscaled})`,
   );
 }
 
@@ -1884,10 +1908,6 @@ importForm.addEventListener("submit", (e) => {
   e.preventDefault();
   submitImport();
 });
-// Clicking the backdrop closes the dialog without importing.
-importDialog.addEventListener("click", (e) => {
-  if (e.target === importDialog) closeImportDialog();
-});
 
 gridPlus.addEventListener("click", () => setGridOffset(gridOffset + 1));
 gridMinus.addEventListener("click", () => setGridOffset(gridOffset - 1));
@@ -1923,10 +1943,6 @@ exportPixelSize.addEventListener("change", syncExportFields);
 exportForm.addEventListener("submit", (e) => {
   e.preventDefault();
   submitExport();
-});
-// Clicking the backdrop closes the dialog without exporting.
-exportDialog.addEventListener("click", (e) => {
-  if (e.target === exportDialog) closeExportDialog();
 });
 
 newSessionBtn.addEventListener("click", () => location.replace("/ui/"));
