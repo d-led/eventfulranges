@@ -118,8 +118,9 @@ let strokeColor = DEFAULT_COLOR; // metadata attached to every painted box
 const SETTINGS_KEY = "eventfulranges:paint:settings";
 let settings = {};
 
+const MAX_IMPORT_BYTES = 100 * 1024 * 1024; // largest accepted file: the first protection
 const MAX_IMPORT_DIM = 1024; // largest imported image side, in pixels
-const MAX_IMPORT_BOXES = 20000; // largest acceptable cell count after merging
+const MAX_IMPORT_BOXES = 20_000; // largest accepted cell count after merging
 
 let tool = "rect";
 let dragging = false;
@@ -833,15 +834,26 @@ function pendingKey() {
 }
 
 // savePending persists the outbox so a reload does not drop unsynced edits.
+// A large import acknowledges thousands of ops in a burst, so the write is
+// debounced: re-serializing the whole outbox per acknowledgement would be
+// quadratic. Duplicate re-sends after a reload are harmless — the server
+// ignores operations it already knows by ID.
+let pendingSaveTimer = null;
+const PENDING_SAVE_MS = 300;
+
 function savePending() {
-  const key = pendingKey();
-  if (!key) return;
-  try {
-    localStorage.setItem(key, JSON.stringify(pending));
-  } catch {
-    // Storage may be unavailable (private mode) or full: the in-memory queue
-    // still keeps the edits alive for as long as the page does.
-  }
+  if (pendingSaveTimer !== null) return;
+  pendingSaveTimer = setTimeout(() => {
+    pendingSaveTimer = null;
+    const key = pendingKey();
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify(pending));
+    } catch {
+      // Storage may be unavailable (private mode) or full: the in-memory queue
+      // still keeps the edits alive for as long as the page does.
+    }
+  }, PENDING_SAVE_MS);
 }
 
 function loadPending() {
@@ -1358,6 +1370,11 @@ async function importImage(file) {
     setStatus("disconnected — reconnect to import");
     return;
   }
+  // The file size is the first, cheapest protection: reject before decoding.
+  if (file.size > MAX_IMPORT_BYTES) {
+    notify(`file too large — max ${MAX_IMPORT_BYTES / 1024 / 1024} MB`);
+    return;
+  }
   let bitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -1379,6 +1396,7 @@ async function importImage(file) {
   const { width, height } = canvas;
   const imageData = c.getImageData(0, 0, width, height);
   const cells = boxesFromRaster(imageData.data, width, height);
+  canvas.width = 0; // release the decoded pixels; only the merged cells remain
   if (cells.length === 0) {
     notify("image has no opaque pixels");
     return;

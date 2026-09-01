@@ -1,9 +1,7 @@
 // Raster import: turn an RGBA image into the board boxes that paint it. One
 // pixel is one board unit, and contiguous runs of the same colour merge into
 // rectangles, so a flat region becomes one box instead of one per pixel.
-// Pixels whose alpha falls below the threshold paint nothing.
-
-export const ALPHA_THRESHOLD = 128;
+// Fully transparent pixels (alpha 0) paint nothing.
 
 // boxesFromRaster returns the half-open board boxes covering every opaque
 // pixel of a width × height RGBA image. data is the flat Uint8ClampedArray of
@@ -58,10 +56,11 @@ function rowRuns(data, width, y) {
   return runs;
 }
 
-// colorAt returns the hex colour of one pixel, or null when it is transparent.
+// colorAt returns the hex colour of one pixel, or null when it is fully
+// transparent.
 function colorAt(data, width, y, x) {
   const i = (y * width + x) * 4;
-  if (data[i + 3] < ALPHA_THRESHOLD) return null;
+  if (data[i + 3] === 0) return null;
   return rgbToHex(data[i], data[i + 1], data[i + 2]);
 }
 

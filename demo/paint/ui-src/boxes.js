@@ -24,10 +24,13 @@ export function difference(a, b) {
 }
 
 // front returns the culled, layered front of the operations: the ops sorted
-// bottom-to-top by seq, minus any op whose box is fully covered by a higher
-// op. The kept ops paint in order (painter's algorithm), so a later stroke
-// layers over an earlier one instead of carving it into strips; a remove
-// erases by painting the background, exactly like an add layered over an add.
+// bottom-to-top by seq, minus any op whose box a single higher op already
+// covers. The kept ops paint in order (painter's algorithm), so a later
+// stroke layers over an earlier one instead of carving it into strips; a
+// remove erases by painting the background, exactly like an add layered over
+// an add. Culling only needs a conservative test: the painter's algorithm
+// renders a kept-but-covered box identically to a culled one, so an op that
+// is covered only collectively is kept and simply overdraws.
 export function front(ops) {
   const sorted = [...ops].sort((a, b) => a.seq - b.seq);
   let covered = [];
@@ -35,11 +38,46 @@ export function front(ops) {
   for (let i = sorted.length - 1; i >= 0; i--) {
     const op = sorted[i];
     const box = { min: op.min, max: op.max };
-    const visible = subtractAll(box, covered);
-    covered = union(covered, [box]);
-    if (visible.length === 0) continue; // fully covered: cull
-    kept.unshift(op);
+    if (isCoveredBy(box, covered)) continue; // cull
+    covered = insert(covered, box);
+    kept.push(op); // top-down order; reversed below
   }
+  kept.reverse(); // bottom-to-top paint order
+  return kept;
+}
+
+// isCoveredBy reports whether some box in the sorted, subsumption-free set
+// covers box entirely. The set is sorted by its lower corner, so once a box
+// starts beyond box's own lower corner, none of the rest can contain box.
+function isCoveredBy(box, set) {
+  for (const b of set) {
+    if (b.min[0] > box.min[0]) return false;
+    if (subsumes(b, box)) return true;
+  }
+  return false;
+}
+
+// insert returns the normalized union of a sorted, subsumption-free set and
+// one box, preserving the sort, in one linear pass.
+function insert(set, box) {
+  if (empty(box)) return set;
+  const kept = [];
+  let subsumed = false;
+  let placed = false;
+  for (const b of set) {
+    if (subsumes(box, b)) continue; // box covers b: drop b
+    if (subsumes(b, box)) {
+      subsumed = true;
+      kept.push(b);
+      continue;
+    }
+    if (!subsumed && !placed && compare(box, b) < 0) {
+      kept.push(box);
+      placed = true;
+    }
+    kept.push(b);
+  }
+  if (!subsumed && !placed) kept.push(box);
   return kept;
 }
 

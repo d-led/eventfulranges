@@ -72,4 +72,11 @@ describe("boxesFromRaster", () => {
     ]);
     expect(boxesFromRaster(img.data, img.width, img.height)).toEqual([]);
   });
+
+  it("imports a semi-transparent pixel as its opaque RGB", () => {
+    const data = new Uint8ClampedArray([255, 0, 0, 100]); // red, alpha 100
+    expect(boxesFromRaster(data, 1, 1)).toEqual([
+      { min: [0, 0], max: [1, 1], color: "#ff0000" },
+    ]);
+  });
 });
