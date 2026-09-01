@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 
@@ -142,6 +143,16 @@ func clamp(v, hi int) int {
 		return hi
 	}
 	return v
+}
+
+// estimateRasterMemory reports the peak memory the streaming raster export
+// allocates for an image width pixels wide with layerCount materialized
+// layers. Height never appears: rows are rendered one at a time and streamed
+// to the client, so the full raster is not held in memory.
+func estimateRasterMemory(width, layerCount uint64) uint64 {
+	row := width * 4 // one RGBA row
+	perLayer := uint64(reflect.TypeOf(layerRect{}).Size() + reflect.TypeOf(int(0)).Size())
+	return row + layerCount*perLayer
 }
 
 // encodeRaster writes the projected rectangles as a PNG or JPEG, rendering one

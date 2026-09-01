@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -108,4 +109,33 @@ func TestBoxCanvasLayers(t *testing.T) {
 	require.Equal(t, 1.0, layers[1].Y0)
 	require.Equal(t, 2.0, layers[1].X1)
 	require.Equal(t, 2.0, layers[1].Y1)
+}
+
+func TestEstimateRasterMemory(t *testing.T) {
+	t.Parallel()
+	perLayer := uint64(reflect.TypeOf(layerRect{}).Size() + reflect.TypeOf(int(0)).Size())
+
+	t.Run("is one row plus one rectangle per layer", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, uint64(40000*4)+2*perLayer, estimateRasterMemory(40000, 2))
+	})
+
+	t.Run("stays under a megabyte for a 40000px square", func(t *testing.T) {
+		t.Parallel()
+		require.Less(t, estimateRasterMemory(40000, 2), uint64(1<<20))
+	})
+
+	t.Run("grows with width and layer count, never height", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, 2*estimateRasterMemory(20000, 0), estimateRasterMemory(40000, 0))
+		require.Equal(t, 10*perLayer, estimateRasterMemory(100, 10)-estimateRasterMemory(100, 0))
+	})
+
+	t.Run("a thin stroke costs the same per layer as a full fill", func(t *testing.T) {
+		t.Parallel()
+		// The estimator sees only the export width and the box count, never
+		// the drawn area, so a 10-unit stroke and a full-board fill of the
+		// same box count cost the same.
+		require.Equal(t, uint64(40000*4)+perLayer, estimateRasterMemory(40000, 1))
+	})
 }
