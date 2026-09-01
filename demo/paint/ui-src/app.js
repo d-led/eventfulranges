@@ -19,6 +19,7 @@ import {
   projectBox,
   renderSVG,
   sanitizeColor,
+  snapRect,
   BACKGROUND,
 } from "./export.js";
 
@@ -106,6 +107,12 @@ const cam = { x: 0, y: 0, scale: INITIAL_SCALE }; // board units at the canvas c
 
 let gridOffset = 0; // user shift over the zoom-chosen subdivision level
 let strokeColor = DEFAULT_COLOR; // metadata attached to every painted box
+
+// UI preferences remembered across sessions: the selected stroke colour and
+// the last export choices (format, size, aspect lock).
+const SETTINGS_KEY = "eventfulranges:paint:settings";
+let settings = {};
+
 let tool = "rect";
 let dragging = false;
 let dragStart = null;
@@ -1167,6 +1174,27 @@ function downloadJSONL() {
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- settings ----------
+// The selected colour and the last export choices are remembered in
+// localStorage, so a reload keeps them. Storage may be unavailable (private
+// mode) or full, in which case the preferences simply do not survive.
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // best effort: the in-memory preferences still hold for this page load
+  }
+}
+
 // ---------- export ----------
 // The board can be saved as PNG, JPEG, or SVG at a caller-chosen size. The
 // drawing is fit with a "contain" transform — never stretched or clipped —
@@ -1177,10 +1205,16 @@ function openExportDialog() {
     return;
   }
   const size = suggestDimensions(boxes);
-  exportWidth.value = size.width;
-  exportHeight.value = size.height;
-  exportFormat.value = "png";
-  exportRatio.checked = true;
+  exportWidth.value = Number.isFinite(settings.width)
+    ? settings.width
+    : size.width;
+  exportHeight.value = Number.isFinite(settings.height)
+    ? settings.height
+    : size.height;
+  exportFormat.value = ["png", "jpeg", "svg"].includes(settings.format)
+    ? settings.format
+    : "png";
+  exportRatio.checked = settings.keepRatio ?? true;
   showExportError(null);
   if (!exportDialog.open) exportDialog.showModal();
 }
@@ -1213,6 +1247,11 @@ function submitExport() {
   const format = exportFormat.value;
   exportImage(format, size.width, size.height)
     .then(() => {
+      settings.format = format;
+      settings.width = parsed.width;
+      settings.height = parsed.height;
+      settings.keepRatio = exportRatio.checked;
+      saveSettings();
       closeExportDialog();
       notify(
         `exported board.${extension(format)} (${size.width} × ${size.height})`,
@@ -1247,15 +1286,29 @@ async function exportImage(format, width, height) {
   if (canvas.width !== width || canvas.height !== height) {
     throw new Error("this size is too large for the browser to rasterize");
   }
+  const jpeg = format === "jpeg";
   const c = canvas.getContext("2d");
-  c.fillStyle = BACKGROUND;
-  c.fillRect(0, 0, width, height);
+  // PNG keeps empty space transparent; JPEG has no alpha, so it fills the
+  // flat board background instead.
+  if (jpeg) {
+    c.fillStyle = BACKGROUND;
+    c.fillRect(0, 0, width, height);
+  }
   for (const b of boxes) {
-    const r = projectBox(b, view);
-    c.fillStyle = b.kind === "remove" ? BACKGROUND : sanitizeColor(b.color);
+    const r = snapRect(projectBox(b, view));
+    if (b.kind === "remove") {
+      // An erase clears to transparent for PNG; JPEG repaints the background.
+      if (jpeg) {
+        c.fillStyle = BACKGROUND;
+        c.fillRect(r.x, r.y, r.w, r.h);
+      } else {
+        c.clearRect(r.x, r.y, r.w, r.h);
+      }
+      continue;
+    }
+    c.fillStyle = sanitizeColor(b.color);
     c.fillRect(r.x, r.y, r.w, r.h);
   }
-  const jpeg = format === "jpeg";
   const blob = await new Promise((resolve) =>
     canvas.toBlob(
       resolve,
@@ -1370,6 +1423,8 @@ zenBtn.addEventListener("click", () => {
 
 strokeColorEl.addEventListener("input", () => {
   strokeColor = strokeColorEl.value;
+  settings.color = strokeColor;
+  saveSettings();
 });
 
 importJsonlBtn.addEventListener("click", () => importJsonlInput.click());
@@ -1423,6 +1478,9 @@ reconnectBtn.addEventListener("click", reconnectNow);
 
 // ---------- boot ----------
 function boot() {
+  settings = loadSettings();
+  strokeColor = sanitizeColor(settings.color);
+  strokeColorEl.value = strokeColor;
   resizeCanvas();
   setTool("rect");
   updateGridLabel();

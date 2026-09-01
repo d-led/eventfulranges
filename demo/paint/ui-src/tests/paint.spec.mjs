@@ -148,6 +148,58 @@ test("exports layered strokes without carving the base square", async ({
   expect(rects.length).toBe(3);
 });
 
+test("overdrawing a big square with a small one layers instead of carving", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const canvas = page.locator("#board");
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  // Drag a 5x5 cell block with the rectangle tool: 96 px is 4 board units at
+  // the initial 24 px/unit scale, which snaps to cells (0,0)..(5,5).
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 96, cy + 96, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  // Stamp one strictly interior cell with the pen, in a distinct colour.
+  await page.locator("#strokeColor").evaluate((el) => {
+    el.value = "#ff5500";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#toolPen").click();
+  await page.mouse.click(cx + 60, cy + 60); // cell (2,2): inside the 5x5 block
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const session = new URLSearchParams(location.search).get("s");
+        const raw = localStorage.getItem(`eventfulranges:paint:${session}`);
+        return raw ? JSON.parse(raw).length : 0;
+      });
+    })
+    .toBe(2);
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportFormat").selectOption("svg");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+
+  const content = await readFile(await download.path(), "utf8");
+  // One background rect, the whole 5x5 square, and the one cell on top: the
+  // base square is layered, never carved into strips.
+  expect((content.match(/<rect /g) ?? []).length).toBe(3);
+});
+
 test("exports the board as a PNG", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
@@ -168,6 +220,123 @@ test("exports the board as a PNG", async ({ page }) => {
   const bytes = await readFile(await download.path());
   // PNG signature: 89 50 4E 47 0D 0A 1A 0A.
   expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test("exports the board as a JPEG", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportFormat").selectOption("jpeg");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("board.jpg");
+
+  const bytes = await readFile(await download.path());
+  // JPEG signature: FF D8 FF.
+  expect([...bytes.subarray(0, 3)]).toEqual([255, 216, 255]);
+});
+
+test("exports a PNG with a transparent background", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  // Intercept the raster canvas so the test can sample pixel alpha directly,
+  // without decoding the PNG file.
+  await page.evaluate(() => {
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      window.__lastExportCanvas = this;
+      return original.call(this, callback, type, quality);
+    };
+  });
+
+  await page.locator("#exportBtn").click();
+  // Letterbox the square drawing so the margins stay empty and unpainted.
+  await page.locator("#exportRatio").uncheck();
+  await page.locator("#exportWidth").fill("640");
+  await page.locator("#exportHeight").fill("480");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("board.png");
+
+  const corner = await page.evaluate(() => {
+    const c = window.__lastExportCanvas;
+    return c.getContext("2d").getImageData(0, 0, 1, 1).data;
+  });
+  expect(corner[3]).toBe(0); // empty space is transparent
+
+  const center = await page.evaluate(() => {
+    const c = window.__lastExportCanvas;
+    return c.getContext("2d").getImageData(320, 240, 1, 1).data;
+  });
+  expect(center[3]).toBe(255); // the painted square is opaque
+});
+
+test("remembers the selected colour across reloads", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#strokeColor").evaluate((el) => {
+    el.value = "#ff5500";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("eventfulranges:paint:settings")),
+  );
+  expect(stored.color).toBe("#ff5500");
+
+  await page.reload();
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+  await expect(page.locator("#strokeColor")).toHaveValue("#ff5500");
+});
+
+test("remembers the export settings across reloads", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportFormat").selectOption("jpeg");
+  await page.locator("#exportWidth").fill("800");
+  await page.locator("#exportHeight").fill("600");
+  await page.locator("#exportRatio").uncheck();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("board.jpg");
+
+  await page.reload();
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  await expect(page.locator("#exportFormat")).toHaveValue("jpeg");
+  await expect(page.locator("#exportWidth")).toHaveValue("800");
+  await expect(page.locator("#exportHeight")).toHaveValue("600");
+  await expect(page.locator("#exportRatio")).not.toBeChecked();
 });
 
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {

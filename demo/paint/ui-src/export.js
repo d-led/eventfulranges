@@ -94,6 +94,17 @@ export function projectBox(b, view) {
   };
 }
 
+// snapRect rounds a pixel rectangle to whole pixels by rounding its edges
+// independently, so adjacent boxes share exact boundaries and raster exports
+// do not show antialiasing seams between them.
+export function snapRect(r) {
+  const x0 = Math.round(r.x);
+  const y0 = Math.round(r.y);
+  const x1 = Math.round(r.x + r.w);
+  const y1 = Math.round(r.y + r.h);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
 // sanitizeColor keeps only the #rrggbb values the browser's color input can
 // produce, so an imported log cannot smuggle markup into the SVG.
 export function sanitizeColor(color, fallback = DEFAULT_COLOR) {

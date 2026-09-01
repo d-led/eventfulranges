@@ -9,6 +9,7 @@ import {
   suggestDimensions,
   fitExport,
   projectBox,
+  snapRect,
   sanitizeColor,
   renderSVG,
 } from "./export.js";
@@ -134,6 +135,23 @@ describe("projectBox", () => {
       w: 200,
       h: 200,
     });
+  });
+});
+
+describe("snapRect", () => {
+  it("rounds to whole pixels", () => {
+    expect(snapRect({ x: 0.4, y: 1.5, w: 9.6, h: 4.4 })).toEqual({
+      x: 0,
+      y: 2,
+      w: 10,
+      h: 4,
+    });
+  });
+
+  it("keeps adjacent boxes sharing a boundary seam-free", () => {
+    const left = snapRect({ x: 0, y: 0, w: 10.4, h: 10 });
+    const right = snapRect({ x: 10.4, y: 0, w: 9.6, h: 10 });
+    expect(left.x + left.w).toBe(right.x); // identical rounded edge, no gap or overlap
   });
 });
 
