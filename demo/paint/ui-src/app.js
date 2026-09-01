@@ -1,4 +1,5 @@
 import { front } from "./boxes.js";
+import { boxesFromRaster } from "./raster.js";
 import {
   MIN_CELL_PX,
   MIN_LEVEL,
@@ -8,6 +9,7 @@ import {
   gridStep,
   gridRect,
   gridLine,
+  bounds,
   fitCamera,
 } from "./grid.js";
 import { delayFor } from "./backoff.js";
@@ -75,6 +77,9 @@ const exportHeight = $("exportHeight");
 const exportRatio = $("exportRatio");
 const exportError = $("exportError");
 const exportCancel = $("exportCancel");
+const importImageBtn = $("importImageBtn");
+const importImageInput = $("importImageInput");
+const importImageClear = $("importImageClear");
 
 const ctx = boardEl.getContext("2d");
 
@@ -112,6 +117,9 @@ let strokeColor = DEFAULT_COLOR; // metadata attached to every painted box
 // the last export choices (format, size, aspect lock).
 const SETTINGS_KEY = "eventfulranges:paint:settings";
 let settings = {};
+
+const MAX_IMPORT_DIM = 1024; // largest imported image side, in pixels
+const MAX_IMPORT_BOXES = 20000; // largest acceptable cell count after merging
 
 let tool = "rect";
 let dragging = false;
@@ -631,19 +639,24 @@ function updateGridLabel() {
   zoomLabel.textContent = `${pct}%`;
 }
 
-function fitAll() {
+// fitBoxes centres the camera on the given boxes, reporting whether there was
+// anything to fit.
+function fitBoxes(painted) {
   const { w, h } = resizeCanvas();
-  const painted = boxes.filter((b) => b.kind !== "remove");
   const view = fitCamera(painted, w, h);
-  if (!view) {
-    notify("nothing to fit");
-    return;
-  }
+  if (!view) return false;
   cam.x = view.x;
   cam.y = view.y;
   cam.scale = clampScale(view.scale);
   updateGridLabel();
   draw();
+  return true;
+}
+
+function fitAll() {
+  if (!fitBoxes(boxes.filter((b) => b.kind !== "remove"))) {
+    notify("nothing to fit");
+  }
 }
 
 // ---------- websocket ----------
@@ -862,9 +875,8 @@ function sendCmd(cmd) {
   flushPending();
 }
 
-// applyLocalCmd folds one client command into the local view before the server
-// echoes it back, so edits render instantly.
-function applyLocalCmd(cmd) {
+// cmdToEntry folds one client command into the log-entry shape.
+function cmdToEntry(cmd) {
   const kind =
     cmd.kind === "paint" ? "add" : cmd.kind === "erase" ? "remove" : "retract";
   const entry = {
@@ -881,7 +893,13 @@ function applyLocalCmd(cmd) {
     };
   }
   if (cmd.meta) entry.meta = cmd.meta;
-  applyEntries([entry], false);
+  return entry;
+}
+
+// applyLocalCmd folds one client command into the local view before the server
+// echoes it back, so edits render instantly.
+function applyLocalCmd(cmd) {
+  applyEntries([cmdToEntry(cmd)], false);
 }
 
 // enqueue records one outgoing op that the server has not yet acknowledged.
@@ -1330,6 +1348,100 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- image import ----------
+// A PNG or JPEG is rasterized into board cells at one pixel per board unit,
+// with contiguous runs of the same colour merged into rectangles, so a flat
+// region becomes a single box. When "new canvas" is checked the board is
+// cleared first.
+async function importImage(file) {
+  if (!connected) {
+    setStatus("disconnected — reconnect to import");
+    return;
+  }
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    notify("could not read the image");
+    return;
+  }
+  if (bitmap.width > MAX_IMPORT_DIM || bitmap.height > MAX_IMPORT_DIM) {
+    notify(`image too large — max ${MAX_IMPORT_DIM} × ${MAX_IMPORT_DIM} px`);
+    bitmap.close();
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const c = canvas.getContext("2d");
+  c.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const { width, height } = canvas;
+  const imageData = c.getImageData(0, 0, width, height);
+  const cells = boxesFromRaster(imageData.data, width, height);
+  if (cells.length === 0) {
+    notify("image has no opaque pixels");
+    return;
+  }
+  if (cells.length > MAX_IMPORT_BOXES) {
+    notify(
+      `image too detailed (${cells.length} cells) — try a smaller or flatter image`,
+    );
+    return;
+  }
+
+  const cmds = [];
+  if (importImageClear.checked) {
+    const erase = clearCmd();
+    if (erase) cmds.push(erase);
+  }
+  for (const cell of cells) {
+    cmds.push({
+      id: newOpID(),
+      kind: "paint",
+      data: {
+        x0: cell.min[0],
+        y0: cell.min[1],
+        x1: cell.max[0],
+        y1: cell.max[1],
+      },
+      meta: { color: cell.color },
+    });
+  }
+
+  // Fold every command into the local view in one pass, so one materialize
+  // suffices instead of one per cell.
+  applyEntries(cmds.map(cmdToEntry), false);
+  pending.push(...cmds);
+  for (const cmd of cmds) pendingIDs.add(cmd.id);
+  savePending();
+  updateBacklog();
+  flushPending();
+
+  // The whole import is one undoable stroke.
+  undoStack.push(cmds);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack = [];
+  updateUndoRedo();
+
+  fitBoxes([{ min: [0, 0], max: [width, height] }]);
+  notify(
+    `imported image (${cells.length} cell${cells.length === 1 ? "" : "s"})`,
+  );
+}
+
+// clearCmd erases the union of everything painted so far, or null when the
+// board is already empty.
+function clearCmd() {
+  const b = bounds(boxes.filter((box) => box.kind !== "remove"));
+  if (!b) return null;
+  return {
+    id: newOpID(),
+    kind: "erase",
+    data: { x0: b.min[0], y0: b.min[1], x1: b.max[0], y1: b.max[1] },
+  };
+}
+
 async function importJSONL(input) {
   if (!connected) {
     setStatus("disconnected — reconnect to import");
@@ -1432,6 +1544,17 @@ importJsonlInput.addEventListener("change", () =>
   importJSONL(importJsonlInput),
 );
 
+importImageBtn.addEventListener("click", () => importImageInput.click());
+importImageInput.addEventListener("change", async () => {
+  const file = importImageInput.files && importImageInput.files[0];
+  importImageInput.value = "";
+  if (file) await importImage(file);
+});
+importImageClear.addEventListener("change", () => {
+  settings.importClear = importImageClear.checked;
+  saveSettings();
+});
+
 gridPlus.addEventListener("click", () => setGridOffset(gridOffset + 1));
 gridMinus.addEventListener("click", () => setGridOffset(gridOffset - 1));
 gridDefault.addEventListener("click", () => {
@@ -1481,6 +1604,7 @@ function boot() {
   settings = loadSettings();
   strokeColor = sanitizeColor(settings.color);
   strokeColorEl.value = strokeColor;
+  importImageClear.checked = settings.importClear ?? false;
   resizeCanvas();
   setTool("rect");
   updateGridLabel();

@@ -339,6 +339,94 @@ test("remembers the export settings across reloads", async ({ page }) => {
   await expect(page.locator("#exportRatio")).not.toBeChecked();
 });
 
+test("imports a PNG as merged cells", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // A 2x2 solid red PNG, generated inside the page itself.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 2;
+    c.height = 2;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 2, 2);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageInput").setInputFiles({
+    name: "solid.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+  const first = JSON.parse(content.trim().split("\n")[0]);
+  expect(first.kind).toBe("add");
+  expect(first.data.min).toEqual([0, 0]);
+  expect(first.data.max).toEqual([2, 2]);
+  expect(first.meta).toEqual({ color: "#ff0000" });
+});
+
+test("clears the board before importing when asked", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page); // paint a 2x2 block first
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#importImageClear").check();
+
+  // A 1x1 blue PNG.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#0000ff";
+    ctx.fillRect(0, 0, 1, 1);
+    return c.toDataURL("image/png");
+  });
+  await page.locator("#importImageInput").setInputFiles({
+    name: "dot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+
+  // Wait until all three ops land (the painted block, the clear, the pixel).
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const session = new URLSearchParams(location.search).get("s");
+        const raw = localStorage.getItem(`eventfulranges:paint:${session}`);
+        return raw ? JSON.parse(raw).length : 0;
+      });
+    })
+    .toBe(3);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const entries = (await readFile(await download.path(), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+  expect(entries.map((e) => e.kind)).toEqual(["add", "remove", "add"]);
+  expect(entries[1].data).toEqual({ min: [0, 0], max: [2, 2] }); // clears the old block
+  expect(entries[2].data).toEqual({ min: [0, 0], max: [1, 1] });
+  expect(entries[2].meta).toEqual({ color: "#0000ff" });
+});
+
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

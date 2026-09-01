@@ -137,7 +137,16 @@
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Z" /></svg>
               <span class="btn-text">Export</span>
             </button>
+            <button id="importImageBtn" class="zen-hidden" title="Import a PNG or JPEG as painted cells">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              <span class="btn-text">Import</span>
+            </button>
+            <label class="import-clear" title="Start with an empty canvas before importing an image">
+              <input type="checkbox" id="importImageClear" />
+              <span>new canvas</span>
+            </label>
             <input type="file" id="importJsonlInput" accept=".jsonl,application/x-ndjson,application/json" hidden />
+            <input type="file" id="importImageInput" accept="image/png,image/jpeg" hidden />
           </div>
           <div class="toolbar-group">
             <button id="zenBtn" title="Focus mode: full-screen editing" aria-pressed="false">
