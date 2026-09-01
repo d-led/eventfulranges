@@ -46,6 +46,18 @@ export function front(ops) {
   return kept;
 }
 
+// layerOnTop layers ops that are all newer than every box in the front onto
+// it: the new ops are culled among themselves, then any existing box fully
+// covered by a new op is dropped, and the survivors are appended on top. When
+// every op in fresh has a higher seq than every box in boxes, the result is
+// exactly front(boxes ++ fresh), so it is the incremental form of front.
+export function layerOnTop(boxes, fresh) {
+  const top = front(fresh);
+  const keep = boxes.filter((b) => !top.some((t) => subsumes(t, b)));
+  keep.push(...top);
+  return keep;
+}
+
 // isCoveredBy reports whether some box in the sorted, subsumption-free set
 // covers box entirely. The set is sorted by its lower corner, so once a box
 // starts beyond box's own lower corner, none of the rest can contain box.

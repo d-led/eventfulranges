@@ -469,6 +469,26 @@ test("rejects an export smaller than the minimum", async ({ page }) => {
   await expect(page.locator("#exportDialog")).toBeVisible();
 });
 
+test("rejects a raster export too large for the browser", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
+
+  await page.locator("#exportBtn").click();
+  // A square bigger than any browser canvas side must be refused up front,
+  // before allocating the raster backing store.
+  await page.locator("#exportWidth").fill("20000");
+  await page.locator("#exportHeight").fill("20000");
+  await page.locator("#exportGo").click();
+
+  await expect(page.locator("#exportError")).toBeVisible();
+  await expect(page.locator("#exportError")).toContainText("SVG");
+  await expect(page.locator("#exportDialog")).toBeVisible();
+});
+
 test("presence separates this session from all connected", async ({
   browser,
 }) => {
@@ -753,6 +773,24 @@ test("queues edits while disconnected and syncs on reconnect", async ({
   await page.locator("#reconnectBtn").click();
   await expect(page.locator("#status")).toContainText("connected");
   await expect(page.locator("#backlog")).toBeHidden();
+});
+
+test("draws speculative pixels before the server acknowledges them", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // Drop the connection: the edit can never be acknowledged, so the painted
+  // cell stays speculative. It must still be visible on the canvas, and the
+  // uncommitted backlog must show it.
+  await page.evaluate(() => window.__eventfulranges.closeSocket());
+  await expect(page.locator("#reconnectBanner")).toBeVisible();
+
+  await drawRect(page);
+  await expect.poll(() => cellPainted(page, 0, 0)).toBe(true);
+  await expect(page.locator("#backlog")).toContainText("1");
 });
 
 test("reconnect button reconnects immediately", async ({ page }) => {

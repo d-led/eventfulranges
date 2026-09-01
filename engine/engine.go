@@ -170,13 +170,14 @@ func (e *Engine) stamp(fresh []op.Op) {
 	}
 }
 
-// fold records the appended operations in the local state.
+// fold records the appended operations in the local state and marks the view
+// dirty, so it is rebuilt once when next requested rather than per operation.
 func (e *Engine) fold(ctx context.Context, fresh []op.Op) error {
 	for _, o := range fresh {
 		e.clock.Observe(o.TS)
 		e.ops[o.ID] = o
-		e.applyToView(o)
 	}
+	e.dirty = true
 	e.version += int64(len(fresh))
 	e.since += len(fresh)
 	if e.snapshotEvery > 0 && e.since >= e.snapshotEvery {
@@ -216,33 +217,10 @@ func (e *Engine) catchUp(ctx context.Context) error {
 	for _, o := range ops {
 		e.clock.Observe(o.TS)
 		e.ops[o.ID] = o
-		e.applyToView(o)
 	}
+	e.dirty = true
 	e.version = version
 	return nil
-}
-
-// applyToView folds a single operation into the cached view, segments and
-// add/remove sets.
-func (e *Engine) applyToView(o op.Op) {
-	switch e.strategy {
-	case strategy.LWW, strategy.FWW:
-		// A single op can reorder the whole priority-resolved cover, so defer
-		// the rebuild until the view is actually requested.
-		e.dirty = true
-	case strategy.AdditiveWins:
-		if o.Kind == op.KindAdd {
-			e.adds = interval.Union(e.adds, []interval.Interval{o.Interval})
-		} else {
-			e.removes = interval.Union(e.removes, []interval.Interval{o.Interval})
-		}
-		e.view = interval.Difference(e.adds, e.removes)
-	case strategy.GrowOnly:
-		if o.Kind == op.KindAdd {
-			e.adds = interval.Union(e.adds, []interval.Interval{o.Interval})
-			e.view = e.adds
-		}
-	}
 }
 
 // ensureView rebuilds the cached view when a deferred materialization is

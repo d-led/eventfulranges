@@ -1,4 +1,4 @@
-import { front } from "./boxes.js";
+import { front, layerOnTop } from "./boxes.js";
 import { boxesFromRaster } from "./raster.js";
 import {
   MIN_CELL_PX,
@@ -22,6 +22,7 @@ import {
   renderSVG,
   sanitizeColor,
   snapRect,
+  checkRasterSize,
   BACKGROUND,
 } from "./export.js";
 
@@ -86,7 +87,9 @@ const ctx = boardEl.getContext("2d");
 // ---------- state ----------
 let adds = []; // [{id, seq, min, max, color}] painted boxes, one per operation
 let removes = []; // [{id, seq, min, max}] erased boxes, one per operation
-let boxes = []; // materialized view: [{min, max}]
+let boxes = []; // materialized view: [{id, kind, min, max, color}]
+let frontSeq = -1; // highest seq already folded into boxes
+let needsRebuild = false; // a retraction removed ops, so rebuild the whole front
 let opSeq = 0; // arrival-order counter folded by materialize()
 let logEntries = []; // the full operation log, for JSONL export
 let clientID = "";
@@ -99,11 +102,14 @@ let rosterView = "connected"; // "here" (this session) or "connected" (all)
 let pending = []; // outgoing ops not yet acknowledged by the server, in order
 let pendingIDs = new Set(); // ids of pending ops, for O(1) acknowledgement
 let seen = new Set(); // ids already folded into the local view
+let paintBatch = []; // pen/eraser commands waiting for the debounced flush
+let paintBatchTimer = null;
 
 const LOG_MAX = 100; // scrolling window: at most this many rendered log items
 const LOG_DEBOUNCE_MS = 150; // coalesce a burst of ops into one summary line
 let logPending = []; // ops waiting for the debounced render
 let logTimer = null; // debounce handle
+const PAINT_BATCH_MS = 250; // flush a pen/eraser burst after this quiet window
 
 const DEFAULT_COLOR = "#e6e8ee";
 const BOARD_BACKGROUND = "#0e1015"; // the board background; an erase paints over with this
@@ -137,9 +143,12 @@ let pinch = null; // two-finger gesture: {dist, cx, cy}
 // order, later ones on top — so a big square stays one box even when smaller
 // strokes are drawn inside it, instead of being carved into strips. A remove
 // paints the background, erasing whatever lies beneath it.
-function materialize() {
-  const ops = [
+// allOps lifts the folded additions and removals into the flat op list the
+// front is built from, carrying each op's id so uncommitted ops can be marked.
+function allOps() {
+  return [
     ...adds.map((a) => ({
+      id: a.id,
       seq: a.seq,
       kind: "add",
       min: a.min,
@@ -147,13 +156,29 @@ function materialize() {
       color: a.color,
     })),
     ...removes.map((r) => ({
+      id: r.id,
       seq: r.seq,
       kind: "remove",
       min: r.min,
       max: r.max,
     })),
   ];
-  boxes = front(ops);
+}
+
+function materialize() {
+  const ops = allOps();
+  if (needsRebuild) {
+    boxes = front(ops);
+    needsRebuild = false;
+  } else {
+    // New ops always carry a higher seq than anything already folded, so the
+    // front is extended in place instead of rebuilt from scratch.
+    const fresh = ops.filter((o) => o.seq > frontSeq);
+    if (fresh.length > 0) boxes = layerOnTop(boxes, fresh);
+  }
+  for (const o of ops) {
+    if (o.seq > frontSeq) frontSeq = o.seq;
+  }
   draw();
 }
 
@@ -192,6 +217,7 @@ function applyEntries(entries, ack = true) {
   if (retracted.size > 0) {
     adds = adds.filter((a) => !retracted.has(a.id));
     removes = removes.filter((r) => !retracted.has(r.id));
+    needsRebuild = true;
   }
   adds.push(...newAdds.filter((a) => !retracted.has(a.id)));
   removes.push(...newRemoves.filter((r) => !retracted.has(r.id)));
@@ -234,6 +260,21 @@ function drawBoxes(w, h) {
     if (sx + sw < 0 || sx > w || sy + sh < 0 || sy > h) continue;
     ctx.fillStyle = b.kind === "remove" ? BOARD_BACKGROUND : b.color;
     ctx.fillRect(sx, sy, sw, sh);
+    if (pendingIDs.has(b.id)) {
+      // Speculative pixels: drawn at full strength, but the dashed amber
+      // frame marks the cell as not yet acknowledged until the server echoes
+      // the operation back.
+      ctx.strokeStyle = "#f5c542";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(
+        sx + 0.75,
+        sy + 0.75,
+        Math.max(0, sw - 1.5),
+        Math.max(0, sh - 1.5),
+      );
+      ctx.setLineDash([]);
+    }
   }
 }
 
@@ -341,32 +382,68 @@ function newOpID() {
 }
 
 function sendPaint(r) {
-  const cmd = {
-    id: newOpID(),
-    kind: "paint",
-    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
-    meta: { color: strokeColor },
-  };
+  const cmd = paintCmd(r);
   trackStroke(cmd);
   sendCmd(cmd);
 }
 
 function sendErase(r) {
-  const cmd = {
-    id: newOpID(),
-    kind: "erase",
-    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
-  };
+  const cmd = eraseCmd(r);
   trackStroke(cmd);
   sendCmd(cmd);
 }
 
+// paintCmd and eraseCmd build the command for one rectangle. The pen and the
+// eraser stamp these one cell at a time; the rectangle tools send a single one.
+function paintCmd(r) {
+  return {
+    id: newOpID(),
+    kind: "paint",
+    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
+    meta: { color: strokeColor },
+  };
+}
+
+function eraseCmd(r) {
+  return {
+    id: newOpID(),
+    kind: "erase",
+    data: { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 },
+  };
+}
+
 // brushSend stamps one cell with the active brush tool: the pen paints it and
 // the eraser erases it. Both cover exactly one grid cell, so the eraser is as
-// precise as the pen.
+// precise as the pen. Cells are queued locally and flushed in a batch, so one
+// materialize folds a whole burst instead of one per cell.
 function brushSend(r) {
-  if (tool === "eraser") sendErase(r);
-  else sendPaint(r);
+  const cmd = tool === "eraser" ? eraseCmd(r) : paintCmd(r);
+  trackStroke(cmd);
+  queuePaint(cmd);
+}
+
+// queuePaint buffers brush cells and flushes them together after a short quiet
+// window, so a fast pen sweep does not re-materialize per cell.
+function queuePaint(cmd) {
+  paintBatch.push(cmd);
+  if (paintBatchTimer === null) {
+    paintBatchTimer = setTimeout(flushPaintBatch, PAINT_BATCH_MS);
+  }
+}
+
+// flushPaintBatch folds every queued brush cell into the local view and the
+// outgoing queue in one pass.
+function flushPaintBatch() {
+  paintBatchTimer = null;
+  const cmds = paintBatch;
+  paintBatch = [];
+  if (cmds.length === 0) return;
+  applyEntries(cmds.map(cmdToEntry), false);
+  pending.push(...cmds);
+  for (const cmd of cmds) pendingIDs.add(cmd.id);
+  savePending();
+  updateBacklog();
+  flushPending();
 }
 
 // ---------- interaction ----------
@@ -398,6 +475,7 @@ function endDraw() {
   dragging = false;
   if (tool !== "pen" && tool !== "eraser") commitStroke();
   endStroke();
+  flushPaintBatch();
 }
 
 function startPan(clientX, clientY) {
@@ -786,6 +864,9 @@ function handleMessage(msg) {
 function resetLocal() {
   adds = [];
   removes = [];
+  boxes = [];
+  frontSeq = -1;
+  needsRebuild = false;
   opSeq = 0;
   logEntries = [];
   logPending = [];
@@ -794,6 +875,11 @@ function resetLocal() {
     clearTimeout(logTimer);
     logTimer = null;
   }
+  if (paintBatchTimer !== null) {
+    clearTimeout(paintBatchTimer);
+    paintBatchTimer = null;
+  }
+  paintBatch = [];
   logEl.innerHTML = "";
 }
 
@@ -1308,6 +1394,9 @@ async function exportImage(format, width, height) {
     return;
   }
 
+  const raster = checkRasterSize(width, height);
+  if (!raster.ok) throw new Error(raster.error);
+
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -1346,7 +1435,11 @@ async function exportImage(format, width, height) {
       jpeg ? 0.92 : undefined,
     ),
   );
-  if (!blob) throw new Error("could not encode the image");
+  if (!blob) {
+    throw new Error(
+      "this browser could not encode an image this large — try SVG or a smaller size",
+    );
+  }
   downloadBlob(blob, jpeg ? "board.jpg" : "board.png");
 }
 

@@ -12,6 +12,8 @@ import {
   snapRect,
   sanitizeColor,
   renderSVG,
+  checkRasterSize,
+  maxRasterSide,
 } from "./export.js";
 
 const box = (x0, y0, x1, y1) => ({ min: [x0, y0], max: [x1, y1] });
@@ -48,6 +50,26 @@ describe("parseDimensions", () => {
   it("rejects fractional or non-numeric sizes", () => {
     expect(parseDimensions("800.5", "600").ok).toBe(false);
     expect(parseDimensions("wide", "600").ok).toBe(false);
+  });
+});
+
+describe("checkRasterSize", () => {
+  it("accepts sizes inside the browser's canvas limit", () => {
+    expect(checkRasterSize(1000, 1000, 16384)).toEqual({ ok: true });
+    expect(checkRasterSize(16384, 16384, 16384)).toEqual({ ok: true });
+  });
+
+  it("rejects sizes whose side exceeds the limit", () => {
+    const res = checkRasterSize(20000, 20000, 16384);
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("16384");
+    expect(res.error).toContain("SVG");
+  });
+
+  it("falls back to MAX_WIDTH without a document", () => {
+    expect(maxRasterSide()).toBe(MAX_WIDTH);
+    expect(checkRasterSize(MAX_WIDTH, MAX_HEIGHT)).toEqual({ ok: true });
+    expect(checkRasterSize(MAX_WIDTH + 1, MAX_HEIGHT).ok).toBe(false);
   });
 });
 

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { normalize, union, difference, subtractAll, front } from "./boxes.js";
+import {
+  normalize,
+  union,
+  difference,
+  subtractAll,
+  front,
+  layerOnTop,
+} from "./boxes.js";
 
 const box = (x0, y0, x1, y1) => ({ min: [x0, y0], max: [x1, y1] });
 const covers = (boxes, x, y) =>
@@ -92,6 +99,27 @@ describe("front", () => {
   it("culls a layer that is fully erased", () => {
     expect(front([add(0, 0, 0, 10, 10), remove(1, 0, 0, 10, 10)])).toEqual([
       remove(1, 0, 0, 10, 10),
+    ]);
+  });
+
+  it("layers new ops on top without a full rebuild", () => {
+    const base = front([add(0, 0, 0, 10, 10, "#111111")]);
+    expect(layerOnTop(base, [add(1, 4, 4, 6, 6, "#222222")])).toEqual([
+      add(0, 0, 0, 10, 10, "#111111"),
+      add(1, 4, 4, 6, 6, "#222222"),
+    ]);
+  });
+
+  it("culls an existing box that a new op fully covers", () => {
+    const base = front([add(0, 4, 4, 6, 6, "#111111")]);
+    expect(layerOnTop(base, [add(1, 0, 0, 10, 10, "#222222")])).toEqual([
+      add(1, 0, 0, 10, 10, "#222222"),
+    ]);
+  });
+
+  it("culls a new op that a newer new op fully covers", () => {
+    expect(layerOnTop([], [add(0, 0, 0, 2, 2), add(1, 0, 0, 10, 10)])).toEqual([
+      add(1, 0, 0, 10, 10),
     ]);
   });
 });

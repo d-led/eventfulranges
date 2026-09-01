@@ -56,15 +56,20 @@ func Difference(a, b []Interval) []Interval {
 	if len(a) == 0 || len(b) == 0 {
 		return Normalize(a)
 	}
-	out := append([]Interval(nil), a...)
-	for _, cut := range b {
-		next := make([]Interval, 0, len(out)+1)
-		for _, iv := range out {
-			next = append(next, iv.Subtract(cut)...)
+	a = Normalize(a)
+	b = Normalize(b)
+	n := len(a)
+	ivs := append(append([]Interval(nil), a...), b...)
+	covers := Sweep(ivs, func(i, j int) bool {
+		return i >= n && j < n
+	})
+	out := make([]Interval, 0, len(covers))
+	for _, c := range covers {
+		if c.Index < n {
+			out = append(out, c.Interval)
 		}
-		out = next
 	}
-	return Normalize(out)
+	return out
 }
 
 // Contains reports whether x belongs to any interval of the set.

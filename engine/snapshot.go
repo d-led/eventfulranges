@@ -65,19 +65,11 @@ func (e *Engine) restore(snap *Snapshot, delta []op.Op) {
 			e.segments = strategy.CombineSegments(e.strategy, e.segments, strategy.Segments(e.strategy, []op.Op{o}))
 		}
 		e.view = strategy.ToIntervals(e.segments)
-	case strategy.AdditiveWins:
-		e.adds = snap.Adds
-		e.removes = snap.Removes
-		e.view = interval.Difference(e.adds, e.removes)
-		for _, o := range delta {
-			e.applyToView(o)
-		}
-	case strategy.GrowOnly:
-		e.adds = snap.Intervals
-		e.view = e.adds
-		for _, o := range delta {
-			e.applyToView(o)
-		}
+	case strategy.AdditiveWins, strategy.GrowOnly:
+		// The snapshot's full op history is already folded back into e.ops, so
+		// a lazy rebuild reproduces the view exactly; there is no need to
+		// re-difference the delta here.
+		e.dirty = true
 	}
 }
 

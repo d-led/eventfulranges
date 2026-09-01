@@ -5,7 +5,6 @@ package strategy
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/d-led/eventfulranges/interval"
 	"github.com/d-led/eventfulranges/op"
@@ -145,21 +144,23 @@ func IntervalsOf(ops []op.Op, kind op.Kind) []interval.Interval {
 }
 
 // normalize reduces overlapping segments to disjoint winner-annotated pieces
-// by applying operations in priority order: higher-priority operations decide
-// first and lower-priority ones fill the remaining gaps. Every decided region
-// is kept with its winning operation (Add or Remove).
+// by sweeping the doubled line: every point is decided by the best-priority
+// segment covering it, so each maximal run becomes one piece.
 func normalize(s Strategy, segs []Segment) []Segment {
-	sort.Slice(segs, func(i, j int) bool { return better(s, segs[i].Winner, segs[j].Winner) })
-	var claimed []interval.Interval
-	out := make([]Segment, 0, len(segs))
-	for _, seg := range segs {
-		free := interval.Difference([]interval.Interval{seg.Interval}, claimed)
-		claimed = interval.Union(claimed, []interval.Interval{seg.Interval})
-		for _, piece := range free {
-			out = append(out, Segment{Interval: piece, Winner: seg.Winner})
-		}
+	if len(segs) == 0 {
+		return nil
 	}
-	sort.Slice(out, func(i, j int) bool { return interval.Less(out[i].Interval, out[j].Interval) })
+	ivs := make([]interval.Interval, len(segs))
+	for i, seg := range segs {
+		ivs[i] = seg.Interval
+	}
+	covers := interval.Sweep(ivs, func(i, j int) bool {
+		return better(s, segs[i].Winner, segs[j].Winner)
+	})
+	out := make([]Segment, 0, len(covers))
+	for _, c := range covers {
+		out = append(out, Segment{Interval: c.Interval, Winner: segs[c.Index].Winner})
+	}
 	return out
 }
 
