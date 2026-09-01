@@ -127,6 +127,16 @@ func (e *Engine) Materialize() []space.Box {
 	return append([]space.Box(nil), e.view...)
 }
 
+// Layers returns the culled, layered front of the known operations under
+// last-write-wins priority, in bottom-to-top paint order. It is the
+// painter's-algorithm counterpart of Materialize: boxes may overlap, so a
+// consumer paints them in order instead of treating them as a cover.
+func (e *Engine) Layers() []strategy.Layer {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return strategy.Layers(e.opsList())
+}
+
 // Contains reports whether the point belongs to the materialized set.
 func (e *Engine) Contains(p []float64) bool {
 	e.mu.Lock()

@@ -54,6 +54,25 @@ func TestOpenBoxStore(t *testing.T) {
 	require.Len(t, bs.Boxes(), 2)
 }
 
+func TestBoxSetLayers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	bs, err := eventfulranges.OpenBoxStore(ctx, memory.New(), strategy.LWW,
+		eventfulranges.WithBoxClock(clock.NewLamport()))
+	require.NoError(t, err)
+
+	_, err = bs.Add(ctx, []float64{0, 0}, []float64{10, 10})
+	require.NoError(t, err)
+	_, err = bs.Add(ctx, []float64{4, 4}, []float64{6, 6})
+	require.NoError(t, err)
+
+	layers := bs.Layers()
+	require.Equal(t, []strategy.Layer{
+		{Box: space.NewBox([]float64{0, 0}, []float64{10, 10}), Kind: sop.KindAdd},
+		{Box: space.NewBox([]float64{4, 4}, []float64{6, 6}), Kind: sop.KindAdd},
+	}, layers, "the big square stays whole and the pixel layers on top")
+}
+
 func TestBoxSetRegionQueries(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

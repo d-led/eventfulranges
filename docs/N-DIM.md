@@ -57,3 +57,12 @@ uniquely decomposable (partially overlapping boxes are kept, not subdivided),
 the engine materializes `LWW`/`FWW` from the full operation list — never
 incrementally — so two replicas that have seen the same operations always
 yield the identical cover.
+
+For rendering, `space/strategy.Layers` (exposed as `BoxSet.Layers`) is the
+painter's-algorithm counterpart of the cover: it returns the effective
+operations as an ordered, culled front of overlapping boxes (`Layer{Box,
+Kind}`) in bottom-to-top paint order. Each box stays whole — a small stroke
+inside a big box layers on top instead of carving the big box into strips —
+and any box fully covered by a higher layer is dropped. It is a paint recipe,
+not a set cover, so it backs rendering rather than the set queries
+(`Contains`, `Overlaps`, `Crossed`, `Traverse`).

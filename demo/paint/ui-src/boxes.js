@@ -23,6 +23,26 @@ export function difference(a, b) {
   return normalize(a).flatMap((p) => subtractAll(p, normalize(b)));
 }
 
+// front returns the culled, layered front of the operations: the ops sorted
+// bottom-to-top by seq, minus any op whose box is fully covered by a higher
+// op. The kept ops paint in order (painter's algorithm), so a later stroke
+// layers over an earlier one instead of carving it into strips; a remove
+// erases by painting the background, exactly like an add layered over an add.
+export function front(ops) {
+  const sorted = [...ops].sort((a, b) => a.seq - b.seq);
+  let covered = [];
+  const kept = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const op = sorted[i];
+    const box = { min: op.min, max: op.max };
+    const visible = subtractAll(box, covered);
+    covered = union(covered, [box]);
+    if (visible.length === 0) continue; // fully covered: cull
+    kept.unshift(op);
+  }
+  return kept;
+}
+
 // subtractAll carves every box in list out of p, returning the surviving
 // pieces. The caller can pre-normalize list once and reuse it across many
 // boxes, which keeps per-stroke materialization from re-normalizing the whole

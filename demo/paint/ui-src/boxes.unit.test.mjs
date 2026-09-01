@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalize, union, difference, subtractAll } from "./boxes.js";
+import { normalize, union, difference, subtractAll, front } from "./boxes.js";
 
 const box = (x0, y0, x1, y1) => ({ min: [x0, y0], max: [x1, y1] });
 const covers = (boxes, x, y) =>
@@ -46,5 +46,52 @@ describe("boxes", () => {
     expect(covers(pieces, 1.5, 1.5)).toBe(false);
     expect(covers(pieces, 2.5, 2.5)).toBe(false);
     expect(covers(pieces, 3.5, 3.5)).toBe(true);
+  });
+});
+
+describe("front", () => {
+  const add = (seq, x0, y0, x1, y1, color = "#ffffff") => ({
+    seq,
+    kind: "add",
+    min: [x0, y0],
+    max: [x1, y1],
+    color,
+  });
+  const remove = (seq, x0, y0, x1, y1) => ({
+    seq,
+    kind: "remove",
+    min: [x0, y0],
+    max: [x1, y1],
+  });
+
+  it("layers a small stroke on a big square without carving it", () => {
+    expect(
+      front([add(0, 0, 0, 10, 10, "#111111"), add(1, 4, 4, 6, 6, "#222222")]),
+    ).toEqual([add(0, 0, 0, 10, 10, "#111111"), add(1, 4, 4, 6, 6, "#222222")]);
+  });
+
+  it("culls layers fully covered by a later one", () => {
+    expect(
+      front([add(0, 0, 0, 2, 2), add(1, 4, 4, 6, 6), add(2, 0, 0, 10, 10)]),
+    ).toEqual([add(2, 0, 0, 10, 10)]);
+  });
+
+  it("keeps an erase that cuts into a lower layer", () => {
+    expect(front([add(0, 0, 0, 10, 10), remove(1, 4, 4, 6, 6)])).toEqual([
+      add(0, 0, 0, 10, 10),
+      remove(1, 4, 4, 6, 6),
+    ]);
+  });
+
+  it("culls an erase that a higher add repaints over", () => {
+    expect(
+      front([add(0, 0, 0, 10, 10), remove(1, 4, 4, 6, 6), add(2, 4, 4, 6, 6)]),
+    ).toEqual([add(0, 0, 0, 10, 10), add(2, 4, 4, 6, 6)]);
+  });
+
+  it("culls a layer that is fully erased", () => {
+    expect(front([add(0, 0, 0, 10, 10), remove(1, 0, 0, 10, 10)])).toEqual([
+      remove(1, 0, 0, 10, 10),
+    ]);
   });
 });

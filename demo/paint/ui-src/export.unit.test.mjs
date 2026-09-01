@@ -105,6 +105,21 @@ describe("fitExport", () => {
     expect(view.oy).toBe(25);
   });
 
+  it("frames the painted layers and ignores far-away erases", () => {
+    const view = fitExport(
+      [
+        { kind: "add", min: [0, 0], max: [10, 10], color: "#112233" },
+        { kind: "remove", min: [100, 100], max: [110, 110] },
+      ],
+      100,
+      100,
+    );
+    expect(view.ok).toBe(true);
+    expect(view.scale).toBe(10);
+    expect(view.ox).toBe(0);
+    expect(view.oy).toBe(0);
+  });
+
   it("reports an empty board", () => {
     expect(fitExport([], 100, 100).ok).toBe(false);
   });
@@ -159,6 +174,23 @@ describe("renderSVG", () => {
     );
     expect(svg).not.toContain("<script");
     expect(svg).toContain('fill="#e6e8ee"');
+  });
+
+  it("paints layers in order over an opaque background", () => {
+    const view = fitExport([box(0, 0, 10, 10)], 100, 100);
+    const svg = renderSVG(
+      [
+        { kind: "add", min: [0, 0], max: [10, 10], color: "#112233" },
+        { kind: "remove", min: [4, 4], max: [6, 6] },
+      ],
+      100,
+      100,
+      view,
+    );
+    const fills = [...svg.matchAll(/<rect [^>]*fill="([^"]+)"[^>]*\/>/g)].map(
+      (m) => m[1],
+    );
+    expect(fills).toEqual(["#0e1015", "#112233", "#0e1015"]);
   });
 });
 

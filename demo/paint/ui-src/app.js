@@ -1,4 +1,4 @@
-import { subtractAll } from "./boxes.js";
+import { front } from "./boxes.js";
 import {
   MIN_CELL_PX,
   MIN_LEVEL,
@@ -100,6 +100,7 @@ let logPending = []; // ops waiting for the debounced render
 let logTimer = null; // debounce handle
 
 const DEFAULT_COLOR = "#e6e8ee";
+const BOARD_BACKGROUND = "#0e1015"; // the board background; an erase paints over with this
 const INITIAL_SCALE = 24; // pixels per board unit at 100% zoom, matching MIN_CELL_PX
 const cam = { x: 0, y: 0, scale: INITIAL_SCALE }; // board units at the canvas centre, px per unit
 
@@ -116,8 +117,10 @@ let pinch = null; // two-finger gesture: {dist, cx, cy}
 
 // ---------- materialization ----------
 // The browser is a replica: it folds the operation log with last-write-wins
-// semantics — later operations override earlier ones, so a stroke paints over
-// an earlier erasure and an erasure clears an earlier stroke.
+// semantics. The view is a culled, layered front — each kept box paints in
+// order, later ones on top — so a big square stays one box even when smaller
+// strokes are drawn inside it, instead of being carved into strips. A remove
+// paints the background, erasing whatever lies beneath it.
 function materialize() {
   const ops = [
     ...adds.map((a) => ({
@@ -133,19 +136,8 @@ function materialize() {
       min: r.min,
       max: r.max,
     })),
-  ].sort((x, y) => x.seq - y.seq);
-
-  let pieces = [];
-  for (const op of ops) {
-    const opBox = { min: op.min, max: op.max };
-    const next = [];
-    for (const p of pieces) next.push(...subtractAll(p, [opBox]));
-    if (op.kind === "add") {
-      next.push({ min: op.min, max: op.max, color: op.color });
-    }
-    pieces = next;
-  }
-  boxes = pieces;
+  ];
+  boxes = front(ops);
   draw();
 }
 
@@ -209,7 +201,7 @@ function resizeCanvas() {
 
 function draw() {
   const { w, h } = resizeCanvas();
-  ctx.fillStyle = "#0e1015";
+  ctx.fillStyle = BOARD_BACKGROUND;
   ctx.fillRect(0, 0, w, h);
   drawBoxes(w, h);
   drawGrid(w, h);
@@ -224,7 +216,7 @@ function drawBoxes(w, h) {
     const sw = (b.max[0] - b.min[0]) * px;
     const sh = (b.max[1] - b.min[1]) * px;
     if (sx + sw < 0 || sx > w || sy + sh < 0 || sy > h) continue;
-    ctx.fillStyle = b.color;
+    ctx.fillStyle = b.kind === "remove" ? BOARD_BACKGROUND : b.color;
     ctx.fillRect(sx, sy, sw, sh);
   }
 }
@@ -634,7 +626,8 @@ function updateGridLabel() {
 
 function fitAll() {
   const { w, h } = resizeCanvas();
-  const view = fitCamera(boxes, w, h);
+  const painted = boxes.filter((b) => b.kind !== "remove");
+  const view = fitCamera(painted, w, h);
   if (!view) {
     notify("nothing to fit");
     return;
@@ -1179,7 +1172,7 @@ function downloadJSONL() {
 // drawing is fit with a "contain" transform — never stretched or clipped —
 // and the grid is never drawn, so the file carries only the painted cells.
 function openExportDialog() {
-  if (boxes.length === 0) {
+  if (!boxes.some((b) => b.kind !== "remove")) {
     notify("nothing to export — draw something first");
     return;
   }
@@ -1259,7 +1252,7 @@ async function exportImage(format, width, height) {
   c.fillRect(0, 0, width, height);
   for (const b of boxes) {
     const r = projectBox(b, view);
-    c.fillStyle = sanitizeColor(b.color);
+    c.fillStyle = b.kind === "remove" ? BACKGROUND : sanitizeColor(b.color);
     c.fillRect(r.x, r.y, r.w, r.h);
   }
   const jpeg = format === "jpeg";

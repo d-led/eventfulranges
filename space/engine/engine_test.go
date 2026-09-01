@@ -25,6 +25,21 @@ func TestOpenEmpty(t *testing.T) {
 	require.Empty(t, e.Ops())
 }
 
+func TestLayers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	e, err := engine.Open(ctx, memory.New(), strategy.LWW)
+	require.NoError(t, err)
+
+	require.NoError(t, e.Apply(ctx, op.Op{ID: "a", Kind: op.KindAdd, TS: 1, Box: box(0, 0, 10, 10)}))
+	require.NoError(t, e.Apply(ctx, op.Op{ID: "b", Kind: op.KindAdd, TS: 2, Box: box(4, 4, 6, 6)}))
+
+	require.Equal(t, []strategy.Layer{
+		{Box: box(0, 0, 10, 10), Kind: op.KindAdd},
+		{Box: box(4, 4, 6, 6), Kind: op.KindAdd},
+	}, e.Layers(), "the big square stays whole and the pixel layers on top")
+}
+
 func TestAdditiveScenario(t *testing.T) {
 	t.Parallel()
 	e, err := engine.Open(context.Background(), memory.New(), strategy.AdditiveWins)

@@ -136,6 +136,15 @@ func (b *BoxSet) Boxes() []space.Box {
 	return b.engine.Materialize()
 }
 
+// Layers returns the culled, layered front of the known operations under
+// last-write-wins priority, in bottom-to-top paint order. It is the
+// painter's-algorithm view: a later stroke layers over an earlier one instead
+// of carving it into strips, so a big box stays whole even when smaller
+// strokes land inside it. See space/strategy.Layers.
+func (b *BoxSet) Layers() []sstrategy.Layer {
+	return b.engine.Layers()
+}
+
 // Contains reports whether the point belongs to the materialized set.
 func (b *BoxSet) Contains(p []float64) bool {
 	return b.engine.Contains(p)

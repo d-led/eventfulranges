@@ -100,14 +100,18 @@ export function sanitizeColor(color, fallback = DEFAULT_COLOR) {
   return typeof color === "string" && COLOR_RE.test(color) ? color : fallback;
 }
 
-// renderSVG serializes the board as one <rect> per painted piece. No grid and
-// no background rect: the SVG is transparent wherever nothing is painted.
+// renderSVG serializes the layered front as one <rect> per layer, painted in
+// order over an opaque board background. Removes erase by painting that same
+// background, so the SVG matches the board exactly; the grid is never drawn.
 export function renderSVG(boxes, width, height, view) {
-  const rects = [];
+  const rects = [
+    `<rect x="0" y="0" width="${width}" height="${height}" fill="${BACKGROUND}"/>`,
+  ];
   for (const b of boxes) {
     const r = projectBox(b, view);
+    const fill = b.kind === "remove" ? BACKGROUND : sanitizeColor(b.color);
     rects.push(
-      `<rect x="${fmt(r.x)}" y="${fmt(r.y)}" width="${fmt(r.w)}" height="${fmt(r.h)}" fill="${sanitizeColor(b.color)}"/>`,
+      `<rect x="${fmt(r.x)}" y="${fmt(r.y)}" width="${fmt(r.w)}" height="${fmt(r.h)}" fill="${fill}"/>`,
     );
   }
   return (
@@ -117,10 +121,12 @@ export function renderSVG(boxes, width, height, view) {
   );
 }
 
-// boundsOf returns the drawing's bounding box — origin plus width and height —
-// or null when the board is empty or its bounds are degenerate.
+// boundsOf returns the painted drawing's bounding box — origin plus width and
+// height — or null when nothing is painted or the bounds are degenerate.
+// Erases (background layers) carry no paint, so they never widen the frame.
 function boundsOf(boxes) {
-  const b = bounds(boxes);
+  const painted = boxes.filter((b) => b.kind !== "remove");
+  const b = bounds(painted);
   if (!b) return null;
   const bw = b.max[0] - b.min[0];
   const bh = b.max[1] - b.min[1];

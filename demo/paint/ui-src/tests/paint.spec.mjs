@@ -94,6 +94,60 @@ test("exports the board as an SVG without the grid", async ({ page }) => {
   expect(content).not.toContain("<line");
 });
 
+test("exports layered strokes without carving the base square", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#importJsonlInput").setInputFiles({
+    name: "layers.jsonl",
+    mimeType: "application/x-ndjson",
+    buffer: Buffer.from(
+      JSON.stringify({
+        kind: "add",
+        data: { min: [0, 0], max: [10, 10] },
+        meta: { color: "#111111" },
+      }) +
+        "\n" +
+        JSON.stringify({
+          kind: "add",
+          data: { min: [4, 4], max: [6, 6] },
+          meta: { color: "#222222" },
+        }) +
+        "\n",
+    ),
+  });
+
+  // Wait until both strokes are folded into the local view (the reserve log
+  // mirrors logEntries, so its length is a deterministic readiness signal even
+  // when the activity log coalesces the burst into one summary line).
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const session = new URLSearchParams(location.search).get("s");
+        const raw = localStorage.getItem(`eventfulranges:paint:${session}`);
+        return raw ? JSON.parse(raw).length : 0;
+      });
+    })
+    .toBe(2);
+
+  await page.locator("#exportBtn").click();
+  await page.locator("#exportFormat").selectOption("svg");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#exportGo").click(),
+  ]);
+
+  const content = await readFile(await download.path(), "utf8");
+  // One background rect, the whole base square, and the one pixel on top:
+  // the square is layered, never carved into strips.
+  const rects = content.match(/<rect /g) ?? [];
+  expect(rects.length).toBe(3);
+});
+
 test("exports the board as a PNG", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);
