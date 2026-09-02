@@ -937,6 +937,40 @@ test("places an import at the visible canvas on a hi-dpi screen", async ({
   expect(first.data.min[1]).toBe(Math.floor(-ch / 48));
 });
 
+test("shows the image limit for the chosen import mode", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#importImageBtn").click();
+  // Default (editable) mode is bounded by pixel dimensions.
+  await expect(page.locator("#importHint")).toContainText("1024 × 1024");
+  await page.locator("#importFrozen").check();
+  // Frozen backgrounds embed the original bytes, so the limit is by size.
+  await expect(page.locator("#importHint")).toContainText("1 MB");
+});
+
+test("rejects a frozen import over the per-image byte limit", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importFrozen").check();
+  // Over a megabyte of bytes: the frozen path checks size before decoding.
+  await page.locator("#importFileInput").setInputFiles({
+    name: "huge.png",
+    mimeType: "image/png",
+    buffer: Buffer.alloc(1024 * 1024 + 1, 7),
+  });
+  await page.locator("#importGo").click();
+  await expect(page.locator("#importError")).toBeVisible();
+  await expect(page.locator("#importError")).toContainText("1 MB");
+  await expect(page.locator("#importDialog")).toBeVisible(); // stays open
+});
+
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

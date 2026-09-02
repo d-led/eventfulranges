@@ -95,6 +95,7 @@ const importFileInput = $("importFileInput");
 const importPixelSize = $("importPixelSize");
 const importClear = $("importClear");
 const importFrozen = $("importFrozen");
+const importHint = $("importHint");
 const importError = $("importError");
 const importCancel = $("importCancel");
 const importGo = $("importGo");
@@ -146,6 +147,7 @@ let settings = {};
 const MAX_IMPORT_BYTES = 100 * 1024 * 1024; // largest accepted file: the first protection
 const MAX_IMPORT_DIM = 1024; // largest imported image side, in pixels
 const MAX_IMPORT_BOXES = 20_000; // largest accepted cell count after merging
+const MAX_FROZEN_BYTES = 1 * 1024 * 1024; // largest embedded (frozen) image: its bytes travel in the log
 
 let tool = "rect";
 let dragging = false;
@@ -1705,9 +1707,9 @@ function rasterPixels(bitmap, width, height) {
 async function importImage(file, pixelSize, clear, frozen) {
   if (!connected) throw new Error("disconnected — reconnect to import");
   if (frozen) {
-    if (file.size > MAX_IMPORT_BYTES) {
+    if (file.size > MAX_FROZEN_BYTES) {
       throw new Error(
-        `file too large — max ${MAX_IMPORT_BYTES / 1024 / 1024} MB`,
+        `background image too large — max ${MAX_FROZEN_BYTES / 1024 / 1024} MB`,
       );
     }
     const dataUrl = await readAsDataURL(file);
@@ -1882,6 +1884,7 @@ function openImportDialog() {
   )
     ? settings.importPixelSize
     : "1:1";
+  syncImportHint();
   showImportError(null);
   if (!importDialog.open) importDialog.showModal();
 }
@@ -1894,6 +1897,15 @@ function closeImportDialog() {
 function showImportError(message) {
   importError.textContent = message ?? "";
   importError.hidden = !message;
+}
+
+// syncImportHint states the limit that applies to the chosen import mode: a
+// frozen background embeds the original bytes, so it is capped by size; the
+// editable mode rasterizes to cells, so it is capped by pixel dimensions.
+function syncImportHint() {
+  importHint.textContent = importFrozen.checked
+    ? `background image — up to ${MAX_FROZEN_BYTES / 1024 / 1024} MB each`
+    : `painted image — up to ${MAX_IMPORT_DIM} × ${MAX_IMPORT_DIM} px, converted to cells`;
 }
 
 async function submitImport() {
@@ -2032,6 +2044,7 @@ importJsonlInput.addEventListener("change", () =>
 );
 
 importImageBtn.addEventListener("click", openImportDialog);
+importFrozen.addEventListener("change", syncImportHint);
 importCancel.addEventListener("click", closeImportDialog);
 importForm.addEventListener("submit", (e) => {
   e.preventDefault();
