@@ -208,6 +208,39 @@ test('partition compaction splits overlaps into disjoint boxes', async ({ page }
   }).toPass({ timeout: 10_000 });
 });
 
+test('partition + merge combines after splitting', async ({ page }) => {
+  await page.goto('/ui/?dims=2&compact=partition-merge');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  // Two corner-overlapping boxes split, then rejoin, into three rectangles.
+  await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
+  await page.locator('#send').click();
+
+  await expect(async () => {
+    const lines = (await page.locator('#result').inputValue()).trim().split('\n');
+    expect(lines.filter(Boolean)).toHaveLength(3);
+  }).toPass({ timeout: 10_000 });
+});
+
+test('remembers the new-session selections across reloads', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#newSession').click();
+  await page.locator('#dims').selectOption('4');
+  await page.locator('#compact').selectOption('partition-merge');
+  await page.locator('#startSession').click();
+  await expect(page.locator('#slice')).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator('#status')).toContainText('connected');
+  await page.locator('#newSession').click();
+  await expect(page.locator('#dims')).toHaveValue('4');
+  await expect(page.locator('#compact')).toHaveValue('partition-merge');
+});
+
 test('fit view frames material far from the origin', async ({ page }) => {
   await page.goto('/ui/?dims=2');
   await page.waitForURL(/[?&]s=/);

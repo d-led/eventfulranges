@@ -88,6 +88,8 @@ func newHubMode(mode string) *hub {
 		opts = append(opts, eventfulranges.WithBoxCanonicalizer(space.MergeAdjacent))
 	case compactPartition:
 		opts = append(opts, eventfulranges.WithBoxCanonicalizer(Partition))
+	case compactPartitionMerge:
+		opts = append(opts, eventfulranges.WithBoxCanonicalizer(space.Chain(Partition, space.MergeAdjacent)))
 	default:
 		mode = compactCanonical
 	}
@@ -120,16 +122,17 @@ const maxDims = 4
 // view so the client can describe, in words, what the active strategy does to
 // the materialized boxes.
 const (
-	compactCanonical = "canonical" // keep every materialized box as-is
-	compactMerge     = "merge"     // join touching boxes into larger ones
-	compactPartition = "partition" // split overlaps so no two boxes share a point
+	compactCanonical      = "canonical"       // keep every materialized box as-is
+	compactMerge          = "merge"           // join touching boxes into larger ones
+	compactPartition      = "partition"       // split overlaps so no two boxes share a point
+	compactPartitionMerge = "partition-merge" // split overlaps, then join touching boxes
 )
 
 // compactMode maps a ?compact= query value onto one of the named modes,
 // defaulting to the canonical cover for anything unrecognized.
 func compactMode(v string) string {
 	switch v {
-	case compactMerge, compactPartition:
+	case compactMerge, compactPartition, compactPartitionMerge:
 		return v
 	default:
 		return compactCanonical

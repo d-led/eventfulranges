@@ -83,6 +83,31 @@ let clients = 0; // viewers of this session
 let total = 0;   // viewers connected across all sessions
 let sessionOps = []; // the full operation log, for the local reserve copy
 
+// ---------- settings ----------
+// The dimension and compaction chosen for the next session are remembered in
+// localStorage, so a reload keeps them (like the paint demo's preferences).
+// Storage may be unavailable (private mode) or full; the choices then survive
+// only for this page load.
+const SETTINGS_KEY = 'eventfulranges:web:settings';
+const settings = loadSettings();
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // best effort: the in-memory choices still hold for this page load
+  }
+}
+
 function resize() {
   const w = canvasHost.clientWidth;
   const h = canvasHost.clientHeight;
@@ -423,6 +448,7 @@ const COMPACTION_LABELS = {
   canonical: 'Compaction: canonical — every box is kept exactly as materialized.',
   merge: 'Compaction: merge adjacent — touching boxes are joined into larger ones.',
   partition: 'Compaction: partition — overlaps are split so each point appears in exactly one rectangle.',
+  'partition-merge': 'Compaction: partition + merge — overlaps are split, then touching boxes are joined (disjoint and compact).',
 };
 
 function setCompaction(mode) {
@@ -462,7 +488,6 @@ function applyState(state) {
   const dims = state.dims;
   if (dims > 0 && dims !== currentDims) {
     currentDims = dims;
-    dimsSel.value = String(Math.min(dims, 4));
     sliceEl.hidden = dims !== 4;
     opsEl.value = exampleFor(dims);
     setViewMode(dims);
@@ -650,6 +675,16 @@ cancelSessionBtn.addEventListener('click', () => {
   modal.hidden = true;
 });
 
+// Remember the next-session choices so a reload keeps them.
+dimsSel.addEventListener('change', () => {
+  settings.dims = Number(dimsSel.value);
+  saveSettings();
+});
+compactSel.addEventListener('change', () => {
+  settings.compact = compactSel.value;
+  saveSettings();
+});
+
 startSessionBtn.addEventListener('click', () => {
   const dims = Number(dimsSel.value);
   const compact = compactSel.value;
@@ -689,6 +724,8 @@ copyLinkBtn.addEventListener('click', async () => {
 reconnectBtn.addEventListener('click', () => engine.reconnect());
 
 // ---------- boot ----------
+if (settings.dims >= 1 && settings.dims <= 4) dimsSel.value = String(settings.dims);
+if (['merge', 'partition', 'partition-merge'].includes(settings.compact)) compactSel.value = settings.compact;
 resize();
 wVal.textContent = sliceW.toFixed(2);
 opsEl.value = exampleFor(3);

@@ -79,6 +79,28 @@ func TestHubPartitionModeReturnsDisjointBoxes(t *testing.T) {
 	requireDisjoint(t, v.Boxes)
 }
 
+func TestPartitionMergeCombinesAfterSplitting(t *testing.T) {
+	t.Parallel()
+	in := []space.Box{box2d(0, 0, 2, 2), box2d(1, 1, 3, 3)}
+	combined := space.Chain(Partition, space.MergeAdjacent)(in)
+	require.Len(t, combined, 3, "split-then-merge collapses the L into three rectangles")
+	requireDisjoint(t, combined)
+	requireSameCoverage(t, in, combined)
+}
+
+func TestHubPartitionMergeMode(t *testing.T) {
+	t.Parallel()
+	h := newHubMode(compactPartitionMerge)
+	_, err := h.apply(opAdd, []float64{0, 0}, []float64{2, 2})
+	require.NoError(t, err)
+	_, err = h.apply(opAdd, []float64{1, 1}, []float64{3, 3})
+	require.NoError(t, err)
+	v := h.snapshot()
+	require.Equal(t, compactPartitionMerge, v.Compact)
+	require.Len(t, v.Boxes, 3)
+	requireDisjoint(t, v.Boxes)
+}
+
 // requireDisjoint asserts every box is valid and no two boxes share a point.
 func requireDisjoint(t *testing.T, boxes []space.Box) {
 	t.Helper()
