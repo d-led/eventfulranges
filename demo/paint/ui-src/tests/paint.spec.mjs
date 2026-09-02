@@ -36,6 +36,7 @@ test("downloads the operation log as JSONL", async ({ page }) => {
     page.waitForEvent("download"),
     page.locator("#downloadJsonl").click(),
   ]);
+  expect(download.suggestedFilename()).toMatch(/^board-\d{8}-\d{6}\.infj$/);
 
   const content = await readFile(await download.path(), "utf8");
   const lines = content.trim().split("\n");
@@ -63,7 +64,7 @@ test("one-shot feedback appears as a toast and fades away", async ({
   await download.path(); // consume the download
 
   await expect(page.locator("#toast")).toHaveClass(/show/);
-  await expect(page.locator("#toast")).toContainText("downloaded board.jsonl");
+  await expect(page.locator("#toast")).toContainText("downloaded board");
 
   // The toast dismisses itself without any further interaction.
   await expect(page.locator("#toast")).not.toHaveClass(/show/, {
@@ -86,7 +87,7 @@ test("exports the board as an SVG without the grid", async ({ page }) => {
     page.waitForEvent("download"),
     page.locator("#exportGo").click(),
   ]);
-  expect(download.suggestedFilename()).toBe("board.svg");
+  expect(download.suggestedFilename()).toMatch(/^board-\d{8}-\d{6}\.svg$/);
 
   const content = await readFile(await download.path(), "utf8");
   expect(content).toContain("<svg");
@@ -329,7 +330,7 @@ test("exports the board as a PNG", async ({ page }) => {
     page.waitForEvent("download"),
     page.locator("#exportGo").click(),
   ]);
-  expect(download.suggestedFilename()).toBe("board.png");
+  expect(download.suggestedFilename()).toMatch(/^board-\d{8}-\d{6}\.png$/);
 
   const bytes = await readFile(await download.path());
   // PNG signature: 89 50 4E 47 0D 0A 1A 0A.
@@ -351,7 +352,7 @@ test("exports the board as a JPEG", async ({ page }) => {
     page.waitForEvent("download"),
     page.locator("#exportGo").click(),
   ]);
-  expect(download.suggestedFilename()).toBe("board.jpg");
+  expect(download.suggestedFilename()).toMatch(/^board-\d{8}-\d{6}\.jpg$/);
 
   const bytes = await readFile(await download.path());
   // JPEG signature: FF D8 FF.
@@ -376,7 +377,7 @@ test("exports a PNG with a transparent background", async ({ page }) => {
     page.waitForEvent("download"),
     page.locator("#exportGo").click(),
   ]);
-  expect(download.suggestedFilename()).toBe("board.png");
+  expect(download.suggestedFilename()).toMatch(/^board-\d{8}-\d{6}\.png$/);
 
   // Decode the downloaded PNG in the page and sample its alpha: the margins
   // are transparent and the painted square is opaque.
@@ -445,7 +446,7 @@ test("remembers the export settings across reloads", async ({ page }) => {
     page.waitForEvent("download"),
     page.locator("#exportGo").click(),
   ]);
-  expect(download.suggestedFilename()).toBe("board.jpg");
+  expect(download.suggestedFilename()).toMatch(/^board-\d{8}-\d{6}\.jpg$/);
 
   await page.reload();
   await page.waitForURL(/[?&]s=/);
@@ -1076,6 +1077,40 @@ test("grid controls shift the subdivision level", async ({ page }) => {
   await expect.poll(() => levelOf()).toBe(before + 1);
   await page.locator("#gridDefault").click();
   await expect.poll(() => levelOf()).toBe(before);
+});
+
+test("toggles the grid visually without changing snapping", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // A grid line runs through the canvas centre (board 0,0), lightening it.
+  const centerRed = () =>
+    page.locator("#board").evaluate((canvas) => {
+      const c = canvas.getContext("2d");
+      return c.getImageData(
+        Math.floor(canvas.width / 2),
+        Math.floor(canvas.height / 2),
+        1,
+        1,
+      ).data[0];
+    });
+
+  expect(await centerRed()).toBeGreaterThan(20);
+
+  await page.locator("#gridToggle").click();
+  await expect(page.locator("#gridToggle")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // The centre is now the flat board background, not a grid line.
+  await expect.poll(() => centerRed()).toBeLessThan(20);
+
+  // Hiding the grid is visual only: strokes still snap and still land as ops.
+  await drawRect(page);
+  await expect(page.locator("#log li.add").first()).toContainText("add");
 });
 
 test("pen paints cells along a sweep", async ({ page }) => {

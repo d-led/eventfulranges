@@ -50,6 +50,7 @@ const gridLabel = $("gridLabel");
 const gridPlus = $("gridPlus");
 const gridMinus = $("gridMinus");
 const gridDefault = $("gridDefault");
+const gridToggle = $("gridToggle");
 const fitAllBtn = $("fitAll");
 const zoomInBtn = $("zoomIn");
 const zoomOutBtn = $("zoomOut");
@@ -134,6 +135,7 @@ const INITIAL_SCALE = 24; // pixels per board unit at 100% zoom, matching MIN_CE
 const cam = { x: 0, y: 0, scale: INITIAL_SCALE }; // board units at the canvas centre, px per unit
 
 let gridOffset = 0; // user shift over the zoom-chosen subdivision level
+let gridVisible = true; // visual only: hiding the grid never changes snapping
 let strokeColor = DEFAULT_COLOR; // metadata attached to every painted box
 
 // UI preferences remembered across sessions: the selected stroke colour and
@@ -279,7 +281,7 @@ function render() {
   ctx.fillStyle = BOARD_BACKGROUND;
   ctx.fillRect(0, 0, w, h);
   drawBoxes(w, h);
-  drawGrid(w, h);
+  if (gridVisible) drawGrid(w, h);
   drawPreview(w, h);
   drawPendingStroke(w, h);
 }
@@ -1343,6 +1345,18 @@ function appendLog(li) {
   while (logEl.children.length > LOG_MAX) logEl.removeChild(logEl.firstChild);
 }
 
+// timestampedName returns a filesystem-safe export name stamped with the
+// local time, so repeated exports never overwrite each other, e.g.
+// board-20260902-073500.png.
+function timestampedName(base, ext) {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp =
+    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${base}-${stamp}.${ext}`;
+}
+
 function downloadJSONL() {
   const lines = logEntries.map((e) =>
     JSON.stringify({
@@ -1360,7 +1374,7 @@ function downloadJSONL() {
   });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "board.jsonl";
+  a.download = timestampedName("board", "infj");
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1530,7 +1544,7 @@ async function exportImage(format, width, height) {
   if (format === "svg") {
     downloadBlob(
       new Blob([renderSVG(boxes)], { type: "image/svg+xml" }),
-      "board.svg",
+      timestampedName("board", "svg"),
     );
     return;
   }
@@ -1544,7 +1558,10 @@ async function exportImage(format, width, height) {
   if (checkRasterSize(width, height).ok) {
     const blob = await exportClientRaster(format, width, height, view);
     if (blob) {
-      downloadBlob(blob, format === "jpeg" ? "board.jpg" : "board.png");
+      downloadBlob(
+        blob,
+        timestampedName("board", format === "jpeg" ? "jpg" : "png"),
+      );
       return;
     }
   }
@@ -1608,7 +1625,10 @@ async function exportServerRaster(format, width, height) {
     throw new Error(body.error || "export failed");
   }
   const blob = await res.blob();
-  downloadBlob(blob, format === "jpeg" ? "board.jpg" : "board.png");
+  downloadBlob(
+    blob,
+    timestampedName("board", format === "jpeg" ? "jpg" : "png"),
+  );
 }
 
 function downloadBlob(blob, filename) {
@@ -2025,6 +2045,13 @@ gridDefault.addEventListener("click", () => {
   updateGridLabel();
   draw();
 });
+gridToggle.addEventListener("click", () => {
+  gridVisible = !gridVisible;
+  gridToggle.classList.toggle("active", !gridVisible);
+  gridToggle.setAttribute("aria-pressed", String(!gridVisible));
+  gridToggle.title = gridVisible ? "Hide the grid" : "Show the grid";
+  draw();
+});
 fitAllBtn.addEventListener("click", fitAll);
 
 zoomInBtn.addEventListener("click", () => zoomBy(2));
@@ -2042,7 +2069,7 @@ copyShareBtn.addEventListener("click", async () => {
 
 downloadJsonlBtn.addEventListener("click", () => {
   downloadJSONL();
-  notify(`downloaded board.jsonl (${logEntries.length} ops)`);
+  notify(`downloaded board (${logEntries.length} ops)`);
 });
 
 exportBtn.addEventListener("click", openExportDialog);
