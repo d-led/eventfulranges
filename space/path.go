@@ -87,7 +87,7 @@ func (p Path) Span(b Box) (Span, bool) {
 	}
 	start, end := 0.0, 1.0
 	for i := range b.Min {
-		entry, exit, ok := entryExit(p.From[i], p.To[i], b.Min[i], b.Max[i])
+		entry, exit, ok := entryExit(p.From[i], p.To[i], b.Min[i], b.Max[i], b.loBound(i), b.hiBound(i))
 		if !ok {
 			return Span{}, false
 		}
@@ -104,15 +104,15 @@ func (p Path) Span(b Box) (Span, bool) {
 	return Span{Start: start, End: end}, true
 }
 
-// entryExit returns the half-open t-interval [entry, exit) where the path
-// coordinate from → to lies inside the box coordinate [lo, hi). ok is false
-// when a constant coordinate lies outside the half-open interval; a constant
-// coordinate inside contributes the full [0, 1) range, imposing no
+// entryExit returns the t-interval [entry, exit) where the path coordinate
+// from → to lies inside the box coordinate [lo, hi] with the given bounds. ok
+// is false when a constant coordinate lies outside the interval; a constant
+// coordinate inside contributes the full [0, 1] range, imposing no
 // constraint on t.
-func entryExit(from, to, lo, hi float64) (entry, exit float64, ok bool) {
+func entryExit(from, to, lo, hi float64, loB, hiB Bound) (entry, exit float64, ok bool) {
 	d := to - from
 	if d == 0 {
-		return 0, 1, from >= lo && from < hi
+		return 0, 1, inInterval(from, lo, hi, loB, hiB)
 	}
 	if d > 0 {
 		return (lo - from) / d, (hi - from) / d, true // enters at lo, exits at hi

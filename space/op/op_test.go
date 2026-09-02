@@ -121,6 +121,22 @@ func TestConstructors(t *testing.T) {
 		require.NotEmpty(t, o.ID)
 		require.NoError(t, o.Validate())
 	})
+	t.Run("add with bounds", func(t *testing.T) {
+		t.Parallel()
+		o := op.AddBounds([]float64{1}, []float64{2}, []space.Bound{space.Open}, []space.Bound{space.Closed})
+		require.Equal(t, op.KindAdd, o.Kind)
+		require.False(t, o.Box.Contains([]float64{1}), "open min excludes the lower endpoint")
+		require.True(t, o.Box.Contains([]float64{2}), "closed max includes the upper endpoint")
+		require.NoError(t, o.Validate())
+	})
+	t.Run("remove with bounds", func(t *testing.T) {
+		t.Parallel()
+		o := op.RemoveBounds([]float64{1}, []float64{2}, []space.Bound{space.Open}, []space.Bound{space.Closed})
+		require.Equal(t, op.KindRemove, o.Kind)
+		require.False(t, o.Box.Contains([]float64{1}))
+		require.True(t, o.Box.Contains([]float64{2}))
+		require.NoError(t, o.Validate())
+	})
 	t.Run("constructors copy input slices", func(t *testing.T) {
 		t.Parallel()
 		lo := []float64{0, 0}

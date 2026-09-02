@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 
+	"github.com/d-led/eventfulranges/interval"
 	"github.com/d-led/eventfulranges/meta"
 )
 
@@ -158,61 +159,153 @@ func Equal(a, b []Box) bool {
 	return true
 }
 
-// subtractBox returns the disjoint boxes covering p without q.
+// subtractBox returns the disjoint boxes covering p without q. It sweeps one
+// axis at a time, keeping a worklist of pieces still inside q on the axes
+// already swept: on each axis a piece is split into the parts outside q's span
+// (final) and the part inside it (deferred to the next axis). The sweep is a
+// bounded loop over the dimensions, never recursive.
 func subtractBox(p, q Box) []Box {
 	if !Overlaps(p, q) {
 		return []Box{cloneBox(p)}
 	}
-	for d := range p.Min {
-		lo := max(p.Min[d], q.Min[d])
-		hi := min(p.Max[d], q.Max[d])
-		if lo == p.Min[d] && hi == p.Max[d] {
-			continue // q covers p fully in this dimension; try the next
+	dims := len(p.Min)
+	pending := []Box{p}
+	var result []Box
+	for d := 0; d < dims; d++ {
+		next := make([]Box, 0, len(pending))
+		for _, b := range pending {
+			bLo, bHi := b.Min[d], b.Max[d]
+			bLoB, bHiB := b.loBound(d), b.hiBound(d)
+			qLo, qHi := q.Min[d], q.Max[d]
+			qLoB, qHiB := q.loBound(d), q.hiBound(d)
+
+			// b's span on this axis is p's span, which overlaps q (Overlaps
+			// held), so either q covers it or they partially overlap.
+			if intervalContains(qLo, qHi, qLoB, qHiB, bLo, bHi, bLoB, bHiB) {
+				next = append(next, b)
+				continue
+			}
+			for _, piece := range intervalSubtract(bLo, qLo, bHi, qHi, bLoB, qLoB, bHiB, qHiB) {
+				result = append(result, clipToInterval(b, d, piece))
+			}
+			next = append(next, clipToInterval(b, d, intervalIntersection(bLo, qLo, bHi, qHi, bLoB, qLoB, bHiB, qHiB)))
 		}
-		return subtractAlongDimension(p, q, d, lo, hi)
+		pending = next
 	}
-	// q covers p in every dimension: nothing remains.
-	return nil
+	return result
 }
 
-// subtractAlongDimension slices p around q's span in dimension d, then
-// subtracts q from the middle part that still overlaps it.
-func subtractAlongDimension(p, q Box, d int, lo, hi float64) []Box {
-	out := sliceOutside(p, q, d)
-	mid := cloneBox(p)
-	mid.Min[d] = lo
-	mid.Max[d] = hi
-	return append(out, subtractBox(mid, q)...)
-}
-
-// sliceOutside returns the parts of p that lie strictly outside q in
-// dimension d.
-func sliceOutside(p, q Box, d int) []Box {
-	var out []Box
-	if q.Min[d] > p.Min[d] {
-		left := cloneBox(p)
-		left.Max[d] = q.Min[d]
-		out = append(out, left)
+// intervalSubtract returns the disjoint 1-D intervals covering [alo, ahi] minus
+// [blo, bhi], each carrying its endpoint inclusivity. The caller guarantees the
+// two intervals overlap (share a point).
+func intervalSubtract(alo, blo, ahi, bhi float64, aloB, bloB, ahiB, bhiB Bound) []interval.Interval {
+	var out []interval.Interval
+	if alo < blo {
+		out = append(out, interval.Interval{Start: alo, End: blo, StartBound: aloB, EndBound: invertBound(bloB)})
+	} else if alo == blo && aloB == Closed && bloB == Open {
+		out = append(out, interval.Interval{Start: alo, End: alo, StartBound: Closed, EndBound: Closed})
 	}
-	if q.Max[d] < p.Max[d] {
-		right := cloneBox(p)
-		right.Min[d] = q.Max[d]
-		out = append(out, right)
+	if ahi > bhi {
+		out = append(out, interval.Interval{Start: bhi, End: ahi, StartBound: invertBound(bhiB), EndBound: ahiB})
+	} else if ahi == bhi && ahiB == Closed && bhiB == Open {
+		out = append(out, interval.Interval{Start: ahi, End: ahi, StartBound: Closed, EndBound: Closed})
 	}
 	return out
 }
 
+// intervalIntersection returns a∩b. The caller guarantees the two intervals
+// overlap (share a point), so the result is non-empty.
+func intervalIntersection(alo, blo, ahi, bhi float64, aloB, bloB, ahiB, bhiB Bound) interval.Interval {
+	lo, loB := alo, aloB
+	if blo > lo {
+		lo, loB = blo, bloB
+	} else if blo == lo && (aloB == Open || bloB == Open) {
+		loB = Open
+	}
+	hi, hiB := ahi, ahiB
+	if bhi < hi {
+		hi, hiB = bhi, bhiB
+	} else if bhi == hi && (ahiB == Open || bhiB == Open) {
+		hiB = Open
+	}
+	return interval.Interval{Start: lo, End: hi, StartBound: loB, EndBound: hiB}
+}
+
+// invertBound flips Closed to Open and Open to Closed.
+func invertBound(b Bound) Bound {
+	if b == Closed {
+		return Open
+	}
+	return Closed
+}
+
+// clipToInterval returns a copy of b with axis d clipped to iv, materializing
+// the bound slices so the cut faces carry iv's inclusivity. Redundant default
+// bounds are dropped back to nil, keeping half-open boxes in their compact
+// canonical form.
+func clipToInterval(b Box, d int, iv interval.Interval) Box {
+	c := cloneBox(b)
+	if c.MinBound == nil {
+		c.MinBound = make([]Bound, len(c.Min))
+		for i := range c.MinBound {
+			c.MinBound[i] = Closed
+		}
+	}
+	if c.MaxBound == nil {
+		c.MaxBound = make([]Bound, len(c.Max))
+		for i := range c.MaxBound {
+			c.MaxBound[i] = Open
+		}
+	}
+	c.Min[d] = iv.Start
+	c.Max[d] = iv.End
+	c.MinBound[d] = iv.StartBound
+	c.MaxBound[d] = iv.EndBound
+	if allClosed(c.MinBound) {
+		c.MinBound = nil
+	}
+	if allOpen(c.MaxBound) {
+		c.MaxBound = nil
+	}
+	return c
+}
+
+// allClosed reports whether every bound is Closed.
+func allClosed(bounds []Bound) bool {
+	for _, b := range bounds {
+		if b != Closed {
+			return false
+		}
+	}
+	return true
+}
+
+// allOpen reports whether every bound is Open.
+func allOpen(bounds []Bound) bool {
+	for _, b := range bounds {
+		if b != Open {
+			return false
+		}
+	}
+	return true
+}
+
 func cloneBox(b Box) Box {
 	return Box{
-		Min:  append([]float64(nil), b.Min...),
-		Max:  append([]float64(nil), b.Max...),
-		Meta: append(json.RawMessage(nil), b.Meta...),
+		Min:      append([]float64(nil), b.Min...),
+		Max:      append([]float64(nil), b.Max...),
+		MinBound: append([]Bound(nil), b.MinBound...),
+		MaxBound: append([]Bound(nil), b.MaxBound...),
+		Meta:     append(json.RawMessage(nil), b.Meta...),
 	}
 }
 
 func equalBox(a, b Box) bool {
 	for i := range a.Min {
 		if a.Min[i] != b.Min[i] || a.Max[i] != b.Max[i] {
+			return false
+		}
+		if a.loBound(i) != b.loBound(i) || a.hiBound(i) != b.hiBound(i) {
 			return false
 		}
 	}
@@ -226,7 +319,8 @@ func sortBoxes(boxes []Box) {
 }
 
 // Less reports whether a sorts before b in canonical cover order: by lower
-// corner first, then by upper corner, comparing coordinate by coordinate.
+// corner first, then by upper corner, then by face inclusivity, comparing
+// coordinate by coordinate.
 func Less(a, b Box) bool {
 	for i := range a.Min {
 		if a.Min[i] != b.Min[i] {
@@ -234,6 +328,12 @@ func Less(a, b Box) bool {
 		}
 		if a.Max[i] != b.Max[i] {
 			return a.Max[i] < b.Max[i]
+		}
+		if a.loBound(i) != b.loBound(i) {
+			return a.loBound(i) < b.loBound(i)
+		}
+		if a.hiBound(i) != b.hiBound(i) {
+			return a.hiBound(i) < b.hiBound(i)
 		}
 	}
 	return false

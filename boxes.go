@@ -97,6 +97,20 @@ func (b *BoxSet) Remove(ctx context.Context, lo, hi []float64) (sop.Op, error) {
 	return o, b.engine.Apply(ctx, o)
 }
 
+// AddBounds applies an addition over the box [lo, hi] with explicit per-face
+// inclusivity and returns the applied op.
+func (b *BoxSet) AddBounds(ctx context.Context, lo, hi []float64, loB, hiB []space.Bound) (sop.Op, error) {
+	o := sop.AddBounds(lo, hi, loB, hiB)
+	return o, b.engine.Apply(ctx, o)
+}
+
+// RemoveBounds applies a removal over the box [lo, hi] with explicit per-face
+// inclusivity and returns the applied op.
+func (b *BoxSet) RemoveBounds(ctx context.Context, lo, hi []float64, loB, hiB []space.Bound) (sop.Op, error) {
+	o := sop.RemoveBounds(lo, hi, loB, hiB)
+	return o, b.engine.Apply(ctx, o)
+}
+
 // RemoveWithMeta applies a removal over the half-open box [lo, hi) carrying
 // JSON-object metadata, and returns the applied op.
 func (b *BoxSet) RemoveWithMeta(ctx context.Context, lo, hi []float64, m json.RawMessage) (sop.Op, error) {

@@ -114,6 +114,17 @@ func Remove(lo, hi []float64) Op {
 	return New(KindRemove, space.NewBox(lo, hi))
 }
 
+// AddBounds builds an Add op with explicit per-face inclusivity. A nil loB/hiB
+// means the half-open default (Min faces closed, Max faces open).
+func AddBounds(lo, hi []float64, loB, hiB []space.Bound) Op {
+	return New(KindAdd, space.NewBoxWithBounds(lo, hi, loB, hiB))
+}
+
+// RemoveBounds builds a Remove op with explicit per-face inclusivity.
+func RemoveBounds(lo, hi []float64, loB, hiB []space.Bound) Op {
+	return New(KindRemove, space.NewBoxWithBounds(lo, hi, loB, hiB))
+}
+
 // Retract builds a Retract op that cancels the operation named ref, carrying
 // that operation's box so the retraction validates against the set's geometry.
 func Retract(ref string, box space.Box) Op {

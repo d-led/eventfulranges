@@ -69,18 +69,9 @@ func mergePair(a, b Box) (Box, bool) {
 	if len(a.Min) != len(b.Min) {
 		return Box{}, false
 	}
-	diff := -1
-	for d := range a.Min {
-		if a.Min[d] == b.Min[d] && a.Max[d] == b.Max[d] {
-			continue
-		}
-		if diff != -1 {
-			return Box{}, false // differ in more than one dimension
-		}
-		diff = d
-	}
-	if diff == -1 {
-		return Box{}, false // identical: Normalize already dropped such boxes
+	diff, ok := singleDiffAxis(a, b)
+	if !ok {
+		return Box{}, false
 	}
 	lo, hi := a, b
 	switch {
@@ -89,5 +80,36 @@ func mergePair(a, b Box) (Box, bool) {
 	case a.Max[diff] != b.Min[diff]:
 		return Box{}, false // gap or overlap: only touching boxes merge
 	}
-	return NewBox(append([]float64(nil), lo.Min...), append([]float64(nil), hi.Max...)), true
+	// The shared face becomes interior in the merged box. If both sides
+	// exclude it, the union has a pinhole there and a single box cannot
+	// represent it; require at least one side closed.
+	if lo.hiBound(diff) == Open && hi.loBound(diff) == Open {
+		return Box{}, false
+	}
+	return Box{
+		Min:      append([]float64(nil), lo.Min...),
+		Max:      append([]float64(nil), hi.Max...),
+		MinBound: append([]Bound(nil), lo.MinBound...),
+		MaxBound: append([]Bound(nil), hi.MaxBound...),
+	}, true
+}
+
+// singleDiffAxis finds the one axis where a and b differ, reporting whether
+// they differ in exactly one axis and agree (including face inclusivity) on
+// every other axis.
+func singleDiffAxis(a, b Box) (int, bool) {
+	diff := -1
+	for d := range a.Min {
+		if a.Min[d] == b.Min[d] && a.Max[d] == b.Max[d] {
+			if a.loBound(d) != b.loBound(d) || a.hiBound(d) != b.hiBound(d) {
+				return -1, false // same span but different faces
+			}
+			continue
+		}
+		if diff != -1 {
+			return -1, false // differ in more than one dimension
+		}
+		diff = d
+	}
+	return diff, diff != -1
 }
