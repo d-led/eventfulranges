@@ -422,6 +422,7 @@ function setConnected(online) {
 const COMPACTION_LABELS = {
   canonical: 'Compaction: canonical — every box is kept exactly as materialized.',
   merge: 'Compaction: merge adjacent — touching boxes are joined into larger ones.',
+  partition: 'Compaction: partition — overlaps are split so each point appears in exactly one rectangle.',
 };
 
 function setCompaction(mode) {

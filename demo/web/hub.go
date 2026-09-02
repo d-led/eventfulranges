@@ -58,8 +58,8 @@ type hub struct {
 	events   *pubsub.PubSub[string, serverMsg]
 	onEvent  func(serverMsg) // direct delivery for a single watcher (wasm); nil fans out via events
 	set      *eventfulranges.BoxSet
-	compact  bool // compaction mode: canonical (keep every box) or merge adjacent
-	dims     int  // session dimension: -1 until fixed by a dims op or the first box
+	compact  string // compaction mode: canonical, merge, or partition
+	dims     int    // session dimension: -1 until fixed by a dims op or the first box
 	clients  int
 	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
 	presence *pubsub.PubSub[string, serverMsg] // global presence topic; nil standalone
@@ -67,12 +67,29 @@ type hub struct {
 	persist  func(opRecord) error // appends one record to the session's log; nil in-memory
 }
 
+// newHub opens a fresh session hub under the historical two-mode flag, which
+// the tests use. Sessions and the wasm bridge call newHubMode directly.
 func newHub(compact bool) *hub {
+	if compact {
+		return newHubMode(compactMerge)
+	}
+	return newHubMode(compactCanonical)
+}
+
+// newHubMode opens a fresh session hub under one of the named compaction
+// modes: canonical keeps the engine's cover as-is, merge joins touching boxes,
+// and partition splits every overlap so no two boxes share a point.
+func newHubMode(mode string) *hub {
 	// The session is in-memory and expires after a day without use, so the
 	// engine never reloads from a snapshot; disable the automatic snapshots.
 	opts := []eventfulranges.BoxOption{eventfulranges.WithBoxSnapshotEvery(0)}
-	if compact {
+	switch mode {
+	case compactMerge:
 		opts = append(opts, eventfulranges.WithBoxCanonicalizer(space.MergeAdjacent))
+	case compactPartition:
+		opts = append(opts, eventfulranges.WithBoxCanonicalizer(Partition))
+	default:
+		mode = compactCanonical
 	}
 	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWins, opts...)
 	if err != nil {
@@ -81,7 +98,7 @@ func newHub(compact bool) *hub {
 	return &hub{
 		events:  pubsub.New[string, serverMsg](1024),
 		set:     set,
-		compact: compact,
+		compact: mode,
 		dims:    -1,
 	}
 }
@@ -99,13 +116,25 @@ const (
 // so every box can be rendered.
 const maxDims = 4
 
-// compactMode names the two session compaction modes. The name travels with
-// the view so the client can describe, in words, what the active strategy
-// does to the materialized boxes.
+// compactMode names the session compaction modes. The name travels with the
+// view so the client can describe, in words, what the active strategy does to
+// the materialized boxes.
 const (
 	compactCanonical = "canonical" // keep every materialized box as-is
 	compactMerge     = "merge"     // join touching boxes into larger ones
+	compactPartition = "partition" // split overlaps so no two boxes share a point
 )
+
+// compactMode maps a ?compact= query value onto one of the named modes,
+// defaulting to the canonical cover for anything unrecognized.
+func compactMode(v string) string {
+	switch v {
+	case compactMerge, compactPartition:
+		return v
+	default:
+		return compactCanonical
+	}
+}
 
 // apply folds one anonymous operation into the shared view and broadcasts the
 // new state. Tests use it to exercise the model without a client identity.
@@ -307,9 +336,9 @@ func (h *hub) materializeLocked() view {
 			removes++
 		}
 	}
-	mode := compactCanonical
-	if h.compact {
-		mode = compactMerge
+	mode := h.compact
+	if mode == "" {
+		mode = compactCanonical
 	}
 	return view{
 		Boxes:   h.set.Boxes(),

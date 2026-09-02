@@ -22,7 +22,7 @@ import (
 // it with a new empty hub.
 var (
 	theSessionID string
-	theCompact   bool
+	theMode      string
 	theHub       *hub
 	theClientID  string
 	theDispatch  js.Value // page callback receiving each broadcast envelope
@@ -48,12 +48,12 @@ func wasmJoin(this js.Value, args []js.Value) any {
 		return errorEnvelope("join: expected (sessionID, compact, dispatch)")
 	}
 	sessionID := args[0].String()
-	compact := args[1].String() == compactMerge
+	mode := compactMode(args[1].String())
 	theDispatch = args[2]
-	if theHub == nil || sessionID != theSessionID || compact != theCompact {
+	if theHub == nil || sessionID != theSessionID || mode != theMode {
 		theSessionID = sessionID
-		theCompact = compact
-		theHub = newHub(compact)
+		theMode = mode
+		theHub = newHubMode(mode)
 		theHub.onEvent = func(m serverMsg) { emit(m) }
 	}
 	snap := theHub.snapshot()

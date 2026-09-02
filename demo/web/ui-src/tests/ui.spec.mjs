@@ -193,6 +193,21 @@ test('merge compaction merges adjacent boxes', async ({ page }) => {
   }).toPass({ timeout: 10_000 });
 });
 
+test('partition compaction splits overlaps into disjoint boxes', async ({ page }) => {
+  await page.goto('/ui/?dims=2&compact=partition');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  // Two corner-overlapping boxes split into five non-overlapping rectangles.
+  await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
+  await page.locator('#send').click();
+
+  await expect(async () => {
+    const lines = (await page.locator('#result').inputValue()).trim().split('\n');
+    expect(lines.filter(Boolean)).toHaveLength(5);
+  }).toPass({ timeout: 10_000 });
+});
+
 test('fit view frames material far from the origin', async ({ page }) => {
   await page.goto('/ui/?dims=2');
   await page.waitForURL(/[?&]s=/);

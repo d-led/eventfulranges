@@ -102,13 +102,16 @@
         <select id="compact">
           <option value="">Canonical — no compaction</option>
           <option value="merge">Merge adjacent — compact</option>
+          <option value="partition">Partition — no overlaps, rectangular</option>
         </select>
         <p class="hint">
           <strong>Canonical</strong> keeps every materialized box exactly as
           the library emits it. <strong>Merge adjacent</strong> joins boxes
           that touch along a whole face into one larger box — the same points,
-          fewer boxes. Load the example in both modes to watch the tiles
-          collapse.
+          fewer boxes. <strong>Partition</strong> splits every overlap along
+          the boxes' faces, so each point is materialized by exactly one
+          rectangular box and no two overlap. Load the example in each mode to
+          watch the tiles collapse, then split apart.
         </p>
       </div>
       <div class="row">

@@ -58,6 +58,20 @@ test('merge compaction merges adjacent boxes', async ({ page }) => {
   }).toPass({ timeout: 10_000 });
 });
 
+test('partition compaction splits overlaps into disjoint boxes', async ({ page }) => {
+  await page.goto('/?dims=2&compact=partition');
+  await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
+
+  // Two corner-overlapping boxes split into five non-overlapping rectangles.
+  await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
+  await page.locator('#send').click();
+
+  await expect(async () => {
+    const lines = (await page.locator('#result').inputValue()).trim().split('\n');
+    expect(lines.filter(Boolean)).toHaveLength(5);
+  }).toPass({ timeout: 10_000 });
+});
+
 test('a new 4D session keeps its dimension across reload', async ({ page }) => {
   await connect(page);
   await page.locator('#newSession').click();

@@ -48,16 +48,26 @@ func newSessionsDir(ttl time.Duration, dir string) *sessions {
 	}
 }
 
-// model returns the live shared view for id, creating it on first use or once
-// the previous one has expired. Each access resets the idle timer, so an
-// actively shared model never expires under its collaborators. A persistent
-// registry replays the session's stored log into a fresh view before sharing.
+// model returns the live shared view for id under the historical two-mode
+// flag; callers with a named mode use modelMode.
 func (s *sessions) model(id string, compact bool) *hub {
+	if compact {
+		return s.modelMode(id, compactMerge)
+	}
+	return s.modelMode(id, compactCanonical)
+}
+
+// modelMode returns the live shared view for id under a named compaction
+// mode, creating it on first use or once the previous one has expired. Each
+// access resets the idle timer, so an actively shared model never expires
+// under its collaborators. A persistent registry replays the session's stored
+// log into a fresh view before sharing.
+func (s *sessions) modelMode(id, mode string) *hub {
 	if h, ok := s.models.Get(id); ok {
 		s.models.SetDefault(id, h)
 		return h.(*hub)
 	}
-	h := newHub(compact)
+	h := newHubMode(mode)
 	h.total = &s.total
 	h.presence = s.presence
 	s.restore(h, id)
