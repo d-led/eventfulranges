@@ -37,7 +37,7 @@ func main() {
 	log.Printf("open %s", collab.UIURL(*addr))
 	router := collab.NewRouter(sessions, GetFS(), nil)
 	router.GET("/api/export", exportHandler(sessions))
-	collab.RegisterAdminRoutes(router, sessions, parseAdminList(os.Getenv("ADMIN_EMAILS")), GetFS())
+	collab.RegisterAdminRoutes(router, sessions, adminGate(), GetFS())
 	if err := router.Run(*addr); err != nil {
 		log.Fatal(err)
 	}

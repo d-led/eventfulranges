@@ -225,6 +225,17 @@ session URL, and the raw operation log is one click away as JSONL. Open
 ./scripts/e2e-paint.sh      # vitest unit tests + Playwright end-to-end tests
 ```
 
+#### Admin area
+
+The server exposes an admin area (`/admin/`, see `demo/paint/ui-src/admin.html`)
+for inspecting instance storage and deleting inactive sessions. In the deployed
+build the area is gated by the `ADMIN_EMAILS` reverse-proxy allow-list, so only
+listed users reach it. In a development build (no `embed` build tag) the admin
+gate opens to direct requests when `ADMIN_EMAILS` is unset, so the area is
+usable locally without an oauth2-proxy; when `ADMIN_EMAILS` is set it is gated
+exactly as in deployment. The dev-only gate is compiled out of embedded
+artifacts, so it can never leak into a deployed binary.
+
 #### Related — infinite canvases and zoom-first editors
 
 - [tldraw](https://tldraw.dev) — open-source infinite canvas, real-time collaboration
