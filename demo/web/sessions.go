@@ -1,8 +1,8 @@
+//go:build !js
+
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base32"
 	"log"
 	"sync/atomic"
 	"time"
@@ -15,10 +15,6 @@ import (
 // cache below expires each entry on that timer, so abandoned models free
 // themselves instead of accumulating forever.
 const sessionTTL = 24 * time.Hour
-
-// presenceTopic names the global channel every client also subscribes to, so a
-// join in one session refreshes the "total connected" count on every screen.
-const presenceTopic = "presence"
 
 // sessions owns the in-memory collection of shared views, one per session ID.
 // Every share link carries a session ID; the pub/sub model for that ID is the
@@ -96,24 +92,4 @@ func (s *sessions) subscribePresence() chan serverMsg {
 
 func (s *sessions) unsubscribePresence(ch chan serverMsg) {
 	s.presence.Unsub(ch, presenceTopic)
-}
-
-// newSessionID mints a short, URL-safe, unguessable identifier for a fresh
-// share link.
-func newSessionID() string {
-	var b [10]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err) // crypto/rand never fails on supported platforms
-	}
-	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:])
-}
-
-// newClientID mints a short, human-readable identity for one connected
-// browser, so the activity log can attribute operations to collaborators.
-func newClientID() string {
-	var b [3]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err) // crypto/rand never fails on supported platforms
-	}
-	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:])
 }

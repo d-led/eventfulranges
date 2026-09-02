@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fadeOpacity } from './slice.js';
 import { orthoHalf, orthoFrustum, perspDistance } from './camera.js';
-import { delayFor } from './backoff.js';
+import { createServerEngine } from './server-engine.js';
+import { createLocalEngine } from './local-engine.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -30,7 +31,6 @@ const fitViewBtn = $('fitView');
 const compactionEl = $('compaction');
 const reconnectBanner = $('reconnectBanner');
 const reconnectBtn = $('reconnectBtn');
-const reconnectText = $('reconnectText');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -389,11 +389,19 @@ function randomOp(dims) {
   return `${kind},(${min.join(',')}),(${max.join(',')})`;
 }
 
-// ---------- websocket ----------
-let socket = null;
-let connected = false; // true once a socket has opened, false after it closes
-let reconnectAttempts = 0;
-let reconnectTimer = null;
+// ---------- session engine (transport switch) ----------
+// A "session engine" is where the envelopes the page renders come from. Two
+// engines speak the same protocol, so the rest of the UI is identical:
+//   * server — the Go visualizer over a WebSocket (the default when the UI is
+//     served by it): every browser that opens the same share link converges
+//     on one shared model.
+//   * local  — the same Go hub compiled to WebAssembly and running inside this
+//     page: the UI works from any static host, with no server at all.
+// The switch lives here, in one place: ?engine=local forces the local engine,
+// and the local build (dist-local/) preselects it through __EVENTFULRANGES_STATIC__.
+const ENGINE_IS_LOCAL =
+  new URLSearchParams(location.search).get('engine') === 'local' ||
+  window.__EVENTFULRANGES_STATIC__ === true;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -401,55 +409,12 @@ function setStatus(text) {
 
 // setConnected flips the whole UI between live and frozen: the reconnect
 // banner appears, mutation controls disable, and the canvas stops taking
-// input while the socket is down. Local-only actions (copy, download) stay on.
+// input while the engine is down. Local-only actions (copy, download) stay on.
 function setConnected(online) {
-  connected = online;
   document.body.classList.toggle('disconnected', !online);
   reconnectBanner.hidden = online;
   sendBtn.disabled = !online;
   exampleBtn.disabled = !online;
-  if (online) {
-    reconnectAttempts = 0;
-    clearReconnectTimer();
-  }
-}
-
-function clearReconnectTimer() {
-  if (reconnectTimer !== null) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-}
-
-// scheduleReconnect queues one retry with exponential back-off: 1s, 2s, 4s,
-// … capped at 30s, so a dead server is retried at most twice a minute once
-// the cap is reached.
-function scheduleReconnect() {
-  if (reconnectTimer !== null) return;
-  const delay = delayFor(reconnectAttempts);
-  reconnectAttempts += 1;
-  const secs = Math.round(delay / 1000);
-  setStatus(`disconnected — retrying in ${secs}s`);
-  reconnectText.textContent = `Disconnected — retrying in ${secs}s`;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    connect();
-  }, delay);
-}
-
-// reconnectNow skips the back-off: the banner button forces an immediate
-// fresh connection attempt.
-function reconnectNow() {
-  clearReconnectTimer();
-  reconnectAttempts = 0;
-  setStatus('reconnecting…');
-  reconnectText.textContent = 'Reconnecting…';
-  if (socket && socket.readyState !== WebSocket.CLOSED) {
-    socket.onclose = null; // this close is ours; connect() below opens a fresh socket
-    socket.close();
-  }
-  socket = null;
-  connect();
 }
 
 // COMPACTION_LABELS names the two session compaction modes so the panel can
@@ -487,7 +452,7 @@ function appendLog(op) {
   while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
 }
 
-// applyState folds a server view into the scene and the result textarea. It
+// applyState folds an engine view into the scene and the result textarea. It
 // frames the first content that appears, but later edits never yank the view.
 function applyState(state) {
   const hadBoxes = currentBoxes.length > 0;
@@ -506,101 +471,93 @@ function applyState(state) {
   if (!hadBoxes && currentBoxes.length > 0) needsFit = true;
 }
 
-function connect() {
-  if (socket && socket.readyState === WebSocket.CONNECTING) return;
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const params = new URLSearchParams(location.search);
-  const session = params.get('s');
-  if (!session) {
-    // A page without a session id (e.g. an old bookmark) mints one instead of
-    // opening a socket the server would have to reject.
-    location.replace('/ui/');
-    return;
-  }
-  const compact = params.get('compact') || '';
-  const compactQuery = compact ? `&compact=${encodeURIComponent(compact)}` : '';
-  const ws = new WebSocket(
-    `${proto}://${location.host}/ws?s=${encodeURIComponent(session)}${compactQuery}`,
-  );
-  socket = ws;
+// The two engine implementations live next to this file; each takes the page
+// callbacks it drives and returns the one object the rest of the UI uses.
+const engine = ENGINE_IS_LOCAL
+  ? createLocalEngine({
+      onMessage: handleMessage,
+      onStatus: setStatus,
+      onOnline: setConnected,
+      onFirstSync: sendDimsPreference,
+    })
+  : createServerEngine({
+      onMessage: handleMessage,
+      onStatus: setStatus,
+      onOnline: setConnected,
+      onFirstSync: sendDimsPreference,
+    });
 
-  ws.onopen = () => {
-    setConnected(true);
-    setStatus('connected — edits are shared live');
-    const startDims = Number(params.get('dims'));
-    if (!startDimsSent && startDims >= 1 && startDims <= 4) {
-      startDimsSent = true;
-      sendOp({ kind: 'dims', dims: startDims });
-    }
-  };
-  ws.onclose = () => {
-    setConnected(false);
-    scheduleReconnect();
-  };
-  ws.onerror = () => setStatus('connection error');
-
-  ws.onmessage = (ev) => {
-    let msg;
-    try {
-      msg = JSON.parse(ev.data);
-    } catch {
-      return;
-    }
-
-    if (msg.type === 'state') {
-      // A live server re-sends the full log; an empty one means the session
-      // was lost (e.g. the server restarted), so restore from the local reserve.
-      const serverOps = msg.ops || [];
-      const serverBoxes = (msg.state && msg.state.boxes) || [];
-      if (serverOps.length === 0 && serverBoxes.length === 0) {
-        const reserve = sessionOps.length > 0 ? sessionOps.slice() : loadReserve();
-        sessionOps = [];
-        logEl.innerHTML = '';
-        if (reserve.length > 0) {
-          for (const op of reserve) replayOp(op);
-          setStatus('restored from local copy — syncing…');
-        } else {
-          applyState(msg.state);
-        }
+// handleMessage folds one engine envelope into the scene, the activity log,
+// the local reserve copy, and the presence readout. Both engines deliver the
+// same envelopes, so the handling below is transport-agnostic.
+function handleMessage(msg) {
+  if (msg.type === 'state') {
+    // A live server re-sends the full log; an empty one means the session was
+    // lost (e.g. the server restarted), so restore from the local reserve.
+    const serverOps = msg.ops || [];
+    const serverBoxes = (msg.state && msg.state.boxes) || [];
+    if (serverOps.length === 0 && serverBoxes.length === 0) {
+      const reserve = sessionOps.length > 0 ? sessionOps.slice() : loadReserve();
+      sessionOps = [];
+      logEl.innerHTML = '';
+      if (reserve.length > 0) {
+        for (const op of reserve) replayOp(op);
+        setStatus('restored from local copy — syncing…');
       } else {
         applyState(msg.state);
-        sessionOps = serverOps.slice();
-        saveReserve(sessionOps);
-        logEl.innerHTML = '';
-        for (const op of serverOps) appendLog(op);
       }
-    } else if (msg.type === 'op') {
-      if (msg.op) {
-        sessionOps.push(msg.op);
-        saveReserve(sessionOps);
-        appendLog(msg.op);
-      }
-      if (msg.state) applyState(msg.state);
+    } else {
+      applyState(msg.state);
+      sessionOps = serverOps.slice();
+      saveReserve(sessionOps);
+      logEl.innerHTML = '';
+      for (const op of serverOps) appendLog(op);
     }
+  } else if (msg.type === 'op') {
+    if (msg.op) {
+      sessionOps.push(msg.op);
+      saveReserve(sessionOps);
+      appendLog(msg.op);
+    }
+    if (msg.state) applyState(msg.state);
+  }
 
-    if (msg.clientID) {
-      clientID = msg.clientID;
-      updatePresence();
-      needsFit = true; // fit once on join, not on every later edit
-    }
-    if (msg.clients !== undefined || msg.total !== undefined) updatePresence(msg.clients, msg.total);
-    if (msg.type === 'error') {
-      setStatus(`error: ${msg.error}`);
-    }
-  };
+  if (msg.clientID) {
+    clientID = msg.clientID;
+    updatePresence();
+    needsFit = true; // fit once on join, not on every later edit
+  }
+  if (msg.clients !== undefined || msg.total !== undefined) updatePresence(msg.clients, msg.total);
+  if (msg.type === 'error') {
+    setStatus(`error: ${msg.error}`);
+  }
+}
+
+// connect starts the selected engine; the engine reports connectivity and
+// envelopes back through the callbacks wired above.
+function connect() {
+  engine.start();
+}
+
+// sendDimsPreference applies the ?dims= URL preference once, as the first dims
+// op after the engine comes online — the local engine's analogue of the dims
+// command the socket mode used to send on open.
+function sendDimsPreference() {
+  const startDims = Number(new URLSearchParams(location.search).get('dims'));
+  if (!startDimsSent && startDims >= 1 && startDims <= 4) {
+    startDimsSent = true;
+    sendOp({ kind: 'dims', dims: startDims });
+  }
 }
 
 function sendOp(op) {
-  if (!connected || !socket || socket.readyState !== WebSocket.OPEN) {
-    setStatus('disconnected — reconnect to edit');
-    return;
-  }
-  socket.send(JSON.stringify(op));
+  engine.send(op);
 }
 
 // The browser keeps a reserve copy of the operation log in localStorage, so a
-// server restart does not lose the picture: on reconnect, if the server's
-// session is empty, the local log is replayed back into it.
+// lost model does not lose the picture: on (re)connect, if the engine reports
+// an empty session, the local log is replayed back into it. This heals a
+// restarted Go server and a freshly loaded in-page wasm engine alike.
 function reserveKey() {
   const session = new URLSearchParams(location.search).get('s');
   return session ? `eventfulranges:web:${session}` : null;
@@ -695,10 +652,7 @@ cancelSessionBtn.addEventListener('click', () => {
 startSessionBtn.addEventListener('click', () => {
   const dims = Number(dimsSel.value);
   const compact = compactSel.value;
-  const url = compact
-    ? `/ui/?dims=${dims}&compact=${encodeURIComponent(compact)}`
-    : `/ui/?dims=${dims}`;
-  location.replace(url);
+  location.replace(engine.newSessionURL(dims, compact));
 });
 
 fitViewBtn.addEventListener('click', () => {
@@ -731,7 +685,7 @@ copyLinkBtn.addEventListener('click', async () => {
   setStatus('share link copied');
 });
 
-reconnectBtn.addEventListener('click', reconnectNow);
+reconnectBtn.addEventListener('click', () => engine.reconnect());
 
 // ---------- boot ----------
 resize();
@@ -743,4 +697,4 @@ tick();
 
 // Test seam: Playwright closes the live socket through this to exercise the
 // reconnection flow. It is inert in normal use.
-window.__eventfulranges = { closeSocket: () => socket && socket.close() };
+window.__eventfulranges = { closeSocket: () => engine.close() };

@@ -177,7 +177,9 @@ test('presence separates this session from all connected', async ({ browser }) =
 });
 
 test('merge compaction merges adjacent boxes', async ({ page }) => {
-  await page.goto('/ui/?compact=merge');
+  // A 2D merge session joins the two touching boxes into one. Fixing the
+  // dimension first (dims=2) is what lets 2D tuples reach the engine.
+  await page.goto('/ui/?dims=2&compact=merge');
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
@@ -187,7 +189,7 @@ test('merge compaction merges adjacent boxes', async ({ page }) => {
   // Two adjacent boxes merge into one under merge compaction.
   await expect(async () => {
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
-    expect(lines).toHaveLength(1);
+    expect(lines.filter(Boolean)).toHaveLength(1);
   }).toPass({ timeout: 10_000 });
 });
 

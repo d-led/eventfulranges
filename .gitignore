@@ -291,6 +291,10 @@ testdata/rapid/
 demo/web/dist/*
 !demo/web/dist/.gitkeep
 
+# The browser-only (WebAssembly) build of the web demo: same UI, plus the Go
+# engine (engine.wasm) and its runtime (wasm_exec.js). Generated and ignored.
+demo/web/dist-local/
+
 # Playwright artifacts
 demo/web/ui-src/test-results/
 demo/web/ui-src/playwright-report/

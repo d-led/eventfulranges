@@ -1,3 +1,5 @@
+//go:build !js
+
 package main
 
 import (
@@ -7,35 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-)
-
-// clientOp is one add/remove/dims command the browser submits over the socket.
-type clientOp struct {
-	Kind string    `json:"kind"`
-	Min  []float64 `json:"min"`
-	Max  []float64 `json:"max"`
-	Dims int       `json:"dims"`
-}
-
-// serverMsg is the envelope the server sends back over the socket.
-type serverMsg struct {
-	Type     string     `json:"type"` // one of msgState, msgOp, msgPresence, msgError
-	State    *view      `json:"state,omitempty"`
-	Op       *opRecord  `json:"op,omitempty"`
-	Ops      []opRecord `json:"ops,omitempty"`     // the full log, sent on join
-	Clients  int        `json:"clients,omitempty"` // clients watching this session
-	Total    int        `json:"total,omitempty"`   // clients connected across all sessions
-	ClientID string     `json:"clientID,omitempty"`
-	Error    string     `json:"error,omitempty"`
-}
-
-// serverMsg.Type values, named so writers and readers agree on the envelope
-// kinds instead of repeating string literals.
-const (
-	msgState    = "state"
-	msgOp       = "op"
-	msgPresence = "presence"
-	msgError    = "error"
 )
 
 var upgrader = websocket.Upgrader{

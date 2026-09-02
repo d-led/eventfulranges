@@ -1,3 +1,5 @@
+//go:build !js
+
 // Command web serves an interactive n-dimensional range-set visualizer.
 //
 // Every share link carries a unique session ID; browsers that open the same

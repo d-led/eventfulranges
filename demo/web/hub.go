@@ -17,9 +17,15 @@ import (
 	sstrategy "github.com/d-led/eventfulranges/space/strategy"
 )
 
-// topic is the pub/sub channel inside one session's hub. Every session owns
-// its own hub, so this constant just names the channel in each isolated model.
-const topic = "events"
+// topic names the pub/sub channel inside one session's hub. Every session
+// owns its own hub, so this constant just names the channel in each isolated
+// model. presenceTopic names the global channel every session hub also
+// publishes to, so a join anywhere refreshes the "total connected" count on
+// every screen.
+const (
+	topic         = "events"
+	presenceTopic = "presence"
+)
 
 // view is the materialized result of the shared, append-only operation log.
 // It is the n-dimensional generalization of the library's AdditiveWins
@@ -50,6 +56,7 @@ type opRecord struct {
 type hub struct {
 	mu       sync.RWMutex
 	events   *pubsub.PubSub[string, serverMsg]
+	onEvent  func(serverMsg) // direct delivery for a single watcher (wasm); nil fans out via events
 	set      *eventfulranges.BoxSet
 	compact  bool // compaction mode: canonical (keep every box) or merge adjacent
 	dims     int  // session dimension: -1 until fixed by a dims op or the first box
@@ -109,7 +116,7 @@ func (h *hub) apply(kind opKind, lo, hi []float64) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
-	h.events.Pub(serverMsg{Type: msgState, State: &v}, topic)
+	h.broadcast(serverMsg{Type: msgState, State: &v})
 	return v, nil
 }
 
@@ -125,7 +132,7 @@ func (h *hub) record(clientID string, kind opKind, lo, hi []float64) (view, erro
 	rec := opRecord{Client: clientID, Kind: string(kind), Min: lo, Max: hi, At: time.Now()}
 	h.ops = append(h.ops, rec)
 	h.persistRecord(rec)
-	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
+	h.broadcast(serverMsg{Type: msgOp, Op: &rec, State: &v})
 	return v, nil
 }
 
@@ -165,7 +172,7 @@ func (h *hub) join() (log []opRecord, clients int) {
 		h.total.Add(1)
 	}
 	log = append([]opRecord(nil), h.ops...)
-	h.events.Pub(serverMsg{Type: msgPresence, Clients: h.clients}, topic)
+	h.broadcast(serverMsg{Type: msgPresence, Clients: h.clients})
 	h.publishGlobalPresence()
 	return log, h.clients
 }
@@ -180,7 +187,7 @@ func (h *hub) leave() {
 			h.total.Add(-1)
 		}
 	}
-	h.events.Pub(serverMsg{Type: msgPresence, Clients: h.clients}, topic)
+	h.broadcast(serverMsg{Type: msgPresence, Clients: h.clients})
 	h.publishGlobalPresence()
 }
 
@@ -191,6 +198,18 @@ func (h *hub) publishGlobalPresence() {
 	if h.presence != nil && h.total != nil {
 		h.presence.Pub(serverMsg{Type: msgPresence, Total: int(h.total.Load())}, presenceTopic)
 	}
+}
+
+// broadcast delivers one envelope to the session's watchers. Native sessions
+// fan it out over the session pub/sub topic, so every connected socket hears
+// it. The wasm build instead wires onEvent to the page, so the in-browser
+// engine reuses this exact fold-and-publish path with a single watcher.
+func (h *hub) broadcast(m serverMsg) {
+	if h.onEvent != nil {
+		h.onEvent(m)
+		return
+	}
+	h.events.Pub(m, topic)
 }
 
 // snapshot returns the current view without broadcasting it.
@@ -259,7 +278,7 @@ func (h *hub) applyDims(dims int) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
-	h.events.Pub(serverMsg{Type: msgState, State: &v}, topic)
+	h.broadcast(serverMsg{Type: msgState, State: &v})
 	return v, nil
 }
 
@@ -275,7 +294,7 @@ func (h *hub) setDims(clientID string, dims int) (view, error) {
 	rec := opRecord{Client: clientID, Kind: string(opDims), Dims: dims, At: time.Now()}
 	h.ops = append(h.ops, rec)
 	h.persistRecord(rec)
-	h.events.Pub(serverMsg{Type: msgOp, Op: &rec, State: &v}, topic)
+	h.broadcast(serverMsg{Type: msgOp, Op: &rec, State: &v})
 	return v, nil
 }
 

@@ -200,6 +200,29 @@ One command starts it, and the other scripts cover the rest:
 ./scripts/e2e-web.sh      # Playwright end-to-end tests
 ```
 
+#### Running purely in the browser (WebAssembly)
+
+The same visualizer also runs with **no Go server at all**: the session hub is
+compiled to WebAssembly (`GOOS=js GOARCH=wasm`) and executes inside the page,
+so the UI works from any static host. The page cannot tell the difference —
+both builds speak the same JSON envelopes and reuse the same rendering code.
+The seam is two switches in the code:
+
+- **A session-engine interface** (`demo/web/ui-src/server-engine.js` vs
+  `local-engine.js`): the WebSocket transport, or a direct call into the
+  in-page Go engine (`demo/web/wasm.go`). Pick one with `?engine=local`, or by
+  opening the local build, whose page preselects it.
+- **A log repository** (`demo/web/persist.go` vs the browser's `localStorage`
+  reserve): the server appends each operation to a JSONL file; the in-page
+  engine is replayed from the browser's local copy on reload, exactly as a
+  reconnecting socket would be healed.
+
+```bash
+./scripts/build-local.sh  # build demo/web/dist-local: UI + engine.wasm + wasm runtime
+./scripts/serve-local.sh  # build and serve it statically (any static host works)
+./scripts/e2e-local.sh    # Playwright tests against the in-page wasm engine
+```
+
 Each demo has a smoke test; run them with `go test ./demo/...`.
 
 ![web demo 2d](./docs/img/eventfulranges-2d-demo.gif)
