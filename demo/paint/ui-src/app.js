@@ -566,8 +566,8 @@ function startPan(clientX, clientY) {
 }
 
 function movePan(clientX, clientY) {
-  cam.x -= (clientX - panLast.x) / cam.scale;
-  cam.y -= (clientY - panLast.y) / cam.scale;
+  cam.x = clampPan(cam.x - (clientX - panLast.x) / cam.scale);
+  cam.y = clampPan(cam.y - (clientY - panLast.y) / cam.scale);
   panLast = { x: clientX, y: clientY };
   draw();
 }
@@ -683,15 +683,15 @@ function movePinch(touches) {
   const cx = (a.x + b.x) / 2;
   const cy = (a.y + b.y) / 2;
   // Pan by the midpoint movement, then zoom around the new midpoint.
-  cam.x -= (cx - pinch.cx) / cam.scale;
-  cam.y -= (cy - pinch.cy) / cam.scale;
+  cam.x = clampPan(cam.x - (cx - pinch.cx) / cam.scale);
+  cam.y = clampPan(cam.y - (cy - pinch.cy) / cam.scale);
   if (pinch.dist > 0 && dist > 0) {
     const before = boardPoint(cx, cy);
     const next = cam.scale * (dist / pinch.dist);
     if (Number.isFinite(next) && next > 0) {
       cam.scale = clampScale(next);
-      cam.x = before.x - (cx - resizeCanvas().w / 2) / cam.scale;
-      cam.y = before.y - (cy - resizeCanvas().h / 2) / cam.scale;
+      cam.x = clampPan(before.x - (cx - resizeCanvas().w / 2) / cam.scale);
+      cam.y = clampPan(before.y - (cy - resizeCanvas().h / 2) / cam.scale);
     }
   }
   pinch.dist = dist;
@@ -699,6 +699,13 @@ function movePinch(touches) {
   pinch.cy = cy;
   updateGridLabel();
   draw();
+}
+
+// PAN_LIMIT and clampPan keep the camera centre inside float64's exact range,
+// so no stroke is ever lost to rounding even after panning far from the origin.
+const PAN_LIMIT = 2 ** 52;
+function clampPan(v) {
+  return Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, v));
 }
 
 // maxSafeLevel caps the grid level so every cell index stays below 2^53,
@@ -756,8 +763,8 @@ boardEl.addEventListener(
     const next = cam.scale * Math.exp(-e.deltaY * 0.0015);
     if (!Number.isFinite(next) || next <= 0) return;
     cam.scale = clampScale(next);
-    cam.x = beforeX - (e.offsetX - w / 2) / cam.scale;
-    cam.y = beforeY - (e.offsetY - h / 2) / cam.scale;
+    cam.x = clampPan(beforeX - (e.offsetX - w / 2) / cam.scale);
+    cam.y = clampPan(beforeY - (e.offsetY - h / 2) / cam.scale);
     updateGridLabel();
     draw();
   },
@@ -806,8 +813,8 @@ function fitBoxes(painted) {
   const { w, h } = resizeCanvas();
   const view = fitCamera(painted, w, h);
   if (!view) return false;
-  cam.x = view.x;
-  cam.y = view.y;
+  cam.x = clampPan(view.x);
+  cam.y = clampPan(view.y);
   cam.scale = clampScale(view.scale);
   updateGridLabel();
   draw();
@@ -1982,8 +1989,8 @@ async function importJSONL(input) {
     const { w, h } = resizeCanvas();
     const view = fitCamera(boxes, w, h);
     if (view) {
-      cam.x = view.x;
-      cam.y = view.y;
+      cam.x = clampPan(view.x);
+      cam.y = clampPan(view.y);
       cam.scale = view.scale;
       updateGridLabel();
     }
