@@ -202,6 +202,9 @@ One command starts it, and the other scripts cover the rest:
 
 #### Running purely in the browser (WebAssembly)
 
+**Live demo:** <https://d-led.github.io/eventfulranges/> (built and deployed
+automatically by `.github/workflows/pages.yml` on every push to `main`).
+
 The same visualizer also runs with **no Go server at all**: the session hub is
 compiled to WebAssembly (`GOOS=js GOARCH=wasm`) and executes inside the page,
 so the UI works from any static host. The page cannot tell the difference —
