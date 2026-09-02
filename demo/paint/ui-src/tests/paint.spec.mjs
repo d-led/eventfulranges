@@ -887,6 +887,55 @@ test("fits all to the frozen image bounds", async ({ page }) => {
   await expect(page.locator("#zoomLabel")).not.toHaveText("100%");
 });
 
+test("places an import at the visible canvas on a hi-dpi screen", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  // A 1x1 red PNG.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 1, 1);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importFrozen").check();
+  await page.locator("#importPixelSize").selectOption("grid");
+  await page.locator("#importFileInput").setInputFiles({
+    name: "dot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await page.locator("#importGo").click();
+  await expect(page.locator("#importDialog")).not.toBeVisible();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const first = JSON.parse(
+    (await readFile(await download.path(), "utf8")).trim().split("\n")[0],
+  );
+
+  // The initial camera is centre (0,0) at 24 px/unit with a 1-unit grid, so
+  // the top-left must be floor(-clientWidth / 48) in CSS pixels — not the
+  // device-pixel backing store, which would double it on a 2x display.
+  const [cw, ch] = await page
+    .locator("#board")
+    .evaluate((c) => [c.clientWidth, c.clientHeight]);
+  expect(first.data.min[0]).toBe(Math.floor(-cw / 48));
+  expect(first.data.min[1]).toBe(Math.floor(-ch / 48));
+});
+
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

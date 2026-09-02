@@ -1776,20 +1776,24 @@ function importTransform(pixelSize, imgW, imgH) {
     return { cell: gridSize(cam.scale, gridOffset), ...viewTopLeft() };
   }
   if (pixelSize === "pixels") {
-    const viewW = boardEl.width / cam.scale;
-    const viewH = boardEl.height / cam.scale;
+    const viewW = boardEl.clientWidth / cam.scale;
+    const viewH = boardEl.clientHeight / cam.scale;
     return { cell: Math.min(viewW / imgW, viewH / imgH), ...viewTopLeft() };
   }
   return { cell: 1, ox: 0, oy: 0 };
 }
 
 // viewTopLeft returns the board coordinates of the viewport's top-left corner,
-// snapped down to the current grid so an import lands on a grid line.
+// snapped down to the current grid so an import lands on a grid line. It uses
+// the canvas's CSS size (clientWidth/Height), not its device-pixel backing
+// store, so the import lands at the visible canvas edge rather than under the
+// sidebar on hi-dpi screens.
 function viewTopLeft() {
   const cell = gridSize(cam.scale, gridOffset);
   return {
-    ox: Math.floor((cam.x - boardEl.width / cam.scale / 2) / cell) * cell,
-    oy: Math.floor((cam.y - boardEl.height / cam.scale / 2) / cell) * cell,
+    ox: Math.floor((cam.x - boardEl.clientWidth / cam.scale / 2) / cell) * cell,
+    oy:
+      Math.floor((cam.y - boardEl.clientHeight / cam.scale / 2) / cell) * cell,
   };
 }
 
