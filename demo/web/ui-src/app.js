@@ -4,6 +4,7 @@ import { fadeOpacity } from './slice.js';
 import { orthoHalf, orthoFrustum, perspDistance } from './camera.js';
 import { createServerEngine } from './server-engine.js';
 import { createLocalEngine } from './local-engine.js';
+import { startTour } from './tour.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -732,6 +733,25 @@ opsEl.value = exampleFor(3);
 setViewMode(currentDims);
 connect();
 tick();
+
+// ---------- onboarding tour ----------
+// Shown once per browser, and reopenable from the help button.
+const TOUR_STEPS = [
+  { targetSelectors: ['#panel', '#canvas'], title: 'Welcome', body: 'Add and remove rectangular N-dimensional box ranges via commands and the materialized set updates' },
+  { targetSelector: '#newSession', title: 'New session', body: 'Start a fresh session and choose its dimension (1–4) and a consolidation strategy: canonical, merge adjacent, partition, or partition + merge.' },
+  { targetSelector: '#ops', title: 'Operations', body: 'Each line is a command sent to the model: add,(0,0,0),(4,4,4) or remove,(1,1,1),(3,3,3). Give one number per dimension — two for 2D, three for 3D, four for 4D; # starts a comment.' },
+  { targetSelector: '#random', title: 'Random op', body: 'The Random op button drafts an add or remove command inside the current bounds, ready for you to review and send.' },
+  { targetSelector: '#slice', title: '4th dimension', body: 'In 4D, sweep this slider to slice the hyper-volume at the chosen w value.' },
+  { targetSelector: '#fitView', title: 'Fit view', body: 'Re-frame the camera on the materialized boxes whenever you get lost.' },
+  // Sharing a live model only makes sense on the server; the browser-only
+  // build has no shared model to link to, so this step is omitted there.
+  ...(ENGINE_IS_LOCAL ? [] : [
+    { targetSelector: '#copyLink', title: 'Share', body: 'Copy the share link to return to this exact session later — the session id lives in the URL.' },
+  ]),
+  { targetSelector: '#helpTourBtn', title: 'Need a refresher?', body: 'You can always reopen this tutorial from the help button.' },
+];
+startTour(TOUR_STEPS);
+document.getElementById('helpTourBtn')?.addEventListener('click', () => startTour(TOUR_STEPS, { force: true }));
 
 // Test seam: Playwright closes the live socket through this to exercise the
 // reconnection flow. It is inert in normal use.

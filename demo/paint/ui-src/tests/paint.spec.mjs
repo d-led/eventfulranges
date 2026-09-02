@@ -1,6 +1,34 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
+const TOUR_DONE_KEY = "eventfulranges.tour.done.v1";
+
+test.beforeEach(async ({ page }) => {
+  // The onboarding tour would otherwise appear on every fresh context and
+  // cover the controls the other tests click, so mark it seen up front. The
+  // tour tests below use a clean browser context or the force path instead.
+  await page.addInitScript((key) => localStorage.setItem(key, "1"), TOUR_DONE_KEY);
+});
+
+test("shows the onboarding tutorial on first visit, then hides it after skip", async ({ browser }) => {
+  const page = await browser.newPage();
+  await page.goto("/ui/");
+  await expect(page.locator("#eventfulranges-tour")).toBeVisible();
+
+  await page.locator('#eventfulranges-tour button[data-tour="skip"]').click();
+  await expect(page.locator("#eventfulranges-tour")).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.locator("#eventfulranges-tour")).toHaveCount(0);
+  await page.close();
+});
+
+test("reopens the tutorial from the help button", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.locator("#helpTourBtn").click();
+  await expect(page.locator("#eventfulranges-tour")).toBeVisible();
+});
+
 test("serves the UI, connects, and renders the board", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

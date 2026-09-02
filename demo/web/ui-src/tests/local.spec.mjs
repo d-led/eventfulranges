@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+const TOUR_DONE_KEY = 'eventfulranges.tour.done.v1';
+
+test.beforeEach(async ({ page }) => {
+  // Suppress the onboarding tour so it never covers controls these tests
+  // click; the tour itself is covered by the server suite's tour tests.
+  await page.addInitScript((key) => localStorage.setItem(key, '1'), TOUR_DONE_KEY);
+});
+
 // Browser-only (WebAssembly) end-to-end tests: the same UI runs against the
 // Go engine compiled to wasm and hosted by a plain static server — no Go
 // server process exists. Run with `npm run test:local` (see

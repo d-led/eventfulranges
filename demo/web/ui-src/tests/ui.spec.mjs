@@ -1,5 +1,54 @@
 import { test, expect } from '@playwright/test';
 
+const TOUR_DONE_KEY = 'eventfulranges.tour.done.v1';
+
+test.beforeEach(async ({ page }) => {
+  // The onboarding tour would otherwise appear on every fresh context and
+  // cover the controls the other tests click, so mark it seen up front. The
+  // tour tests below use a clean browser context or the force path instead.
+  await page.addInitScript((key) => localStorage.setItem(key, '1'), TOUR_DONE_KEY);
+});
+
+test('shows the onboarding tutorial on first visit, then hides it after skip', async ({ browser }) => {
+  const page = await browser.newPage();
+  await page.goto('/ui/');
+  await expect(page.locator('#eventfulranges-tour')).toBeVisible();
+
+  await page.locator('#eventfulranges-tour button[data-tour="skip"]').click();
+  await expect(page.locator('#eventfulranges-tour')).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.locator('#eventfulranges-tour')).toHaveCount(0);
+  await page.close();
+});
+
+test('reopens the tutorial from the help button', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.locator('#helpTourBtn').click();
+  await expect(page.locator('#eventfulranges-tour')).toBeVisible();
+});
+
+test('back skips a hidden step in the tutorial', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.locator('#helpTourBtn').click();
+  await expect(page.locator('#eventfulranges-tour')).toBeVisible();
+
+  const title = page.locator('.eventfulranges-tour-title');
+  const next = page.locator('#eventfulranges-tour button[data-tour="next"]');
+
+  // Advance to Fit view; the 4th-dimension step is hidden in a 3D session.
+  for (let i = 0; i < 10; i++) {
+    if ((await title.textContent()) === 'Fit view') break;
+    await next.click();
+  }
+  await expect(title).toHaveText('Fit view');
+
+  // Back must land on Random op, skipping the hidden 4th-dimension step
+  // rather than re-rendering Fit view.
+  await page.locator('#eventfulranges-tour button[data-tour="back"]').click();
+  await expect(title).toHaveText('Random op');
+});
+
 test('serves the UI, connects, and renders the canvas', async ({ page }) => {
   await page.goto('/ui/');
   await expect(page.locator('#status')).toContainText('connected');

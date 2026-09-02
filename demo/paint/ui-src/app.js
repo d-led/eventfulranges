@@ -28,6 +28,7 @@ import {
   MAX_HEIGHT,
   BACKGROUND,
 } from "./export.js";
+import { startTour } from "./tour.js";
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -2100,6 +2101,20 @@ window.addEventListener("resize", draw);
 
 reconnectBtn.addEventListener("click", reconnectNow);
 
+// ---------- onboarding tour ----------
+// Shown once per browser, and reopenable from the help button.
+const TOUR_STEPS = [
+  { targetSelectors: ["#toolbar", "#board"], title: "Welcome", body: "Welcome to ± infinite paint. Every stroke is an event in an append-only log, merged by a CRDT, so every browser that opens this link converges on the same canvas." },
+  { targetSelector: "#toolRect", title: "Tools", body: "Draw with the rectangle, pen, and erase tools; the eraser brush and pan complete the set." },
+  { targetSelector: "#strokeColor", title: "Color", body: "Pick the stroke color before drawing — it travels with each box as metadata." },
+  { targetSelectors: ["#gridMinus", "#gridDefault", "#gridPlus", "#gridToggle"], title: "Grid", body: "The fractal grid snaps every stroke to cells; coarsen, refine, or hide it." },
+  { targetSelectors: ["#zoomOut", "#zoomReset", "#zoomIn"], title: "Zoom & pan", body: "Zoom with these buttons, scroll, or pinch; drag to pan across the infinite board." },
+  { targetSelector: "#fitAll", title: "Fit all", body: "Re-frame the whole painted area in view." },
+  { targetSelector: "#copyShare", title: "Share", body: "Copy the share link so everyone joins the same canvas and converges on the same log." },
+  { targetSelector: "#exportBtn", title: "Export", body: "Save the board as PNG, JPEG, or SVG — or download the raw JSONL log." },
+  { targetSelector: "#helpTourBtn", title: "Need a refresher?", body: "You can always reopen this tutorial from the help button." },
+];
+
 // ---------- boot ----------
 function boot() {
   settings = loadSettings();
@@ -2113,6 +2128,9 @@ function boot() {
   updateBacklog();
   draw();
   connect();
+  startTour(TOUR_STEPS);
+  const helpTourBtn = document.getElementById("helpTourBtn");
+  if (helpTourBtn) helpTourBtn.addEventListener("click", () => startTour(TOUR_STEPS, { force: true }));
   checkAdmin();
 }
 

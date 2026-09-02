@@ -138,6 +138,24 @@ textarea {
 
 .row { display: flex; gap: 8px; margin-bottom: 14px; }
 
+.session-actions { display: flex; gap: 8px; }
+
+.session-actions #newSession { flex: 1; }
+
+.session-actions #helpTourBtn {
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  min-width: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+}
+
+.session-actions #helpTourBtn:hover { background: rgb(255 255 255 / 6%); }
+
 .dims-row {
   display: flex;
   align-items: center;
