@@ -719,6 +719,174 @@ test("imports a photo frozen as a single image layer", async ({ page }) => {
   expect(entries[0].meta.image).toContain("data:image/png;base64,");
 });
 
+test("layers a frozen image inside another without losing the base", async ({
+  page,
+}) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+
+  const big = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 8;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 8, 8);
+    return c.toDataURL("image/png");
+  });
+  const small = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 2;
+    c.height = 2;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#0000ff";
+    ctx.fillRect(0, 0, 2, 2);
+    return c.toDataURL("image/png");
+  });
+
+  const importFrozen = async (dataUrl, name) => {
+    await page.locator("#importImageBtn").click();
+    await page.locator("#importFrozen").check();
+    await page.locator("#importFileInput").setInputFiles({
+      name,
+      mimeType: "image/png",
+      buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+    });
+    await page.locator("#importGo").click();
+    await expect(page.locator("#importDialog")).not.toBeVisible();
+  };
+
+  await importFrozen(big, "big.png");
+  await importFrozen(small, "small.png");
+
+  // Two log entries, each carrying its own image bytes.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#downloadJsonl").click(),
+  ]);
+  const entries = (await readFile(await download.path(), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(entries).toHaveLength(2);
+  expect(entries[0].meta.image).toContain("data:image/png;base64,");
+  expect(entries[1].meta.image).toContain("data:image/png;base64,");
+
+  // The board samples the big image where the small one does not cover it,
+  // and the small image on top where it does.
+  const channel = (x, y, i) =>
+    page.locator("#board").evaluate(
+      (canvas, [cx, cy, ci]) => {
+        const dpr = window.devicePixelRatio || 1;
+        const px = Math.round(canvas.width / 2 + (cx + 0.5) * 24 * dpr);
+        const py = Math.round(canvas.height / 2 + (cy + 0.5) * 24 * dpr);
+        return canvas.getContext("2d").getImageData(px, py, 1, 1).data[ci];
+      },
+      [x, y, i],
+    );
+
+  await expect.poll(() => channel(3, 3, 0)).toBeGreaterThan(150); // red base
+  await expect.poll(() => channel(1, 1, 2)).toBeGreaterThan(150); // blue top
+});
+
+test("round-trips a frozen image through JSONL load/save", async ({
+  browser,
+}) => {
+  const alice = await browser.newPage();
+  await alice.goto("/ui/");
+  await alice.waitForURL(/[?&]s=/);
+  await expect(alice.locator("#status")).toContainText("connected");
+
+  const dataUrl = await alice.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 4;
+    c.height = 4;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 4, 4);
+    return c.toDataURL("image/png");
+  });
+
+  await alice.locator("#importImageBtn").click();
+  await alice.locator("#importFrozen").check();
+  await alice.locator("#importFileInput").setInputFiles({
+    name: "photo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await alice.locator("#importGo").click();
+  await expect(alice.locator("#importDialog")).not.toBeVisible();
+
+  const [download] = await Promise.all([
+    alice.waitForEvent("download"),
+    alice.locator("#downloadJsonl").click(),
+  ]);
+  const content = await readFile(await download.path(), "utf8");
+
+  const bob = await browser.newPage();
+  await bob.goto("/ui/");
+  await bob.waitForURL(/[?&]s=/);
+  await expect(bob.locator("#status")).toContainText("connected");
+
+  await bob.locator("#importJsonlInput").setInputFiles({
+    name: "board.jsonl",
+    mimeType: "application/x-ndjson",
+    buffer: Buffer.from(content),
+  });
+
+  // The frozen image renders again on the new board, same bytes in the log.
+  await expect(bob.locator("#log li.add")).toHaveCount(1);
+  const centerRGB = () =>
+    bob.locator("#board").evaluate((canvas) => {
+      const c = canvas.getContext("2d");
+      // Offset from the centre to dodge a grid line drawn over the image.
+      const d = c.getImageData(
+        Math.floor(canvas.width / 2) + 17,
+        Math.floor(canvas.height / 2) + 17,
+        1,
+        1,
+      ).data;
+      return [d[0], d[1], d[2]];
+    });
+  // importJSONL fits the image to the viewport, so the centre is the decoded
+  // red image — not the gray fallback nor the dark background.
+  await expect.poll(async () => (await centerRGB())[0]).toBeGreaterThan(150);
+  await expect.poll(async () => (await centerRGB())[1]).toBeLessThan(50);
+});
+
+test("fits all to the frozen image bounds", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator("#status")).toContainText("connected");
+  await expect(page.locator("#gridLabel")).toContainText("level 0");
+
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 8;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 8, 8);
+    return c.toDataURL("image/png");
+  });
+
+  await page.locator("#importImageBtn").click();
+  await page.locator("#importFrozen").check();
+  await page.locator("#importFileInput").setInputFiles({
+    name: "photo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await page.locator("#importGo").click();
+  await expect(page.locator("#importDialog")).not.toBeVisible();
+
+  await page.locator("#fitAll").click();
+  // The camera fits the image's [0,8)x[0,8) bounds, zooming past the initial
+  // 100% (the grid level can stay 0 because the fit is only ~1.5x).
+  await expect(page.locator("#zoomLabel")).not.toHaveText("100%");
+});
+
 test("keeps the drawing's aspect ratio when asked", async ({ page }) => {
   await page.goto("/ui/");
   await page.waitForURL(/[?&]s=/);

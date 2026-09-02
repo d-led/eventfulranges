@@ -115,6 +115,27 @@ func TestRenderFrozenImageLayer(t *testing.T) {
 	require.Equal(t, uint32(0xffff), a)
 }
 
+func TestRenderNestedFrozenImages(t *testing.T) {
+	t.Parallel()
+	solid := func(c color.RGBA) string {
+		src := image.NewRGBA(image.Rect(0, 0, 1, 1))
+		src.Set(0, 0, c)
+		var buf bytes.Buffer
+		require.NoError(t, png.Encode(&buf, src))
+		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+	}
+	layers := []Layer{
+		{X0: 0, Y0: 0, X1: 8, Y1: 8, Color: "#e6e8ee", Image: solid(color.RGBA{R: 0xff, A: 0xff}), Frozen: true},
+		{X0: 1, Y0: 1, X1: 3, Y1: 3, Color: "#e6e8ee", Image: solid(color.RGBA{B: 0xff, A: 0xff}), Frozen: true},
+	}
+	img := renderPNG(t, layers, 100, 100)
+	// scale 12.5 px/unit: board (2,2) is the small image, board (6,6) the big.
+	_, _, b, _ := img.At(25, 25).RGBA()
+	require.Greater(t, b, uint32(0xf000)) // small blue layered on top
+	r, _, _, _ := img.At(75, 75).RGBA()
+	require.Greater(t, r, uint32(0xf000)) // big red shows through around it
+}
+
 func TestProjectLayersEmpty(t *testing.T) {
 	t.Parallel()
 	_, err := projectLayers(nil, 100, 100)

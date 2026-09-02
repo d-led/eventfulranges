@@ -93,6 +93,25 @@ func TestBoxCanvasLayersCarryImageMeta(t *testing.T) {
 	require.Equal(t, "#e6e8ee", layers[0].Color)
 }
 
+func TestBoxCanvasLayersKeepNestedImagesWhole(t *testing.T) {
+	t.Parallel()
+	c := newBoxCanvas()
+
+	_, err := c.Paint("a", Rect{0, 0, 8, 8},
+		json.RawMessage(`{"color":"#e6e8ee","image":"data:image/png;base64,AAAA","frozen":true}`))
+	require.NoError(t, err)
+	_, err = c.Paint("b", Rect{1, 1, 3, 3},
+		json.RawMessage(`{"color":"#e6e8ee","image":"data:image/png;base64,BBBB","frozen":true}`))
+	require.NoError(t, err)
+
+	// The painter's front keeps both images whole: the big one underneath and
+	// the small one layered on top, never carved into strips.
+	layers := c.Layers()
+	require.Len(t, layers, 2)
+	require.Equal(t, "data:image/png;base64,AAAA", layers[0].Image)
+	require.Equal(t, "data:image/png;base64,BBBB", layers[1].Image)
+}
+
 func TestBoxCanvasResolvesColorPerPoint(t *testing.T) {
 	t.Parallel()
 	c := newBoxCanvas()

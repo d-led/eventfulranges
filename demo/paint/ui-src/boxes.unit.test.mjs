@@ -77,6 +77,21 @@ describe("front", () => {
     ).toEqual([add(0, 0, 0, 10, 10, "#111111"), add(1, 4, 4, 6, 6, "#222222")]);
   });
 
+  it("keeps image metadata on a big image layered under a smaller one", () => {
+    const big = {
+      ...add(0, 0, 0, 8, 8, "#ff0000"),
+      image: "data:A",
+      frozen: true,
+    };
+    const small = {
+      ...add(1, 1, 1, 3, 3, "#0000ff"),
+      image: "data:B",
+      frozen: true,
+    };
+    expect(front([big, small])).toEqual([big, small]);
+    expect(layerOnTop([big], [small])).toEqual([big, small]);
+  });
+
   it("culls layers fully covered by a later one", () => {
     expect(
       front([add(0, 0, 0, 2, 2), add(1, 4, 4, 6, 6), add(2, 0, 0, 10, 10)]),
