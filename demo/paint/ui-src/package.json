@@ -8,7 +8,8 @@
     "watch": "node build.mjs --watch",
     "format": "prettier --write .",
     "test": "playwright test",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "bench": "node bench/spatial.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

@@ -70,6 +70,14 @@ func requireSameBoxes(t failer, got, want []space.Box) {
 	}
 }
 
+// sortedByBox returns a copy of boxes in canonical order, for comparing an
+// order-free result such as SearchRef against a sorted oracle.
+func sortedByBox(boxes []space.Box) []space.Box {
+	out := append([]space.Box(nil), boxes...)
+	sort.Slice(out, func(i, j int) bool { return lessBox(out[i], out[j]) })
+	return out
+}
+
 // failer is the reporting surface both *testing.T and *rapid.T share, so the
 // oracle comparison works in plain tests and property tests alike.
 type failer interface {
@@ -87,6 +95,9 @@ func TestBuildEmpty(t *testing.T) {
 	}
 	if got := tree.Search(space.NewBox([]float64{0}, []float64{1})); got != nil {
 		t.Fatalf("search on empty tree: got %v, want nil", got)
+	}
+	if got := tree.SearchRef(space.NewBox([]float64{0}, []float64{1})); got != nil {
+		t.Fatalf("search ref on empty tree: got %v, want nil", got)
 	}
 }
 
@@ -128,6 +139,11 @@ func TestSearchSingle(t *testing.T) {
 	})
 	requireSameBoxes(t, tree.Search(space.NewBox([]float64{3, 3}, []float64{4, 4})), nil)
 	requireSameBoxes(t, tree.Search(space.NewBox([]float64{0}, []float64{1})), nil) // dims mismatch
+	requireSameBoxes(t, sortedByBox(tree.SearchRef(space.NewBox([]float64{1, 1}, []float64{3, 3}))), []space.Box{
+		space.NewBox([]float64{0, 0}, []float64{2, 2}),
+	})
+	requireSameBoxes(t, tree.SearchRef(space.NewBox([]float64{3, 3}, []float64{4, 4})), nil)
+	requireSameBoxes(t, tree.SearchRef(space.NewBox([]float64{0}, []float64{1})), nil) // dims mismatch
 }
 
 func TestSearchClosedFaces(t *testing.T) {
@@ -271,6 +287,36 @@ func TestPropertySearchMatchesLinearScan(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build: %v", err)
 		}
-		requireSameBoxes(t, tree.Search(q), reference(boxes, q))
+		ref, err := BuildRef(boxes)
+		if err != nil {
+			t.Fatalf("BuildRef: %v", err)
+		}
+		want := reference(boxes, q)
+		requireSameBoxes(t, tree.Search(q), want)
+		requireSameBoxes(t, sortedByBox(tree.SearchRef(q)), want)
+		requireSameBoxes(t, ref.Search(q), want)
+		requireSameBoxes(t, sortedByBox(ref.SearchRef(q)), want)
 	})
+}
+
+func TestBuildRefMatchesBuild(t *testing.T) {
+	t.Parallel()
+	boxes := []space.Box{
+		space.NewBox([]float64{0, 0}, []float64{2, 2}),
+		space.NewBox([]float64{10, 10}, []float64{12, 12}),
+		space.NewBox([]float64{-5, -5}, []float64{-1, -1}),
+	}
+	copied, err := Build(boxes)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	referenced, err := BuildRef(boxes)
+	if err != nil {
+		t.Fatalf("BuildRef: %v", err)
+	}
+	if copied.Len() != referenced.Len() || copied.Dims() != referenced.Dims() {
+		t.Fatalf("Build and BuildRef must index the same boxes")
+	}
+	q := space.NewBox([]float64{-10, -10}, []float64{20, 20})
+	requireSameBoxes(t, referenced.Search(q), copied.Search(q))
 }

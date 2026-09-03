@@ -96,13 +96,7 @@ func readClientOps(conn *websocket.Conn, h *hub, clientID string, done chan<- st
 		if err := conn.ReadJSON(&op); err != nil {
 			return
 		}
-		if op.Kind == string(opDims) {
-			if _, err := h.setDims(clientID, op.Dims); err != nil {
-				failures <- err
-			}
-			continue
-		}
-		if _, err := h.record(clientID, opKind(op.Kind), op.Min, op.Max); err != nil {
+		if err := h.applyClientOp(clientID, op); err != nil {
 			failures <- err
 		}
 	}

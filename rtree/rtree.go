@@ -48,6 +48,20 @@ type Tree struct {
 // survivors are copied, so later mutation of the input does not affect the
 // tree. Every surviving box must be valid and of one shared dimensionality.
 func Build(boxes []space.Box) (*Tree, error) {
+	return build(boxes, true)
+}
+
+// BuildRef is Build without copying the boxes: the tree stores the caller's
+// boxes, so the input must not be mutated while the tree is queried. It is
+// the memory-conscious form for callers that can guarantee the boxes outlive
+// the tree unchanged, and drops the per-box copy that dominates the index's
+// footprint. Search still returns copies, so results stay safe to mutate.
+func BuildRef(boxes []space.Box) (*Tree, error) {
+	return build(boxes, false)
+}
+
+// build bulk-loads a tree, deep-copying the boxes only when copyBoxes is set.
+func build(boxes []space.Box, copyBoxes bool) (*Tree, error) {
 	dims := 0
 	kept := make([]space.Box, 0, len(boxes))
 	for _, b := range boxes {
@@ -62,7 +76,10 @@ func Build(boxes []space.Box) (*Tree, error) {
 		} else if len(b.Min) != dims {
 			return nil, fmt.Errorf("rtree: box has %d dimensions, expected %d", len(b.Min), dims)
 		}
-		kept = append(kept, cloneBox(b))
+		if copyBoxes {
+			b = cloneBox(b)
+		}
+		kept = append(kept, b)
 	}
 	if len(kept) == 0 {
 		return &Tree{}, nil
@@ -81,13 +98,35 @@ func (t *Tree) Dims() int { return t.dims }
 // them. An empty tree, an empty query, or a query of a different
 // dimensionality matches nothing.
 func (t *Tree) Search(q space.Box) []space.Box {
-	if t.root == nil || q.Empty() || len(q.Min) != t.dims {
+	refs := t.searchInto(q, nil)
+	if len(refs) == 0 {
 		return nil
 	}
-	var out []space.Box
-	searchNode(t.root, q, &out)
-	sort.Slice(out, func(i, j int) bool { return lessBox(out[i], out[j]) })
+	sort.Slice(refs, func(i, j int) bool { return lessBox(refs[i], refs[j]) })
+	out := make([]space.Box, len(refs))
+	for i, b := range refs {
+		out[i] = cloneBox(b)
+	}
 	return out
+}
+
+// SearchRef is Search without the copy and the canonical sort: it returns the
+// matching boxes in traversal order, as references into the tree. It is the
+// fast path for callers that only read the results and do not care about their
+// order. The order is deterministic for a given tree, but not sorted, and the
+// returned boxes must not be mutated.
+func (t *Tree) SearchRef(q space.Box) []space.Box {
+	return t.searchInto(q, nil)
+}
+
+// searchInto appends the boxes overlapping q, as references, in traversal
+// order, to dst.
+func (t *Tree) searchInto(q space.Box, dst []space.Box) []space.Box {
+	if t.root == nil || q.Empty() || len(q.Min) != t.dims {
+		return dst
+	}
+	searchNode(t.root, q, &dst)
+	return dst
 }
 
 // buildNode recursively packs boxes into a balanced tree.
@@ -115,7 +154,7 @@ func searchNode(n *node, q space.Box, out *[]space.Box) {
 	if n.leaf {
 		for _, b := range n.boxes {
 			if space.Overlaps(b, q) {
-				*out = append(*out, cloneBox(b))
+				*out = append(*out, b)
 			}
 		}
 		return

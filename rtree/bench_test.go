@@ -28,6 +28,130 @@ func randomBoxes(n int, seed int64, side float64) []space.Box {
 	return boxes
 }
 
+// --- memory accounting -----------------------------------------------------
+// The helpers below sum the bytes the tree owns — backing arrays and node
+// structs — so two configurations compare deterministically, independent of
+// the allocator's reuse. They measure the retained footprint, not the
+// transient allocation churn (BenchmarkBuild's B/op covers that).
+
+func boxBytes(b space.Box) int {
+	return len(b.Min)*8 + len(b.Max)*8 + len(b.MinBound) + len(b.MaxBound) + len(b.Meta)
+}
+
+func boxBytesOf(boxes []space.Box) int {
+	total := 0
+	for _, b := range boxes {
+		total += boxBytes(b)
+	}
+	return total
+}
+
+func mbrBytes(b space.Box) int {
+	return len(b.Min)*8 + len(b.Max)*8 + len(b.MinBound) + len(b.MaxBound)
+}
+
+func nodeBytes(n *node) int {
+	total := mbrBytes(n.mbr)
+	if n.leaf {
+		for _, b := range n.boxes {
+			total += boxBytes(b)
+		}
+		return total
+	}
+	for _, c := range n.children {
+		total += nodeBytes(c)
+	}
+	return total
+}
+
+func treeBytes(t *Tree) int {
+	if t == nil || t.root == nil {
+		return 0
+	}
+	return nodeBytes(t.root)
+}
+
+// overheadBytes is the bytes the tree allocates for its own structure — every
+// node's MBR — excluding the box data, which BuildRef shares with the caller.
+func overheadBytes(t *Tree) int {
+	if t == nil || t.root == nil {
+		return 0
+	}
+	var sum func(*node) int
+	sum = func(n *node) int {
+		total := mbrBytes(n.mbr)
+		for _, c := range n.children {
+			total += sum(c)
+		}
+		return total
+	}
+	return sum(t.root)
+}
+
+func nodeCount(t *Tree) int {
+	if t == nil || t.root == nil {
+		return 0
+	}
+	var count func(*node) int
+	count = func(n *node) int {
+		if n.leaf {
+			return 1
+		}
+		c := 1
+		for _, ch := range n.children {
+			c += count(ch)
+		}
+		return c
+	}
+	return count(t.root)
+}
+
+// BenchmarkBuildRef measures the allocation churn of a no-copy build, for the
+// memory comparison against Build (whose B/op is BenchmarkBuild).
+func BenchmarkBuildRef(b *testing.B) {
+	const side = 1 << 20
+	for _, n := range []int{1_000, 10_000, 100_000} {
+		boxes := randomBoxes(n, 7, side)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				tree, err := BuildRef(boxes)
+				if err != nil {
+					b.Fatal(err)
+				}
+				sink += tree.Len()
+			}
+		})
+	}
+}
+
+// BenchmarkBuildMemory reports the retained footprint: the input's box data,
+// a copying tree that owns everything, and a referencing tree that owns only
+// its node structure.
+func BenchmarkBuildMemory(b *testing.B) {
+	const side = 1 << 20
+	for _, n := range []int{1_000, 10_000, 100_000} {
+		boxes := randomBoxes(n, 7, side)
+		copied, err := Build(boxes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		referenced, err := BuildRef(boxes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.ReportMetric(float64(boxBytesOf(boxes)), "B/input-boxes")
+			b.ReportMetric(float64(treeBytes(copied)), "B/owned-copy")
+			b.ReportMetric(float64(overheadBytes(referenced)), "B/owned-ref")
+			b.ReportMetric(float64(nodeCount(referenced)), "nodes")
+			for i := 0; i < b.N; i++ {
+				sink += copied.Len() + referenced.Len()
+			}
+		})
+	}
+}
+
 // countOverlaps is the current production path: a linear scan.
 func countOverlaps(boxes []space.Box, q space.Box) int {
 	count := 0
@@ -83,6 +207,12 @@ func BenchmarkSearchOverlap(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					sink += len(tree.Search(q))
+				}
+			})
+			b.Run("rtree-ref/"+label, func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					sink += len(tree.SearchRef(q))
 				}
 			})
 		}

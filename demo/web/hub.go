@@ -11,6 +11,7 @@ import (
 	"github.com/cskr/pubsub/v2"
 
 	"github.com/d-led/eventfulranges"
+	"github.com/d-led/eventfulranges/rtree"
 	"github.com/d-led/eventfulranges/space"
 	sop "github.com/d-led/eventfulranges/space/op"
 	"github.com/d-led/eventfulranges/space/store/memory"
@@ -58,8 +59,9 @@ type hub struct {
 	events   *pubsub.PubSub[string, serverMsg]
 	onEvent  func(serverMsg) // direct delivery for a single watcher (wasm); nil fans out via events
 	set      *eventfulranges.BoxSet
-	compact  string // compaction mode: canonical, merge, or partition
-	dims     int    // session dimension: -1 until fixed by a dims op or the first box
+	idx      *rtree.Tree // ephemeral spatial index over the boxes; nil until first search
+	compact  string      // compaction mode: canonical, merge, or partition
+	dims     int         // session dimension: -1 until fixed by a dims op or the first box
 	clients  int
 	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
 	presence *pubsub.PubSub[string, serverMsg] // global presence topic; nil standalone
@@ -194,6 +196,23 @@ func (h *hub) replay(records []opRecord) {
 	}
 }
 
+// applyClientOp folds one client command into the session, dispatching by
+// kind: dims fixes the dimension, search answers a region query, and anything
+// else is an add or remove attributed to the client.
+func (h *hub) applyClientOp(clientID string, op clientOp) error {
+	switch op.Kind {
+	case string(opDims):
+		_, err := h.setDims(clientID, op.Dims)
+		return err
+	case searchKind:
+		_, err := h.search(op.Min, op.Max)
+		return err
+	default:
+		_, err := h.record(clientID, opKind(op.Kind), op.Min, op.Max)
+		return err
+	}
+}
+
 // join registers a watcher and reports the new count together with the
 // session's activity log so a late joiner can catch up.
 func (h *hub) join() (log []opRecord, clients int) {
@@ -284,6 +303,7 @@ func (h *hub) foldLocked(kind opKind, lo, hi []float64) (view, error) {
 	default:
 		return view{}, fmt.Errorf("unknown operation %q", kind)
 	}
+	h.idx = nil // the boxes changed; the cached spatial index is stale
 	return h.materializeLocked(), nil
 }
 
@@ -350,4 +370,47 @@ func (h *hub) materializeLocked() view {
 		Dims:    h.dims,
 		Compact: mode,
 	}
+}
+
+// search finds the boxes overlapping the query region through the board's
+// ephemeral spatial index and broadcasts the result to every watcher, so all
+// screens can show the same highlights. The index is a pure function of the
+// materialized boxes, rebuilt lazily after each edit, so a search never races
+// an edit and nothing has to be kept consistent by hand.
+func (h *hub) search(lo, hi []float64) (searchResult, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	res, err := h.searchLocked(lo, hi)
+	if err != nil {
+		return searchResult{}, err
+	}
+	h.broadcast(serverMsg{Type: msgSearch, Search: &res})
+	return res, nil
+}
+
+// searchLocked answers one region query. The caller must hold h.mu.
+func (h *hub) searchLocked(lo, hi []float64) (searchResult, error) {
+	q := space.NewBox(lo, hi)
+	if err := q.Validate(); err != nil {
+		return searchResult{}, err
+	}
+	if h.dims != -1 && q.Dims() != h.dims {
+		return searchResult{}, fmt.Errorf("query has %d dimensions but the view has %d", q.Dims(), h.dims)
+	}
+	if h.idx == nil {
+		// BuildRef, not Build: the index is invalidated on every edit, so it
+		// never outlives the snapshot it indexes, and Boxes hands out fresh
+		// box structs the engine does not mutate in place. Skipping the copy
+		// roughly halves the index's memory; Search still returns copies.
+		tree, err := rtree.BuildRef(h.set.Boxes())
+		if err != nil {
+			return searchResult{}, err
+		}
+		h.idx = tree
+	}
+	return searchResult{
+		Min:   append([]float64(nil), lo...),
+		Max:   append([]float64(nil), hi...),
+		Boxes: h.idx.Search(q),
+	}, nil
 }

@@ -75,13 +75,7 @@ func wasmOp(this js.Value, args []js.Value) any {
 		emit(serverMsg{Type: msgError, Error: err.Error()})
 		return nil
 	}
-	if op.Kind == string(opDims) {
-		if _, err := theHub.setDims(theClientID, op.Dims); err != nil {
-			emit(serverMsg{Type: msgError, Error: err.Error()})
-		}
-		return nil
-	}
-	if _, err := theHub.record(theClientID, opKind(op.Kind), op.Min, op.Max); err != nil {
+	if err := theHub.applyClientOp(theClientID, op); err != nil {
 		emit(serverMsg{Type: msgError, Error: err.Error()})
 	}
 	return nil
