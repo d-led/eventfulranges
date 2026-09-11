@@ -12,9 +12,9 @@
     "bench": "node bench/spatial.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "esbuild": "^0.28.2",
     "prettier": "^3.9.6",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }

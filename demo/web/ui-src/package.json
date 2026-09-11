@@ -12,10 +12,10 @@
     "test:unit": "node --test slice.unit.test.mjs camera.unit.test.mjs backoff.unit.test.mjs"
   },
   "dependencies": {
-    "three": "^0.185.1"
+    "three": "^0.186.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "esbuild": "^0.28.2"
   }
 }
