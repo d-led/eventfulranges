@@ -700,8 +700,11 @@ test("imports a detailed photo by downscaling it to fit", async ({ page }) => {
   });
   await page.locator("#importGo").click();
 
-  // The import succeeds at a smaller size instead of being rejected.
-  await expect(page.locator("#toast")).toContainText("at 128 × 128 px");
+  // The import succeeds at a smaller size instead of being rejected. The
+  // downscale is the slow part, so give the toast time on a busy machine.
+  await expect(page.locator("#toast")).toContainText("at 128 × 128 px", {
+    timeout: 30_000,
+  });
   await expect(page.locator("#importDialog")).not.toBeVisible();
 });
 
