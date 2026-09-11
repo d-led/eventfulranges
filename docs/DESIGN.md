@@ -4,6 +4,15 @@
 document explains the model, the conflict-resolution rules, and the design
 decisions behind each package.
 
+**One line.** History is the truth; the materialized view is a cache. Replicas
+ship operations, never state.
+
+**Jump to:** [Model](#model) · [Interval geometry](#interval-geometry) ·
+[Conflict resolution](#conflict-resolution) · [Engine](#engine)
+
+[Stores](#stores) · [Clocks](#clocks) · [Testing](#testing) ·
+[Notable decisions](#notable-decisions)
+
 ## Model
 
 The state is a set of disjoint intervals over `float64`. The *history* is an
@@ -139,3 +148,11 @@ The tests are behavior- and oracle-driven, not implementation-mirroring:
   dependency.
 - **KurrentDB is optional** — the default backend is a local file, so the
   library and most tests need no network.
+
+## Read next
+
+- [CRDT map](CRDT.md) — every strategy and both dimensions, with code links
+- [n-D ranges](N-DIM.md) — how `space` generalizes everything on this page
+- [Extensions](EXTENSIONS.md) — implemented vs proposed, and the seams
+- [WASM build](WASM.md) — this engine running in a browser tab, no server
+- [README](../README.md) — the facades, the demos, the quality gate

@@ -1,7 +1,14 @@
 # n-dimensional ranges
 
-The `space` package generalizes the one-dimensional `interval` set to **n
-dimensions**. It is the geometry layer for the n-dimensional CRDT engine.
+**One line.** `space` generalizes the 1-D `interval` set to **n dimensions**.
+It is the geometry layer under the n-dimensional CRDT engine.
+
+Three things to know before reading on:
+
+1. A box is **half-open** in every dimension.
+2. The cover is **not unique**: equivalent point sets can be written as
+   different boxes.
+3. Rendering uses **paint layers**, not the set cover.
 
 ## Boxes
 
@@ -59,10 +66,20 @@ incrementally — so two replicas that have seen the same operations always
 yield the identical cover.
 
 For rendering, `space/strategy.Layers` (exposed as `BoxSet.Layers`) is the
-painter's-algorithm counterpart of the cover: it returns the effective
-operations as an ordered, culled front of overlapping boxes (`Layer{Box,
-Kind}`) in bottom-to-top paint order. Each box stays whole — a small stroke
-inside a big box layers on top instead of carving the big box into strips —
-and any box fully covered by a higher layer is dropped. It is a paint recipe,
-not a set cover, so it backs rendering rather than the set queries
-(`Contains`, `Overlaps`, `Crossed`, `Traverse`).
+painter's-algorithm counterpart of the cover:
+
+- It returns the effective operations as an ordered, culled front of
+  overlapping boxes (`Layer{Box, Kind}`), bottom to top.
+- Each box stays whole — a small stroke inside a big box layers on top instead
+  of carving the big box into strips.
+- Any box fully covered by a higher layer is dropped.
+
+It is a paint recipe, not a set cover, so it backs rendering rather than the
+set queries (`Contains`, `Overlaps`, `Crossed`, `Traverse`).
+
+## Read next
+
+- [CRDT map](CRDT.md) — the four strategies side by side, 1-D and n-D
+- [Design](DESIGN.md) — the 1-D model this one mirrors
+- [Extensions](EXTENSIONS.md) — canonicalizers, metadata, region queries
+- [WASM build](WASM.md) — this visualizer running with no server at all

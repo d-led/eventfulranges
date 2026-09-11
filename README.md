@@ -5,41 +5,64 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/d-led/eventfulranges.svg)](https://pkg.go.dev/github.com/d-led/eventfulranges)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
 
-An event-sourced **CRDT for real-valued ranges**. Ranges can be added and
-removed from any number of replicas, in any order, over any transport — and
-every replica that has seen the same operations converges to the same set.
+**A CRDT for real-valued ranges.** Any number of replicas add and remove ranges
+on their own. Every replica that has seen the same operations ends up with the
+same set — no coordinator, no consensus, any arrival order.
 
-Storage and transport are both swappable. A replica can keep its operations in
-a JSON Lines file, in memory, or in any backend you write against the
-`store.Log` interface. Replicas converge by exchanging operations over whatever
-transport you already have — goroutine channels, an in-process pub/sub bus,
-plain HTTP, or an event database such as
-[KurrentDB](https://kurrent.io) (behind the `kurrent` build tag).
+Four things people come here for:
+
+| You want | How you get it |
+| --- | --- |
+| Several writers, no lock | `Add` / `Remove` locally, then exchange `Ops()` and call `ApplyAll` |
+| Your choice of durability | `store.Log`: a JSON Lines file, memory, KurrentDB, or your own |
+| Your choice of transport | channels, pub/sub, HTTP, an event log — convergence is transport-agnostic |
+| Ranges or n-D boxes | `float64` intervals in 1-D; the `space` package for boxes in any dimension |
+
+`go get github.com/d-led/eventfulranges`
+
+**Read next:** [Quick start](#quick-start) · [Strategies](#strategies) ·
+[Packages](#packages) · [Demos](#demos)
+
+**Deep dives:** [CRDT map](docs/CRDT.md) · [Design](docs/DESIGN.md) ·
+[n-D ranges](docs/N-DIM.md) · [Extensions](docs/EXTENSIONS.md) ·
+[WebAssembly build](docs/WASM.md)
 
 ## Quick start
 
+Step 1 — open a replica. The store decides where operations live:
+
 ```go
-set, _ := eventfulranges.Open(ctx, "./example", strategy.LWW) // ./example/ranges.stream.jsonl
-_, _ = set.Add(ctx, 1, 10)   // [1,10]
-_, _ = set.Remove(ctx, 3, 5) // cut a hole
+set, _ := eventfulranges.Open(ctx, "./example", strategy.LWW) // → ./example/ranges.stream.jsonl
+```
+
+Step 2 — add and remove ranges. `[1,10]` minus `[3,5]` leaves a hole:
+
+```go
+_, _ = set.Add(ctx, 1, 10)
+_, _ = set.Remove(ctx, 3, 5)
+
 for _, iv := range set.Ranges() {
-    fmt.Println(iv) // [1,3) (5,10]
+    fmt.Println(iv) // [1,3)
+                    // (5,10]
 }
 ```
 
-Replicas converge by exchanging operations, not by reconciling state:
+Step 3 — converge two replicas by exchanging operations, never state:
 
 ```go
-// replica A and B each mutated independently ...
 _ = a.ApplyAll(ctx, b.Ops())
 _ = b.ApplyAll(ctx, a.Ops())
-// a.Ranges() == b.Ranges()
+// now a.Ranges() == b.Ranges()
 ```
 
-## Use case: a shared calendar
+That is the whole API surface for the common case. Everything below is a
+choice: which strategy, which store, which transport.
 
-The full program is in [`examples/calendar`](examples/calendar). A date is
-just a day number (`float64`), so a date range is a plain interval:
+## Example: a shared calendar
+
+**A date is a day number, so a date range is a plain `float64` interval.** Two
+people book overlapping vacations, one cancels part of hers, and the busy set is
+the union of bookings minus cancellations:
 
 ```go
 cal, _ := eventfulranges.OpenStore(ctx, memory.New(), strategy.AdditiveWins)
@@ -74,8 +97,12 @@ gantt
     Busy (Bob)                   :done,   r3, 2026-07-11, 5d
 ```
 
-`AdditiveWins` makes the busy set the union of all bookings minus all
-cancellations, so concurrent edits converge no matter the order.
+`AdditiveWins` is what makes that add up: the busy set is the union of all
+bookings minus the union of all cancellations, so concurrent edits converge
+whatever order they arrive in.
+
+Full program: [`examples/calendar`](examples/calendar) — its own module, which
+imports `v0.0.1` from the module proxy with no `replace` directive.
 
 ## Storage & transport
 
@@ -89,9 +116,10 @@ set, _ := eventfulranges.OpenStore(ctx, myBackend, strategy.LWW)      // your ow
 ```
 
 `Open` keeps the append-only event stream as JSON Lines
-(`./example/ranges.stream.jsonl`) and caches the materialized view in a
-sidecar snapshot (`./example/ranges.snapshot.json`). The stream is the source
-of truth; the snapshot only fast-forwards a restart.
+(`./example/ranges.stream.jsonl`). Snapshots are embedded as records in that
+same stream rather than a sidecar file, which is what lets `Compact` rewrite
+the stream in place without losing history. The stream is the source of truth;
+a snapshot record only fast-forwards a restart.
 
 Transport is yours to choose, too: convergence is just shipping `Ops()` and
 calling `ApplyAll`. See [Demos](#demos) for channels, a pub/sub bus, and HTTP,
@@ -118,6 +146,11 @@ and [KurrentDB](#kurrentdb) for the event-database backend.
 | `store`                       | The `EventStore` interface (append/read/snapshot)    |
 | `store/memory`, `store/jsonl` | In-memory and file backends                          |
 | `space`                       | n-dimensional generalization (half-open boxes)       |
+| `rtree`                       | Ephemeral bulk-loaded R-tree over `space.Box`        |
+| `meta`                        | CRDT join for JSON-object metadata                   |
+
+The n-dimensional stack mirrors the 1-D one package for package (`space/op`,
+`space/strategy`, `space/store`, `space/engine`); see [docs/N-DIM.md](docs/N-DIM.md).
 
 The public facade is the root package `eventfulranges`.
 
@@ -137,6 +170,9 @@ operation timestamps and log-version counters — never as a coordinate.
 - [pubsub](#pubsub) — replicas converge over an in-process pub/sub bus
 - [network](#network) — two HTTP peers converge
 - [web](#web) — interactive 3D visualizer, shared live over WebSockets
+- [paint](#paint) — infinite shared whiteboard over n-D boxes
+- [kurrent](#kurrentdb) — the same operations, stored in KurrentDB
+- [automerge and go-automerge](#automerge-and-go-automerge) — the same convergence under a different CRDT
 
 ### hello
 
@@ -190,6 +226,13 @@ rotatable translucent-box 3D view and copy/pasteable CSV). Everyone connected
 to the same instance shares one view: each `add`/`remove` is folded with
 additive-wins semantics and broadcast over a WebSocket, so concurrent edits
 converge regardless of order. Open `http://localhost:8080/ui/`.
+
+A hub also answers read-only region queries: a client sends
+`{"kind":"search","min":[…],"max":[…]}` and gets back the boxes overlapping
+that region. The index behind it is an ephemeral R-tree (`rtree`), dropped on
+every edit and rebuilt lazily on the next query, so a query costs
+`O(log n + k)` instead of a full scan. The tree holds no state of its own — two
+hubs that converged on the same boxes answer identically.
 
 One command starts it, and the other scripts cover the rest:
 
@@ -272,33 +315,84 @@ artifacts, so it can never leak into a deployed binary.
 - [Endless Paper](https://www.endlesspaper.app) — single-user infinite canvas
 - [Prezi](https://prezi.com) — the zoomable-canvas presentation paradigm
 
+### automerge and go-automerge
+
+`demo/automerge` and `demo/go-automerge` run the same convergence story as the
+other demos — two replicas edit a shared document concurrently, sync, and end
+up identical — but the CRDT underneath is Automerge, not this library's range
+CRDT. They exist to show the contrast: a JSON document with built-in conflict
+resolution, versus a range set where the conflict policy is a choice you make
+(`LWW`, `FWW`, `AdditiveWins`, `GrowOnly`).
+
+```bash
+./scripts/demo-automerge.sh      # tests + run, via automerge-go (needs cgo)
+./scripts/demo-go-automerge.sh   # tests + run, via the pure-Go port (no cgo)
+```
+
+Neither demo touches the library; they are side-by-side comparisons, and the
+Automerge dependencies live only in `demo/go.mod`.
+
 ## Quality
 
-Everything is checked by `scripts/quality-gate.sh` and on CI:
+`scripts/quality-gate.sh` is the single gate: format, lint, tests, property,
+fuzz, mutation, both UI builds, the WebAssembly build, and every Playwright
+suite. On CI it runs as a manual `workflow_dispatch` job (the `quality-gate`
+job, 45-minute timeout); every push and PR runs the fast path instead —
+`golangci-lint` on both modules plus `scripts/test.sh` — and the Kurrent
+integration test has a job of its own.
+
+What the gate checks:
 
 - `gofumpt` formatting
-- `golangci-lint` (low-complexity and duplicate-code gates)
-- unit tests with the race detector and a **100% coverage** gate
+- `go vet`, `staticcheck`, `golangci-lint`, `gocyclo` (complexity ≤15),
+  `revive`, `gosec`, `govulncheck`, `jscpd` (duplication ≤0.5%)
+- unit tests with the race detector, at **100% statement coverage** of every
+  library package (the gate prints the total; a shortfall is not yet a hard
+  failure)
 - property-based tests (`pgregory.net/rapid`) checked against a **biogo
   interval-tree oracle**, plus Jepsen-style concurrent scenarios
 - fuzz smoke tests (Go native fuzzing)
-- mutation testing (`gremlins`, ≥80% efficacy)
+- mutation testing (`gremlins`, ≥80% efficacy and ≥80% mutant coverage)
 
 Run it locally:
 
 ```bash
 ./scripts/test.sh        # fast: unit tests + coverage report
-./scripts/quality-gate.sh # full: format, lint, tests, property, fuzz, mutation
+./scripts/quality-gate.sh # full: format, lint, tests, property, fuzz, mutation, e2e
+./scripts/lint.sh --install # install any missing static-analysis tools
 ./scripts/update-dependencies.sh # bump every module to its latest deps
 ```
 
 ## KurrentDB
 
+[KurrentDB](https://kurrent.io) (formerly EventStoreDB) is the event-database
+backend, behind the `kurrent` build tag: the operation log is a KurrentDB
+stream, with snapshots in the same store.
+
 ```bash
 ./scripts/kurrent-up.sh          # docker compose up -d (needs Docker)
+./scripts/demo-kurrent.sh        # run the KurrentDB-backed demo
 ./scripts/itest-kurrent.sh       # integration tests (build tag kurrent)
 ./scripts/kurrent-down.sh
 ```
+
+`demo/kurrent` stores the same add/remove pair in KurrentDB and prints the
+result, so the only difference from `demo/hello` is which `store.Log` the
+replica is opened with. To run it by hand:
+
+```bash
+cd demo/kurrent && go run -tags kurrent .
+```
+
+## Docs
+
+| Document | Answers |
+| --- | --- |
+| [CRDT map](docs/CRDT.md) | which strategy, which dimension, and where each lives |
+| [Design](docs/DESIGN.md) | the model, the packages, the reasoning |
+| [n-D ranges](docs/N-DIM.md) | boxes, the n-D engine, paint layers |
+| [Extensions](docs/EXTENSIONS.md) | canonicalizers, metadata, merge verification, region queries |
+| [WebAssembly build](docs/WASM.md) | the browser-only build and its GitHub Pages deploy |
 
 ## License
 

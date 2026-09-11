@@ -5,6 +5,16 @@ extension is opt-in: the existing 1-D and n-D interfaces, their
 materialization, and their convergence guarantees are unchanged unless a new
 option is explicitly enabled. Defaults reproduce today's behavior exactly.
 
+**Status at a glance.** Read the section for the seams; read this table to know
+what you can use today.
+
+| # | Extension | Status |
+| --- | --- | --- |
+| 1 | Canonicalization (compaction) seam | **implemented** — `space.Chain`, `space.MergeAdjacent`, `WithCanonicalizer` |
+| 2 | Optional metadata + custom merge | **partly implemented** — per-box metadata ships, and the union-based strategies merge it with `meta.Union` by default (`space.Box.WithMeta`, `WithMetaMerge`); the annotated-`Op` shape below is still proposed |
+| 3 | Merge verification tooling (`crdt.Verify`) | **proposed** |
+| 4 | Region queries and connected components | **implemented** — `space.Crossed`, `space.Traverse`, `space.ConnectedComponents`, `rtree` |
+
 ## 1. Canonicalization (compaction) seam — *implemented*
 
 **Why.** The n-D `space` canonical cover keeps partially-overlapping boxes; it
@@ -127,6 +137,13 @@ zero-length touch is not a crossing. SoS would only be needed for a future
 general polygonal region whose canonicalizer subdivides into a disjoint cover
 (see §1).
 
+**Box-region query over an index — *implemented*.** The web hub adds a third
+query shape: "which boxes overlap this min/max box?", sent as
+`{"kind":"search","min":…,"max":…}`. It is served by `rtree`, a bulk-loaded
+median-split R-tree built from the materialized cover. The tree is ephemeral —
+any edit drops it, the next query rebuilds it — so the answer remains a pure
+function of the view, at `O(log n + k)` typical instead of a full scan.
+
 ## Non-breaking guarantee
 
 - Default options reproduce current behavior exactly.
@@ -134,3 +151,10 @@ general polygonal region whose canonicalizer subdivides into a disjoint cover
 - The 1-D path is untouched; the seam lands first on the n-D engine, where the
   non-unique-decomposition issue actually exists (1-D `interval.Normalize`
   already merges into a unique canonical form).
+
+## Read next
+
+- [CRDT map](CRDT.md) — which strategy to pick, and where each one lives
+- [n-D ranges](N-DIM.md) — boxes, covers, and paint layers
+- [Design](DESIGN.md) — the model these extensions bolt onto
+- [WASM build](WASM.md) — the browser-only demo that exercises the queries
