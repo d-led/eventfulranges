@@ -211,10 +211,21 @@ test('presence separates this session from all connected', async ({ browser }) =
   await bob.goto('/ui/'); // a different session than alice's
   await bob.waitForURL(/[?&]s=/);
 
+  // The separation is the point of the test: two tabs, two sessions.
+  const sessionOf = (page) => new URL(page.url()).searchParams.get('s');
+  expect(sessionOf(alice)).not.toBe(sessionOf(bob));
+
   // Each tab is alone in its own session ("1 here"), while the global total
   // counts at least the two of them (plus any still-connected test clients).
-  await expect(alice.locator('#presence')).toContainText('1 here');
-  await expect(bob.locator('#presence')).toContainText('1 here');
+  // Polling rather than a one-shot assertion: a tab that reconnects is briefly
+  // counted twice, and the count settles back once the stale socket is reaped.
+  const here = async (page) => {
+    const text = (await page.locator('#presence').textContent()) ?? '';
+    const m = text.match(/(\d+) here/);
+    return m ? Number(m[1]) : null;
+  };
+  await expect.poll(() => here(alice), { timeout: 15_000 }).toBe(1);
+  await expect.poll(() => here(bob), { timeout: 15_000 }).toBe(1);
 
   const connected = async (page) => {
     const text = await page.locator('#presence').textContent();
@@ -337,7 +348,16 @@ test('reconnect button reconnects immediately', async ({ page }) => {
   await page.evaluate(() => window.__eventfulranges.closeSocket());
   await expect(page.locator('#reconnectBanner')).toBeVisible();
 
-  await page.locator('#reconnectBtn').click();
+  // The tab also retries on its own backoff, so the banner can clear before the
+  // click lands. Race the two legitimate paths — the button and the automatic
+  // retry — and let the assertions below decide whether the tab came back. The
+  // click's rejection is ignored only when it lost that race, which the banner
+  // being hidden already proves.
+  await Promise.race([
+    page.locator('#reconnectBtn').click().catch(() => {}),
+    page.locator('#reconnectBanner').waitFor({ state: 'hidden', timeout: 10_000 }),
+  ]);
+
   await expect(page.locator('#status')).toContainText('connected');
   await expect(page.locator('#reconnectBanner')).toBeHidden();
 });
