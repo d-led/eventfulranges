@@ -30,7 +30,7 @@ func TestWidestAxisKeepsTheEarlierAxisOnATie(t *testing.T) {
 }
 
 func TestWidestAxisComparesSpanNotOffset(t *testing.T) {
-	// Axis 0 is centred on the origin, so adding the corners instead of
+	// Axis 0 is centered on the origin, so adding the corners instead of
 	// subtracting them would pick axis 1.
 	boxes := []space.Box{space.NewBox([]float64{-10, 0}, []float64{10, 15})}
 
