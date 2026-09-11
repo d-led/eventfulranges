@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/automerge/automerge-go v0.0.0-20241030180337-6fb4f2d08244
 	github.com/cskr/pubsub/v2 v2.0.2
-	github.com/d-led/eventfulranges v0.0.6
+	github.com/d-led/eventfulranges v0.0.7
 	github.com/develerltd/go-automerge v0.8.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gorilla/websocket v1.5.3
@@ -46,7 +46,7 @@ require (
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
