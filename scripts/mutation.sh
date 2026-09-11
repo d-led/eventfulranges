@@ -19,11 +19,18 @@ fi
 
 mkdir -p build/reports
 # Note: gremlins mutates the module in the current directory; passing a
-# package pattern here makes it find nothing. The demo programs are
-# illustrations, not library code, so they are excluded from mutation.
+# package pattern here makes it find nothing.
+#
+# Excluded, each because no mutant there can be killed by this run:
+#   demo/                     illustration programs, not library code
+#   examples/                 a separate module with no tests in-tree; it
+#                             exists to prove versioned imports resolve
+#   store/kurrent/kurrent.go  compiled only under the kurrent build tag,
+#                             which this run does not set; scripts/
+#                             itest-kurrent.sh covers it with the tag
 gremlins unleash \
   --threshold-efficacy 0.8 \
   --threshold-mcover 0.8 \
   --timeout-coefficient 30 \
-  --exclude-files '^demo/' \
+  --exclude-files '^demo/|^examples/|^store/kurrent/kurrent\.go' \
   --output build/reports/gremlins.json

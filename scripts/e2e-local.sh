@@ -8,4 +8,6 @@ cd "$(dirname "$0")/.."
 
 cd demo/web/ui-src
 npx playwright install --with-deps chromium
-npm run test:local
+# line reporter: the html reporter serves a report and waits, so a failing test
+# would hang the gate instead of failing it.
+npm run test:local -- --reporter=line

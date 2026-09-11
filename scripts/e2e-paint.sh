@@ -9,4 +9,6 @@ cd "$(dirname "$0")/.."
 cd demo/paint/ui-src
 npm run test:unit
 npx playwright install --with-deps chromium
-npx playwright test
+# line reporter: the html reporter serves a report and waits, so a failing test
+# would hang the gate instead of failing it.
+npx playwright test --reporter=line
