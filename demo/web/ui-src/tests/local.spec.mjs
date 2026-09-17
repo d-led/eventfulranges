@@ -65,6 +65,8 @@ test('canonical compaction keeps every tile', async ({ page }) => {
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
     expect(lines.filter(Boolean)).toHaveLength(2);
   }).toPass({ timeout: 10_000 });
+
+  await expect(page.locator('#stats')).toHaveText('2 ops → 2 ranges');
 });
 
 test('merge compaction merges adjacent boxes', async ({ page }) => {
@@ -78,6 +80,9 @@ test('merge compaction merges adjacent boxes', async ({ page }) => {
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
     expect(lines.filter(Boolean)).toHaveLength(1);
   }).toPass({ timeout: 10_000 });
+
+  // Two operations in, one range out: what the join saved.
+  await expect(page.locator('#stats')).toHaveText('2 ops → 1 range');
 });
 
 test('partition compaction splits overlaps into disjoint boxes', async ({ page }) => {
@@ -92,6 +97,10 @@ test('partition compaction splits overlaps into disjoint boxes', async ({ page }
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
     expect(lines.filter(Boolean)).toHaveLength(5);
   }).toPass({ timeout: 10_000 });
+
+  // The cells are the result here, so the readout names the two ends: two
+  // operations in, five boxes out.
+  await expect(page.locator('#stats')).toHaveText('2 ops → 5 ranges');
 });
 
 test('partition + merge combines after splitting', async ({ page }) => {
@@ -106,6 +115,36 @@ test('partition + merge combines after splitting', async ({ page }) => {
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
     expect(lines.filter(Boolean)).toHaveLength(3);
   }).toPass({ timeout: 10_000 });
+
+  // The only mode that shows all three counts: two operations cut into five
+  // cells, joined back into three ranges.
+  await expect(page.locator('#stats')).toHaveText('2 ops → 5 partition cells → 3 ranges');
+});
+
+// The consolidation a session runs is chosen when it starts, and the boxes
+// alone do not reveal it, so the view names it.
+test('names the session compaction in the view', async ({ page }) => {
+  const cases = [
+    ['canonical', 'Compaction: canonical — every box kept'],
+    ['merge', 'Compaction: merge adjacent — touching boxes joined'],
+    ['partition', 'Compaction: partition — overlaps split apart'],
+    ['partition-merge', 'Compaction: partition + merge — split, then joined'],
+  ];
+
+  for (const [mode, label] of cases) {
+    await page.goto(`/?dims=2&compact=${mode}`);
+    await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
+    await expect(page.locator('#mode'), `a compact=${mode} session`).toHaveText(label);
+  }
+});
+
+test('names the compaction a session was started with', async ({ page }) => {
+  await connect(page);
+  await page.locator('#newSession').click();
+  await page.locator('#compact').selectOption('partition');
+  await page.locator('#startSession').click();
+
+  await expect(page.locator('#mode')).toHaveText('Compaction: partition — overlaps split apart');
 });
 
 test('a new 4D session keeps its dimension across reload', async ({ page }) => {
@@ -120,9 +159,9 @@ test('a new 4D session keeps its dimension across reload', async ({ page }) => {
   await expect(page.locator('#slice')).toBeVisible();
 });
 
-// The view reports how many ranges it holds and, when a partition ran, how many
-// cells they were consolidated from — the number the merge is judged by.
-test('reports the ranges it consolidated, and what from', async ({ page }) => {
+// The readout is the whole story of a session's consolidation: the operations it
+// was given, the partition cells those became, and the ranges on screen now.
+test('reports the operations, the cells they became, and the ranges on screen', async ({ page }) => {
   await page.goto('/?dims=3&compact=partition-merge');
   await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
   await page.locator('#example').click();
@@ -130,20 +169,21 @@ test('reports the ranges it consolidated, and what from', async ({ page }) => {
   await expect(async () => {
     const stats = await page.locator('#stats').textContent();
     const ranges = (await page.locator('#result').inputValue()).trim().split('\n').filter(Boolean).length;
-    const shown = stats.match(/^(\d+) ranges from (\d+) cells$/);
+    const shown = stats.match(/^(\d+) ops → (\d+) partition cells → (\d+) ranges$/);
     expect(shown, `readout was ${JSON.stringify(stats)}`).not.toBeNull();
-    expect(Number(shown[1]), 'the readout agrees with the model on screen').toBe(ranges);
+    expect(Number(shown[1]), 'the operations the session was given').toBe(28);
     expect(Number(shown[2]), 'the cells were consolidated into fewer ranges').toBeGreaterThan(ranges);
+    expect(Number(shown[3]), 'the readout agrees with the model on screen').toBe(ranges);
   }).toPass({ timeout: 20_000 });
 });
 
-test('a session with no partition reports only its ranges', async ({ page }) => {
+test('a session with no partition reports its operations and its ranges', async ({ page }) => {
   await page.goto('/?dims=2&compact=canonical');
   await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
   await page.locator('#ops').fill('add,(0,0),(2,4)\nadd,(2,0),(4,4)');
   await page.locator('#send').click();
 
-  await expect(page.locator('#stats')).toHaveText('2 ranges', { timeout: 10_000 });
+  await expect(page.locator('#stats')).toHaveText('2 ops → 2 ranges', { timeout: 10_000 });
 });
 
 // A 3D partition-merge session is the expensive case: every operation

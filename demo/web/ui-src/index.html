@@ -31,7 +31,10 @@
         <p class="hint">Start a fresh session and choose its dimension and compaction.</p>
       </div>
 
-      <p id="compaction" class="compaction">Compaction: canonical — every box is kept exactly as materialized.</p>
+      <!-- Both readouts are filled in from compaction.js as soon as the
+           session reports its mode; the default is the mode a session without
+           a ?compact= parameter runs under. -->
+      <p id="compaction" class="compaction" data-mode="canonical"></p>
 
       <div class="field">
         <label for="ops">Operations — CSV: <code>kind,(min…),(max…)</code> (<code>#</code> = comment)</label>
@@ -84,7 +87,12 @@
     </aside>
 
     <section id="canvas">
-      <div id="stats" aria-live="polite"></div>
+      <!-- What the session consolidates with, and what came out of it: one
+           stack in the corner of the view so both read at a glance. -->
+      <div id="readout">
+        <div id="mode" data-mode="canonical" aria-live="polite"></div>
+        <div id="stats" aria-live="polite"></div>
+      </div>
       <div id="busy" hidden aria-live="polite">
         <span class="spinner" aria-hidden="true"></span>
         <span>merging the operation log…</span>

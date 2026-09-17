@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fadeOpacity } from './slice.js';
 import { orthoHalf, orthoFrustum, perspDistance } from './camera.js';
+import { compactionFor } from './compaction.js';
+import { readout } from './readout.js';
 import { createServerEngine } from './server-engine.js';
 import { createLocalEngine } from './local-engine.js';
 import { startTour } from './tour.js';
@@ -34,6 +36,7 @@ const reconnectBanner = $('reconnectBanner');
 const reconnectBtn = $('reconnectBtn');
 const busyEl = $('busy');
 const statsEl = $('stats');
+const modeEl = $('mode');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -463,19 +466,16 @@ function syncControls() {
   exampleBtn.disabled = !online || busy;
 }
 
-// COMPACTION_LABELS names the session compaction modes so the panel can
-// explain, in words, what the active strategy does to the materialized boxes.
-// The set must match the modes the hub offers (demo/web/hub.go).
-const COMPACTION_LABELS = {
-  canonical: 'Compaction: canonical — every box is kept exactly as materialized.',
-  merge: 'Compaction: merge adjacent — touching boxes are joined into larger ones.',
-  partition: 'Compaction: partition — overlaps are split so each point appears in exactly one rectangle.',
-  'partition-merge': 'Compaction: partition + merge — overlaps are split, then touching boxes are joined (disjoint and compact).',
-};
-
+// setCompaction names the consolidation the session runs, in both places the
+// view has room for it: the full sentence in the panel, and the short label in
+// the overlay over the canvas, where the eye is. Both come from compaction.js,
+// so the two readouts cannot drift apart.
 function setCompaction(mode) {
-  compactionEl.textContent = COMPACTION_LABELS[mode] || COMPACTION_LABELS.canonical;
-  compactionEl.dataset.mode = mode;
+  const running = compactionFor(mode);
+  compactionEl.textContent = running.detail;
+  compactionEl.dataset.mode = running.mode;
+  modeEl.textContent = running.label;
+  modeEl.dataset.mode = running.mode;
 }
 
 // updatePresence renders the connected-client count and this client's own id.
@@ -515,18 +515,17 @@ function applyState(state) {
     setViewMode(dims);
   }
   resultEl.value = boxesToCSV(currentBoxes);
-  setStats(state.cells);
+  setStats(state.cells, (state.adds || 0) + (state.removes || 0));
   rebuild();
   if (!hadBoxes && currentBoxes.length > 0) needsFit = true;
 }
 
-// setStats reports what is on screen: how many ranges, and — when the engine
-// consolidated any — how many partition cells they were consolidated from.
-function setStats(cells) {
-  const ranges = currentBoxes.length;
-  statsEl.textContent = cells > ranges
-    ? `${ranges} ranges from ${cells} cells`
-    : `${ranges} ranges`;
+// setStats reports the consolidation as the chain of counts the session passed
+// through: the operations it was given, the partition cells those became, and
+// the ranges on screen now. The hub counts the operations (adds and removes
+// separately) and the cells; the ranges are what this page draws.
+function setStats(cells, ops) {
+  statsEl.textContent = readout({ ops, cells, ranges: currentBoxes.length });
 }
 
 // The two engine implementations live next to this file; each takes the page
@@ -763,6 +762,7 @@ resize();
 wVal.textContent = sliceW.toFixed(2);
 opsEl.value = exampleFor(3);
 setViewMode(currentDims);
+setCompaction('canonical');
 connect();
 tick();
 

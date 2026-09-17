@@ -274,6 +274,81 @@ Each demo has a smoke test; run them with `go test ./demo/...`.
 
 ![web demo 2d](./docs/img/eventfulranges-2d-demo.gif)
 
+#### Reading the counts: operations, partition cells, ranges
+
+The corner of the view reports the counts the session's consolidation passed
+through, in the order it passed through them — for the built-in 3D example,
+`28 ops → 26 partition cells → 8 ranges`:
+
+- **operations** — the lines you send (`add,(0,0),(2,2)`). They are all that is
+  stored: the activity log lists them, and the range CSV is what the last of
+  them left behind. This is the count the other two are improvements on.
+- **partition cells** — the current set cut along *every* operation's faces, so
+  that no two pieces overlap. A cell is a region where nothing changes: it is in
+  the set or out of it, and never covered by two operations at once. Cells are an
+  intermediate of the partition modes — not stored, not drawn.
+- **ranges** — the cells joined back into as few boxes as the merge can make.
+  This is what the view draws and what the range CSV lists, and it is the answer.
+
+A count is left out when it would repeat one next to it: without a partition
+there are no cells, and in partition mode the cells *are* the ranges (nothing is
+joined back up). So the four modes read, for the same two operations that make
+an L:
+
+- `canonical` — `2 ops → 2 ranges`: the boxes as they came, overlapping.
+- `merge adjacent` — `2 ops → 2 ranges`: an L has no box-shaped union, so
+  nothing merges. Two boxes sharing a whole face read `2 ops → 1 range`.
+- `partition` — `2 ops → 5 ranges`: the cut is the result, so the cells are the
+  ranges and only the two ends are shown.
+- `partition + merge` — `2 ops → 5 partition cells → 3 ranges`: the only mode
+  that shows all three counts.
+
+Those two operations, read one square per unit interval; a label repeated over
+squares that form a rectangle is *one* box, not several:
+
+    canonical mode — 2 boxes, and they overlap
+
+        ┌────┬────┬────┐
+        │    │ B  │ B  │  y2
+        ├────┼────┼────┤
+        │ A  │ AB │ B  │  y1    AB is covered by both operations
+        ├────┼────┼────┤
+        │ A  │ A  │    │  y0
+        └────┴────┴────┘
+          x0   x1   x2
+
+    partition mode — 5 cells, no two of them share a point
+
+        ┌────┬────┬────┐
+        │    │ d  │ e  │  y2
+        ├────┼────┼────┤
+        │ a  │ c  │ e  │  y1    a (0,0)-(1,2), b (1,0)-(2,1), c (1,1)-(2,2)
+        ├────┼────┼────┤        d (1,2)-(2,3), e (2,1)-(3,3)
+        │ a  │ b  │    │  y0
+        └────┴────┴────┘
+          x0   x1   x2
+
+    partition + merge mode — 3 ranges: the cells joined back up
+
+        ┌────┬────┬────┐
+        │    │ d  │ e  │  y2
+        ├────┼────┼────┤
+        │ R  │ R  │ e  │  y1    R (0,0)-(2,2) is operation A rebuilt from its
+        ├────┼────┼────┤        cells; d and e are the rest of B
+        │ R  │ R  │    │  y0
+        └────┴────┴────┘
+          x0   x1   x2
+
+Both new counts come from the same cut. When the operations **do not overlap**,
+cells and operations nearly coincide: the built-in 3D example (27 unit cubes,
+the middle one carved out) reports 26 cells → 8 ranges — 28 operations answer
+for 8 boxes. When they **do overlap**, every operation's faces cut the pieces
+that are already there, so cells grow far faster than operations: a 3D session
+whose log held ~90 overlapping operations reached 3117 cells → 106 ranges — 106
+boxes answer for 3117 pieces, and it is the 106 the view draws. `canonical` and
+`merge adjacent` never report cells: no partition runs, so only the operations
+and the ranges are shown.
+
 ### paint
 
 ```shell

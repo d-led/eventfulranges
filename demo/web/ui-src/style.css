@@ -43,21 +43,48 @@ main {
 
 #canvas canvas { display: block; }
 
-/* How much is being drawn, and how much it was reduced from: the consolidation
-   is the point of the view, so it is reported in the view rather than in a
-   panel the eye has to leave the picture to read. */
-#stats {
+/* The two readouts the view carries: which consolidation the session runs, and
+   what it produced. They sit stacked in the top-left corner of the canvas,
+   where the eye already is — the mode is fixed when the session starts, and the
+   boxes alone do not reveal it (the same shell is a fine grid under canonical
+   and a few slabs under merge adjacent). */
+#readout {
   position: absolute;
   left: 12px;
-  bottom: 10px;
+  top: 10px;
   z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   pointer-events: none;
+  max-width: calc(100% - 24px);
+}
+
+/* A readout without anything to report yet is not drawn, so the corner holds
+   no empty pills while the session is still coming up. */
+#readout > :empty { display: none; }
+
+#mode,
+#stats {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 3px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: rgb(17 19 24 / 70%);
   color: var(--muted);
   font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* A session that consolidates is doing something to the boxes, so it is called
+   out; canonical keeps them as they come, and is the neutral default. */
+#mode:not([data-mode="canonical"]),
+.compaction:not([data-mode="canonical"]) {
+  border-color: var(--accent);
+  color: var(--fg);
 }
 
 /* The engine works in a worker, so the page can say so while it does. The
@@ -148,10 +175,6 @@ h1 { margin: 0 0 4px; font-size: 20px; }
   color: var(--muted);
 }
 
-.compaction[data-mode="merge"] {
-  border-color: var(--accent);
-  color: var(--fg);
-}
 
 .field { margin-bottom: 14px; }
 
