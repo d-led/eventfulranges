@@ -165,13 +165,16 @@ operation timestamps and log-version counters — never as a coordinate.
 
 ## Demos
 
-- [hello](#hello) — simplest use, no concurrency
-- [local](#local) — goroutine replicas converge over channels
-- [pubsub](#pubsub) — replicas converge over an in-process pub/sub bus
-- [network](#network) — two HTTP peers converge
-- [web](#web) — interactive 3D visualizer, shared live over WebSockets
-- [paint](#paint) — infinite shared whiteboard over n-D boxes
-- [kurrent](#kurrentdb) — the same operations, stored in KurrentDB
+Every demo demonstrates the library in the same fashion: the data structure replicas mutate their own copy, then exchange
+operations and converge — and they differ only in transport and storage:
+
+- [hello](#hello) — one replica, no transport: add, remove, print the ranges
+- [local](#local) — three goroutine replicas trade ops over channels until they agree
+- [pubsub](#pubsub) — the same replicas through a bus, never addressing each other
+- [network](#network) — two processes, two HTTP servers: `GET /ops`, `POST /ops`
+- [web](#web) — 1–4D box visualizer; every browser on a share link sees one model
+- [paint](#paint) — whiteboard where one stroke is one box op
+- [kurrent](#kurrentdb) — the op log in KurrentDB instead of a JSONL file
 - [automerge and go-automerge](#automerge-and-go-automerge) — the same convergence under a different CRDT
 
 ### hello
@@ -180,8 +183,8 @@ operation timestamps and log-version counters — never as a coordinate.
 go run ./demo/hello
 ```
 
-`demo/hello` opens an in-memory set and prints what a single add/remove leaves
-behind — the smallest possible program.
+`demo/hello` is one replica with no transport: open an in-memory set, add,
+remove, print what is left. The smallest program in the repo.
 
 ### local
 
@@ -189,9 +192,9 @@ behind — the smallest possible program.
 go run ./demo/local
 ```
 
-`demo/local` opens three in-memory replicas, lets each mutate its own copy from
-a goroutine, then floods every replica's `Ops()` to every other replica until
-they agree. The transport is Go channels; there is no network.
+Three in-memory replicas, each mutating its own copy from its own goroutine,
+then flooding every other replica's `Ops()` back and forth until they agree.
+The transport is Go channels: there is no network, and no lock.
 
 ### pubsub
 
@@ -199,10 +202,9 @@ they agree. The transport is Go channels; there is no network.
 go run ./demo/pubsub
 ```
 
-`demo/pubsub` is the same idea through a bus: each replica subscribes to a
-topic on a `github.com/cskr/pubsub/v2` bus, mutates locally, and publishes its
-operations. Every replica applies every broadcast it receives, so they converge
-without talking to each other directly.
+The same three replicas through a bus instead of direct links: each subscribes
+to a topic on a `github.com/cskr/pubsub/v2` bus, mutates locally, and publishes
+its own operations. Nothing addresses anybody, and they still converge.
 
 ### network
 
@@ -210,16 +212,33 @@ without talking to each other directly.
 go run ./demo/network
 ```
 
-`demo/network` runs two replicas, each behind its own HTTP server. There is no
-CRDT-specific protocol — a peer exports its log as `GET /ops` (JSON) and folds
-someone else's log in with `POST /ops`. Each peer mutates its own copy, then
-the two exchange logs and converge; ports come from `-ports 18080,18081`.
+Two processes, each behind its own HTTP server, with no CRDT protocol between
+them: a peer exports its log as `GET /ops` (JSON) and folds yours in with
+`POST /ops`. Each mutates its own copy, then the two exchange logs; ports come
+from `-ports 18080,18081`.
 
 ### web
 
 ```shell
 go run ./demo/web
 ```
+
+```ruby
+add (0,0)→(1,1)
+add (1,0)→(2,1)
+add (2,0)→(3,1)
+add (0,1)→(1,2)
+add (1,1)→(2,2)
+add (2,1)→(3,2)
+add (0,2)→(1,3)
+add (1,2)→(2,3)
+add (2,2)→(3,3)
+remove (1,1)→(2,2)
+```
+
+&darr;
+
+![consolidation visual explanation](./docs/img/eventfulranges-2d-consolidation.png)
 
 `demo/web` serves an n-dimensional range-set visualizer (1–4 dimensions, with a
 rotatable translucent-box 3D view and copy/pasteable CSV). Everyone connected
@@ -355,12 +374,11 @@ and the ranges are shown.
 go run ./demo/paint
 ```
 
-`demo/paint` is an infinite, shared pixel whiteboard built on the library's
-n-dimensional range CRDT. Each stroke is one half-open `add`/`remove` box, so
-a filled rectangle of cells is a single operation. Browsers receive the
-operation log and materialize the view themselves — pure event sourcing — and
-concurrent strokes converge regardless of arrival order. The share link is the
-session URL, and the raw operation log is one click away as JSONL. Open
+A whiteboard with no edges: one stroke is one half-open `add`/`remove` box, so
+a filled rectangle of cells costs a single operation. Browsers receive the
+operation log and materialize the view themselves — pure event sourcing — so
+concurrent strokes converge whatever order they arrive in. The share link is
+the session URL, and the raw log is one click away as JSONL. Open
 `http://localhost:8081/ui/`.
 
 ```bash
@@ -393,12 +411,11 @@ artifacts, so it can never leak into a deployed binary.
 
 ### automerge and go-automerge
 
-`demo/automerge` and `demo/go-automerge` run the same convergence story as the
-other demos — two replicas edit a shared document concurrently, sync, and end
-up identical — but the CRDT underneath is Automerge, not this library's range
-CRDT. They exist to show the contrast: a JSON document with built-in conflict
-resolution, versus a range set where the conflict policy is a choice you make
-(`LWW`, `FWW`, `AdditiveWins`, `GrowOnly`).
+Two replicas edit a shared JSON document concurrently, sync, and land
+identical — the same story as [local](#local), with Automerge underneath
+instead of this library. The contrast is the point: Automerge's conflict
+resolution is built in, while here the policy is yours to choose (`LWW`, `FWW`,
+`AdditiveWins`, `GrowOnly`).
 
 ```bash
 ./scripts/demo-automerge.sh      # tests + run, via automerge-go (needs cgo)
@@ -452,9 +469,9 @@ stream, with snapshots in the same store.
 ./scripts/kurrent-down.sh
 ```
 
-`demo/kurrent` stores the same add/remove pair in KurrentDB and prints the
-result, so the only difference from `demo/hello` is which `store.Log` the
-replica is opened with. To run it by hand:
+`demo/kurrent` stores the same add/remove pair in KurrentDB instead of an
+in-memory store, so the only difference from `demo/hello` is which `store.Log`
+the replica is opened with. To run it by hand:
 
 ```bash
 cd demo/kurrent && go run -tags kurrent .
