@@ -509,9 +509,13 @@ function applyState(state) {
   if (state.compact) setCompaction(state.compact);
   const dims = state.dims;
   if (dims > 0 && dims !== currentDims) {
+    // The example follows the dimension only while the box still holds one: a
+    // session reports its dimension a moment after it comes online, and
+    // replacing operations typed in that moment would throw them away.
+    const holdsExample = opsEl.value === exampleFor(currentDims);
     currentDims = dims;
     sliceEl.hidden = dims !== 4;
-    opsEl.value = exampleFor(dims);
+    if (holdsExample) opsEl.value = exampleFor(dims);
     setViewMode(dims);
   }
   resultEl.value = boxesToCSV(currentBoxes);

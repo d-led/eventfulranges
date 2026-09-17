@@ -242,7 +242,9 @@ test('a heavy 3D merge runs off the main thread and reports the wait', async ({ 
 
 // MIXED_3D_OPS edits the example's hollow shell the way a viewer's random ops
 // do: overlapping adds and removes that force the partition to split and the
-// merge to rejoin.
+// merge to rejoin. The lattice at the end is what makes the batch heavy — 24
+// more folds, each over a cover the previous one grew — so the busy window
+// spans many frames on any machine, however fast a single fold is.
 const MIXED_3D_OPS = [
   'remove,(1.1,1.1,1.1),(2.4,2.4,2.4)',
   'add,(0.2,0.2,0.2),(2.6,1.4,2.6)',
@@ -252,4 +254,9 @@ const MIXED_3D_OPS = [
   'add,(0.9,0.9,0.9),(2.1,2.1,2.1)',
   'remove,(1.5,0.3,0.3),(2.8,1.1,1.1)',
   'add,(0.3,1.3,1.3),(1.8,2.8,2.6)',
+  ...Array.from({ length: 24 }, (_, i) => {
+    const lo = [0, 2, 4].map((offset) => (((i + offset) % 6) * 0.4).toFixed(2));
+    const hi = lo.map((value) => (Number(value) + 0.9).toFixed(2));
+    return `add,(${lo.join(',')}),(${hi.join(',')})`;
+  }),
 ].join('\n');
