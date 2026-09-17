@@ -102,7 +102,8 @@ bookings minus the union of all cancellations, so concurrent edits converge
 whatever order they arrive in.
 
 Full program: [`examples/calendar`](examples/calendar) — its own module, which
-imports `v0.0.1` from the module proxy with no `replace` directive.
+imports the library by version from the module proxy, with no `replace`
+directive.
 
 ## Storage & transport
 
