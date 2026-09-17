@@ -31,35 +31,26 @@ func Chain(cs ...Canonicalizer) Canonicalizer {
 // a full edge and agree in every other dimension has been merged into one
 // box. It is a deterministic, cover-preserving greedy fixpoint — not a
 // provably-minimal rectangle cover — so it is safe to use as a Canonicalizer.
+//
+// The greedy takes the first mergeable pair in canonical cover order and
+// repeats. The merger in merge_index.go picks that same pair through an index
+// of candidates instead of testing every pair, so this returns the cover the
+// straightforward definition returns, at a cost that stays near linear instead
+// of cubic. That matters because a partition of a few dozen overlapping boxes
+// is thousands of cells, each of them a box.
 func MergeAdjacent(boxes []Box) []Box {
 	boxes = Normalize(boxes)
+	if len(boxes) == 0 {
+		return boxes
+	}
+	m := newMerger(boxes)
 	for {
-		merged, changed := mergeFirstPair(boxes)
-		if !changed {
-			return boxes
+		a, b, ok := m.firstMergeablePair()
+		if !ok {
+			return m.result()
 		}
-		boxes = merged
+		m.merge(a, b)
 	}
-}
-
-// mergeFirstPair merges the first mergeable pair in sorted order, reporting
-// whether any merge happened.
-func mergeFirstPair(boxes []Box) ([]Box, bool) {
-	for i := 0; i < len(boxes); i++ {
-		for j := i + 1; j < len(boxes); j++ {
-			merged, ok := mergePair(boxes[i], boxes[j])
-			if !ok {
-				continue
-			}
-			out := make([]Box, 0, len(boxes)-1)
-			out = append(out, boxes[:i]...)
-			out = append(out, boxes[i+1:j]...)
-			out = append(out, boxes[j+1:]...)
-			out = append(out, merged)
-			return Normalize(out), true
-		}
-	}
-	return boxes, false
 }
 
 // mergePair merges two boxes that differ in exactly one dimension where they

@@ -7,9 +7,10 @@
     "build": "node build.mjs",
     "build:local": "node build-local.mjs",
     "watch": "node build.mjs --watch",
+    "serve:local": "node serve-local.mjs",
     "test": "playwright test",
     "test:local": "playwright test -c playwright.local.config.mjs",
-    "test:unit": "node --test slice.unit.test.mjs camera.unit.test.mjs backoff.unit.test.mjs"
+    "test:unit": "node --test slice.unit.test.mjs camera.unit.test.mjs backoff.unit.test.mjs local-engine.unit.test.mjs"
   },
   "dependencies": {
     "three": "^0.186.0"

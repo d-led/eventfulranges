@@ -1,16 +1,23 @@
 // The in-page session engine: the same Go hub compiled to WebAssembly runs
-// inside this page (see demo/web/wasm.go), so the UI works from any static
-// host with no server at all. The engine speaks the same JSON envelopes as
-// the WebSocket server, and state survives reloads through the same
-// localStorage reserve copy: a fresh page replays it back into the engine,
-// exactly as a reconnecting socket would be healed.
+// inside this page (see demo/web/wasm.go), so the UI works from any static host
+// with no server at all. The engine speaks the same JSON envelopes as the
+// WebSocket server, and state survives reloads through the same localStorage
+// reserve copy: a fresh page replays it back into the engine, exactly as a
+// reconnecting socket would be healed.
 //
-// The assets this engine needs (wasm_exec.js and engine.wasm) are emitted
-// next to the bundle by the local build (scripts/build-local.sh); the engine
-// resolves them relative to this module's own URL, so it works from any mount
-// path.
-export function createLocalEngine({ onMessage, onStatus, onOnline, onFirstSync }) {
-  let api = null; // the __eventfulranges_wasm bridge exposed by the Go module
+// The engine runs in a worker (engine-worker.js) rather than on this thread,
+// because a fold is unbounded work — merging a partitioned 3D session is the
+// expensive case — and Go's wasm runtime cannot yield in the middle of one.
+// Off this thread, the page keeps painting, orbiting and reporting progress
+// while the engine is busy. The worker's busy and idle reports become onBusy,
+// which is how the page knows to say that the engine is working.
+//
+// The assets it needs (wasm_exec.js and engine.wasm, and now the worker itself)
+// are emitted next to the bundle by the local build (scripts/build-local.sh);
+// everything is resolved relative to this module's own URL, so the folder works
+// from any mount path.
+export function createLocalEngine({ onMessage, onStatus, onOnline, onFirstSync, onBusy }) {
+  let worker = null;
   let online = false;
   let session = null;
   let compact = '';
@@ -27,37 +34,63 @@ export function createLocalEngine({ onMessage, onStatus, onOnline, onFirstSync }
     session = params.get('s');
   }
 
-  async function start() {
-    ensureSession();
-    try {
-      if (!api) api = await loadEngine();
-      // join(session, compact, dispatch): the catch-up envelope comes back as
-      // the return value, and every later broadcast arrives through dispatch.
-      const hello = api.join(session, compact, (json) => onMessage(JSON.parse(json)));
-      online = true;
-      onOnline(true);
-      onMessage(JSON.parse(hello));
-      onStatus('running in this page — no server needed');
-      onFirstSync();
-    } catch (e) {
+  function spawn() {
+    const spawned = new Worker(new URL('engine-worker.js', import.meta.url));
+    spawned.addEventListener('message', handleMessage);
+    spawned.addEventListener('error', (event) => {
       online = false;
       onOnline(false);
-      onStatus(`local engine error: ${e.message}`);
+      onStatus(`local engine error: ${event.message || 'the engine worker failed to start'}`);
+    });
+    return spawned;
+  }
+
+  // handleMessage folds one worker report into the page callbacks. The worker
+  // keeps these in order, so a 'message' always belongs to the fold whose
+  // 'busy' came before it.
+  function handleMessage(event) {
+    const report = event.data;
+    switch (report.kind) {
+      case 'busy':
+        onBusy(true);
+        break;
+      case 'idle':
+        onBusy(false);
+        break;
+      case 'ready':
+        // The engine has caught up, so commands can be accepted: this is the
+        // local engine's equivalent of the socket opening.
+        online = true;
+        onOnline(true);
+        onStatus('running in this page — no server needed');
+        onFirstSync();
+        break;
+      case 'message':
+        onMessage(JSON.parse(report.envelope));
+        break;
+      case 'error':
+        onStatus(`local engine error: ${report.message}`);
+        break;
     }
+  }
+
+  function start() {
+    ensureSession();
+    worker = worker || spawn();
+    worker.postMessage({ kind: 'join', session, compact });
   }
 
   return {
     start,
     send(op) {
-      if (!api) {
+      if (!worker) {
         onStatus('local engine not ready yet');
         return;
       }
-      api.op(JSON.stringify(op));
+      worker.postMessage({ kind: 'op', op });
     },
-    // A fresh start is a fresh wasm instance; there is no socket to drain, so
-    // re-initialising is the whole story. The session id below is minted, so
-    // the page reloads onto a new share link, like the server redirect does.
+    // The engine is a worker with no socket to drain: re-joining the session
+    // re-reads the hub, which is the whole story for a reload or a reconnect.
     reconnect() {
       start();
     },
@@ -74,30 +107,6 @@ export function createLocalEngine({ onMessage, onStatus, onOnline, onFirstSync }
       return `${location.pathname}?${p}`;
     },
   };
-}
-
-// loadEngine loads wasm_exec.js (which defines globalThis.Go) and then the
-// engine module, instantiating it with the Go runtime.
-async function loadEngine() {
-  await loadGoRuntime();
-  const go = new globalThis.Go();
-  const resp = await fetch(new URL('engine.wasm', import.meta.url));
-  if (!resp.ok) throw new Error(`engine.wasm: ${resp.status} ${resp.statusText}`);
-  const bytes = await resp.arrayBuffer();
-  const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
-  go.run(instance);
-  return globalThis.__eventfulranges_wasm;
-}
-
-function loadGoRuntime() {
-  if (globalThis.Go) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = new URL('wasm_exec.js', import.meta.url).href;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('could not load wasm_exec.js'));
-    document.head.appendChild(script);
-  });
 }
 
 // mintSessionID drafts a short, URL-safe id (hex, like the base32 ids the Go

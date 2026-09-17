@@ -24,11 +24,12 @@ flowchart LR
   host["static host<br/>GitHub Pages"] --> html["index.html<br/>sets __EVENTFULRANGES_STATIC__"]
   html --> app["app.js<br/>UI and rendering"]
   app --> le["local-engine.js<br/>engine interface"]
-  le --> glue["wasm_exec.js<br/>Go runtime glue"]
-  le --> wasm["engine.wasm<br/>the Go hub"]
+  le --> worker["engine-worker.js<br/>the engine's own thread"]
+  worker --> glue["wasm_exec.js<br/>Go runtime glue"]
+  worker --> wasm["engine.wasm<br/>the Go hub"]
   wasm --> hub["hub.go<br/>same code the server runs"]
   app <--> store["localStorage<br/>operation-log reserve"]
-  wasm -. "serverMsg JSON" .-> app
+  worker -. "serverMsg JSON + busy/idle" .-> app
 ```
 
 ## Two engines, one protocol
@@ -102,6 +103,30 @@ One envelope path, both directions:
 The wasm instance keeps one hub per page, because browser-only mode has a single
 viewer per tab. A new session or a reload replaces the hub with a fresh one.
 
+## Why the engine has its own thread
+
+A fold is unbounded work: every operation re-materializes the whole log, and
+under `partition-merge` that means re-partitioning and re-merging the entire
+cover. On a 3D session with a few dozen operations that is fast, but it grows
+steeply with the operation count, and Go's wasm runtime cannot yield in the
+middle of one — no goroutine preemption, no `await`. On the main thread it would
+freeze the canvas, the buttons and any progress feedback along with it.
+
+So `engine-worker.js` owns the wasm instance, and the page talks to it with the
+same JSON envelopes it would send down a socket. Two things fall out of that:
+
+- **The page keeps painting.** The canvas orbits and the buttons repaint while
+the engine works.
+- **The wait can be shown and acted on.** The worker reports `busy` before each
+fold and `idle` after it, which the page turns into the "merging the operation
+log…" overlay and into disabling the controls that would queue more work. A
+spinner drawn on a blocked thread cannot appear until the block is over; this
+one can.
+
+The cost of the thread boundary is that `send` is no longer synchronous: the
+envelopes come back as messages. The UI never depended on that — it renders
+what the engine broadcasts, in both engines.
+
 ## How a page comes to life
 
 **What to look for:** JavaScript asks the Go module for exactly one catch-up
@@ -138,19 +163,18 @@ sequenceDiagram
   autonumber
   actor U as user
   participant P as app.js
-  participant T as engine transport
-  participant E as hub
+  participant T as local-engine.js
+  participant W as engine-worker.js
+  participant E as engine.wasm
 
   U->>P: press Send
-  alt browser-only build
-    P->>T: local-engine.js send(clientOp)
-    T->>E: api.op, the clientOp as JSON
-  else server build
-    P->>T: server-engine.js send(clientOp)
-    T->>E: WebSocket frame
-  end
-  E->>E: validate, stamp, append, materialize
-  E-->>P: broadcast envelope: the operation record plus the new state
+  P->>T: send(clientOp)
+  T->>W: postMessage({kind:'op'})
+  W->>P: busy — the wait is shown
+  W->>E: api.op, the clientOp as JSON
+  E-->>W: broadcast envelopes via dispatch
+  W-->>P: one message per envelope
+  W->>P: idle — the wait ends, the controls come back
   P->>P: one handler, one render path
 ```
 
@@ -276,12 +300,15 @@ inside the page.
 | Path | Role |
 | --- | --- |
 | `demo/web/wasm.go` | the `js`-tagged entry point: `join`, `op`, dispatch |
-| `demo/web/ui-src/local-engine.js` | loads `wasm_exec.js` + `engine.wasm`, exposes the engine's `start`/`send` interface |
+| `demo/web/ui-src/engine-worker.js` | the engine's thread: loads the wasm module, reports busy and idle around each fold |
+| `demo/web/ui-src/local-engine.js` | spawns the worker, exposes the engine's `start`/`send`/`reconnect` interface |
 | `demo/web/ui-src/server-engine.js` | the WebSocket transport behind the same interface |
 | `demo/web/ui-src/build-local.mjs` | the static bundle, and the `index.html` that preselects the wasm engine |
 | `demo/web/messages.go` | the envelopes both engines speak |
+| `demo/web/ui-src/serve-local.mjs` | the dev loop: rebuild on change, serve without caching |
 | `scripts/build-local.sh` | the whole build |
 | `scripts/serve-local.sh` | build, then serve on `:8082` with `python3 -m http.server` |
+| `scripts/watch-local.sh` | build, then rebuild on every change and serve on `:8082` |
 
 ## Read next
 

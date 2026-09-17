@@ -32,6 +32,7 @@ const fitViewBtn = $('fitView');
 const compactionEl = $('compaction');
 const reconnectBanner = $('reconnectBanner');
 const reconnectBtn = $('reconnectBtn');
+const busyEl = $('busy');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -83,6 +84,8 @@ let clientID = '';
 let clients = 0; // viewers of this session
 let total = 0;   // viewers connected across all sessions
 let sessionOps = []; // the full operation log, for the local reserve copy
+let online = false; // the engine is connected and accepting commands
+let busy = false;   // the engine is folding the operation log right now
 
 // ---------- settings ----------
 // The dimension and compaction chosen for the next session are remembered in
@@ -436,15 +439,32 @@ function setStatus(text) {
 // setConnected flips the whole UI between live and frozen: the reconnect
 // banner appears, mutation controls disable, and the canvas stops taking
 // input while the engine is down. Local-only actions (copy, download) stay on.
-function setConnected(online) {
-  document.body.classList.toggle('disconnected', !online);
-  reconnectBanner.hidden = online;
-  sendBtn.disabled = !online;
-  exampleBtn.disabled = !online;
+function setConnected(next) {
+  online = next;
+  document.body.classList.toggle('disconnected', !next);
+  reconnectBanner.hidden = next;
+  syncControls();
 }
 
-// COMPACTION_LABELS names the two session compaction modes so the panel can
+// setBusy reports that the engine is working on the operation log. The work
+// happens in another thread, so the page stays alive: the canvas keeps
+// orbiting and this is what tells the viewer why nothing has changed yet.
+// While it runs, the controls that would queue more work are held back.
+function setBusy(next) {
+  busy = next;
+  busyEl.hidden = !next;
+  syncControls();
+}
+
+// syncControls enters the enabled state the connection and the engine imply.
+function syncControls() {
+  sendBtn.disabled = !online || busy;
+  exampleBtn.disabled = !online || busy;
+}
+
+// COMPACTION_LABELS names the session compaction modes so the panel can
 // explain, in words, what the active strategy does to the materialized boxes.
+// The set must match the modes the hub offers (demo/web/hub.go).
 const COMPACTION_LABELS = {
   canonical: 'Compaction: canonical — every box is kept exactly as materialized.',
   merge: 'Compaction: merge adjacent — touching boxes are joined into larger ones.',
@@ -505,6 +525,7 @@ const engine = ENGINE_IS_LOCAL
       onMessage: handleMessage,
       onStatus: setStatus,
       onOnline: setConnected,
+      onBusy: setBusy,
       onFirstSync: sendDimsPreference,
     })
   : createServerEngine({

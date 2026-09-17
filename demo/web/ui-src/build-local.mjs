@@ -18,6 +18,15 @@ const options = {
 };
 await build(options);
 
+// The engine's worker is a second entry point: a classic worker, so it can
+// importScripts the Go runtime glue next to it.
+await build({
+  ...options,
+  entryPoints: ['engine-worker.js'],
+  format: 'iife',
+  outfile: `${out}/engine-worker.js`,
+});
+
 cpSync('style.css', `${out}/style.css`);
 
 // The local page preselects the wasm engine. A module script runs before the

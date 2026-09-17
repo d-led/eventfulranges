@@ -43,6 +43,40 @@ main {
 
 #canvas canvas { display: block; }
 
+/* The engine works in a worker, so the page can say so while it does. The
+   overlay sits over the canvas rather than in the sidebar, because that is
+   where the eye is while a 3D session recomputes. */
+#busy {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  background: rgb(17 19 24 / 45%);
+  color: var(--fg);
+  font-size: 13px;
+}
+
+#busy[hidden] { display: none; }
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(1turn); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+}
+
 #activity {
   grid-area: activity;
   max-height: 180px;

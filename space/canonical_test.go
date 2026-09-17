@@ -2,6 +2,7 @@ package space
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -131,6 +132,125 @@ func TestPropertyMergeAdjacentIsIdempotent(t *testing.T) {
 				renderBoxes(raw), renderBoxes(once), renderBoxes(twice))
 		}
 	})
+}
+
+// referenceMergeAdjacent is the definition of MergeAdjacent written the
+// obvious way: test every pair, merge the first mergeable one, re-normalize
+// the whole cover, repeat. It is far too slow for the cell grids the
+// visualizer merges, which is why MergeAdjacent uses an index — and why the
+// tests below hold the two to the same answer.
+func referenceMergeAdjacent(boxes []Box) []Box {
+	boxes = Normalize(boxes)
+	for {
+		merged, changed := referenceMergeFirstPair(boxes)
+		if !changed {
+			return boxes
+		}
+		boxes = merged
+	}
+}
+
+// referenceMergeFirstPair merges the first mergeable pair in sorted order,
+// reporting whether any merge happened.
+func referenceMergeFirstPair(boxes []Box) ([]Box, bool) {
+	for i := 0; i < len(boxes); i++ {
+		for j := i + 1; j < len(boxes); j++ {
+			merged, ok := mergePair(boxes[i], boxes[j])
+			if !ok {
+				continue
+			}
+			out := make([]Box, 0, len(boxes)-1)
+			out = append(out, boxes[:i]...)
+			out = append(out, boxes[i+1:j]...)
+			out = append(out, boxes[j+1:]...)
+			out = append(out, merged)
+			return Normalize(out), true
+		}
+	}
+	return boxes, false
+}
+
+func TestMergeAdjacentMatchesReference(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   []Box
+	}{
+		{"empty", nil},
+		{"a single box", []Box{box2(0, 0, 2, 2)}},
+		{"a row and a column", []Box{box2(0, 0, 2, 2), box2(2, 0, 4, 2), box2(0, 2, 2, 4), box2(2, 2, 4, 4)}},
+		{"a staircase with an obstruction", []Box{
+			box2(0, 0, 2, 2), box2(2, 0, 4, 4), box2(0, 2, 2, 4), box2(4, 0, 6, 2),
+		}},
+		{"a finger of three", []Box{box2(0, 0, 1, 1), box2(1, 0, 2, 1), box2(2, 0, 3, 1), box2(1, 1, 2, 2)}},
+		{"touching only at a corner", []Box{box2(0, 0, 1, 1), box2(1, 1, 2, 2)}},
+		{"duplicates collapse", []Box{box2(0, 0, 2, 2), box2(0, 0, 2, 2)}},
+		{"a covered box is absorbed", []Box{box2(0, 0, 4, 4), box2(1, 1, 2, 2)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, referenceMergeAdjacent(tt.in), MergeAdjacent(tt.in))
+		})
+	}
+}
+
+func TestPropertyMergeAdjacentMatchesReference(t *testing.T) {
+	t.Parallel()
+	rapid.Check(t, func(t *rapid.T) {
+		raw := rapid.SliceOfN(genBox(t), 0, 12).Draw(t, "raw")
+		want := referenceMergeAdjacent(raw)
+		got := MergeAdjacent(raw)
+		if !Equal(want, got) {
+			t.Fatalf("the indexed merge must return what the plain greedy returns\n"+
+				"raw:  %s\n  plain:   %s\n  indexed: %s",
+				renderBoxes(raw), renderBoxes(want), renderBoxes(got))
+		}
+		require.Equal(t, want, got)
+	})
+}
+
+func TestPropertyMergeAdjacentMatchesReferenceOnGrids(t *testing.T) {
+	t.Parallel()
+	rapid.Check(t, func(t *rapid.T) {
+		cells := gridCells(t, 4)
+		if len(cells) < 2 {
+			return // nothing to merge, nothing to compare
+		}
+		want := referenceMergeAdjacent(cells)
+		got := MergeAdjacent(cells)
+		require.Equal(t, want, got,
+			"the grids MergeAdjacent is actually fed must match too\n  cells: %s", renderBoxes(cells))
+	})
+}
+
+// gridCells returns the cells of a random grid covering [0,4)^2, keeping each
+// one with a coin toss. It is the shape of cover MergeAdjacent is really fed —
+// a partition hands it cells that share cross-sections and touch along faces —
+// which is where the candidate index has to prove itself against the pair scan.
+func gridCells(t *rapid.T, extent int) []Box {
+	xs := gridCuts(t, extent)
+	ys := gridCuts(t, extent)
+	var cells []Box
+	for i := 0; i+1 < len(xs); i++ {
+		for j := 0; j+1 < len(ys); j++ {
+			if rapid.Bool().Draw(t, "keep the cell") {
+				cells = append(cells, box2(xs[i], ys[j], xs[i+1], ys[j+1]))
+			}
+		}
+	}
+	return cells
+}
+
+// gridCuts returns the distinct cut lines of a random grid over [0,extent].
+func gridCuts(t *rapid.T, extent int) []float64 {
+	cuts := []float64{0}
+	for range extent - 1 {
+		cuts = append(cuts, rapid.Float64Range(0, float64(extent)).Draw(t, "cut"))
+	}
+	cuts = append(cuts, float64(extent))
+	slices.Sort(cuts)
+	return slices.Compact(cuts)
 }
 
 func FuzzMergeAdjacent(f *testing.F) {

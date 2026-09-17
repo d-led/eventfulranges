@@ -266,6 +266,7 @@ The seam is two switches in the code:
 ```bash
 ./scripts/build-local.sh  # build demo/web/dist-local: UI + engine.wasm + wasm runtime
 ./scripts/serve-local.sh  # build and serve it statically (any static host works)
+./scripts/watch-local.sh  # serve it and rebuild on every UI or Go change (dev loop)
 ./scripts/e2e-local.sh    # Playwright tests against the in-page wasm engine
 ```
 

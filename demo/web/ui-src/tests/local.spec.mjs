@@ -53,6 +53,20 @@ test('keeps the model across reloads from the local reserve', async ({ page }) =
   }).toPass({ timeout: 10_000 });
 });
 
+test('canonical compaction keeps every tile', async ({ page }) => {
+  // The default mode is the reference the others are compared against: it
+  // neither joins touching boxes nor splits overlaps, so two boxes stay two.
+  await page.goto('/?dims=2&compact=canonical');
+  await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
+  await page.locator('#ops').fill('add,(0,0),(2,4)\nadd,(2,0),(4,4)');
+  await page.locator('#send').click();
+
+  await expect(async () => {
+    const lines = (await page.locator('#result').inputValue()).trim().split('\n');
+    expect(lines.filter(Boolean)).toHaveLength(2);
+  }).toPass({ timeout: 10_000 });
+});
+
 test('merge compaction merges adjacent boxes', async ({ page }) => {
   // A compact=merge 2D session joins touching boxes into one, as the
   // library's MergeAdjacent canonicalizer does in the Go server build too.
@@ -105,3 +119,71 @@ test('a new 4D session keeps its dimension across reload', async ({ page }) => {
   await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
   await expect(page.locator('#slice')).toBeVisible();
 });
+
+// A 3D partition-merge session is the expensive case: every operation
+// re-partitions and re-merges the whole cover. The engine runs in a worker
+// precisely so that this happens without the page — canvas, buttons and the
+// "merging" feedback — seizing up while it does.
+test('a heavy 3D merge runs off the main thread and reports the wait', async ({ page }) => {
+  await page.goto('/?dims=3&compact=partition-merge');
+  await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
+
+  // The built-in example first: 27 tiles with the middle one carved out. Its
+  // operations land asynchronously, so wait for the engine to go idle — the
+  // result panel fills in, and the send button comes back when the fold is
+  // over.
+  await page.locator('#example').click();
+  await expect(page.locator('#result')).not.toHaveValue('', { timeout: 30_000 });
+  await expect(page.locator('#send')).toBeEnabled({ timeout: 30_000 });
+
+  await page.locator('#ops').fill(MIXED_3D_OPS);
+  const merge = await page.evaluate(async (opCount) => {
+    const logLines = () => document.querySelectorAll('#log li').length;
+    const before = logLines();
+    const busy = document.getElementById('busy');
+    const send = document.getElementById('send');
+
+    let ticks = 0;
+    let sawFeedback = false;
+    const tick = () => {
+      ticks++;
+      if (!busy.hidden) sawFeedback = true;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+
+    send.click();
+    await new Promise((done) => {
+      const watch = () => {
+        if (!busy.hidden) sawFeedback = true;
+        if (logLines() >= before + opCount && busy.hidden) done();
+        else requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+    });
+    return { ticks, sawFeedback, sendEnabled: !send.disabled };
+  }, MIXED_3D_OPS.split('\n').length);
+
+  expect(merge.ticks, 'the page keeps painting while the engine folds').toBeGreaterThan(3);
+  expect(merge.sawFeedback, 'the wait is shown while the engine works').toBe(true);
+  expect(merge.sendEnabled, 'the send button is released once the fold is done').toBe(true);
+
+  await expect(async () => {
+    const lines = (await page.locator('#result').inputValue()).trim().split('\n');
+    expect(lines.filter(Boolean).length).toBeGreaterThan(0);
+  }).toPass({ timeout: 10_000 });
+});
+
+// MIXED_3D_OPS edits the example's hollow shell the way a viewer's random ops
+// do: overlapping adds and removes that force the partition to split and the
+// merge to rejoin.
+const MIXED_3D_OPS = [
+  'remove,(1.1,1.1,1.1),(2.4,2.4,2.4)',
+  'add,(0.2,0.2,0.2),(2.6,1.4,2.6)',
+  'remove,(0.4,0.4,0.4),(1.6,1.6,1.6)',
+  'add,(1.3,0.6,0.6),(2.9,2.7,2.7)',
+  'remove,(0.5,1.2,0.9),(2.2,2.2,1.9)',
+  'add,(0.9,0.9,0.9),(2.1,2.1,2.1)',
+  'remove,(1.5,0.3,0.3),(2.8,1.1,1.1)',
+  'add,(0.3,1.3,1.3),(1.8,2.8,2.6)',
+].join('\n');
