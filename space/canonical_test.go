@@ -1,6 +1,7 @@
 package space
 
 import (
+	"container/heap"
 	"fmt"
 	"slices"
 	"testing"
@@ -222,6 +223,91 @@ func TestPropertyMergeAdjacentMatchesReferenceOnGrids(t *testing.T) {
 		require.Equal(t, want, got,
 			"the grids MergeAdjacent is actually fed must match too\n  cells: %s", renderBoxes(cells))
 	})
+}
+
+// TestMergePathsAgree holds the two implementations behind MergeAdjacent to the
+// same answer. Which one runs depends only on the cover size, so a cover of any
+// shape must produce the same result either way — otherwise the merge would
+// change with the size of the session it happens to be merging.
+func TestMergePathsAgree(t *testing.T) {
+	t.Parallel()
+	t.Run("random covers", func(t *testing.T) {
+		t.Parallel()
+		rapid.Check(t, func(t *rapid.T) {
+			raw := rapid.SliceOfN(genBox(t), 1, 12).Draw(t, "raw")
+			require.Equal(t, scanMerge(raw), newMerger(raw).run(), "  covers: %s", renderBoxes(raw))
+		})
+	})
+	t.Run("grid covers", func(t *testing.T) {
+		t.Parallel()
+		rapid.Check(t, func(t *rapid.T) {
+			cells := gridCells(t, 6)
+			if len(cells) < 2 {
+				return
+			}
+			require.Equal(t, scanMerge(cells), newMerger(cells).run(), "  cells: %s", renderBoxes(cells))
+		})
+	})
+	t.Run("overlapping covers", func(t *testing.T) {
+		t.Parallel()
+		// Overlapping boxes are the case where a merge can swallow another box,
+		// so both paths have to agree on what a union absorbs, not just on how
+		// they pick the next pair.
+		require.Equal(t, scanMerge(overlappingCover()), newMerger(overlappingCover()).run())
+	})
+	t.Run("a cover too big to scan", func(t *testing.T) {
+		t.Parallel()
+		// The threshold picks the indexed path for covers this size, so this is
+		// the comparison that actually guards what a real session runs. The scan
+		// side is why the cover stays just above the threshold.
+		cells := benchmarkGrid(50)
+		require.Greater(t, len(cells), indexedMergeThreshold)
+		require.Equal(t, scanMerge(cells), newMerger(cells).run())
+	})
+}
+
+// TestMergeAdjacentOnALargeCover exercises the path a real session takes: above
+// the threshold MergeAdjacent hands the cover to the indexed merger. The other
+// path is the oracle here rather than the plain definition, which is cubic and
+// only usable on the small covers fed to it above; TestMergePathsAgree ties the
+// two together.
+func TestMergeAdjacentOnALargeCover(t *testing.T) {
+	t.Parallel()
+	cells := benchmarkGrid(50)
+	require.Greater(t, len(cells), indexedMergeThreshold)
+	require.Equal(t, newMerger(cells).run(), MergeAdjacent(cells))
+}
+
+// TestNextPairDiscardsPairsThatCannotMerge pins the guard that keeps a stale
+// pair out of the merge: a pair is offered when its boxes are mergeable, and
+// mergeability of two live boxes never changes, so the guard is there for the
+// pair that reached the heap some other way.
+func TestNextPairDiscardsPairsThatCannotMerge(t *testing.T) {
+	t.Parallel()
+	apart := []Box{box2(0, 0, 1, 1), box2(5, 5, 6, 6)}
+	m := newMerger(apart)
+	m.pairs.items = nil
+	heap.Push(&m.pairs, pair{first: 0, second: 1})
+
+	_, ok := m.nextPair()
+	require.False(t, ok, "two boxes that share no face pair up")
+}
+
+// TestCoverBoundsOfNothing pins the degenerate cover, which the merger never
+// sees but the helper has to answer.
+func TestCoverBoundsOfNothing(t *testing.T) {
+	t.Parallel()
+	origin, extent := coverBounds(nil, 2)
+	require.Len(t, origin, 2)
+	require.Len(t, extent, 2)
+}
+
+// overlappingCover is a cover in which merging two boxes covers a third that
+// neither of them covered alone.
+func overlappingCover() []Box {
+	return []Box{
+		box2(0, 0, 2, 1), box2(0, 1, 2, 2), box2(1, 0, 2, 2),
+	}
 }
 
 // gridCells returns the cells of a random grid covering [0,4)^2, keeping each

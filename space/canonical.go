@@ -33,25 +33,28 @@ func Chain(cs ...Canonicalizer) Canonicalizer {
 // provably-minimal rectangle cover — so it is safe to use as a Canonicalizer.
 //
 // The greedy takes the first mergeable pair in canonical cover order and
-// repeats. The merger in merge_index.go picks that same pair through an index
-// of candidates instead of testing every pair, so this returns the cover the
-// straightforward definition returns, at a cost that stays near linear instead
-// of cubic. That matters because a partition of a few dozen overlapping boxes
-// is thousands of cells, each of them a box.
+// repeats. Finding that pair, and the boxes a merge subsumes, costs a pass over
+// the cover; a pair of passes is cheaper than the indexes that avoid them while
+// the cover is small, and dwarfs them once it is not. The visualizer is what
+// makes the difference: a partition of a few dozen overlapping boxes is
+// thousands of cells, each of them a box, and there the difference is minutes
+// against milliseconds.
+//
+// Both paths compute the same cover — the tests hold them to it — so which one
+// runs is only ever a matter of cost.
 func MergeAdjacent(boxes []Box) []Box {
-	boxes = Normalize(boxes)
-	if len(boxes) == 0 {
-		return boxes
+	if len(boxes) < indexedMergeThreshold {
+		return scanMerge(boxes)
 	}
-	m := newMerger(boxes)
-	for {
-		a, b, ok := m.firstMergeablePair()
-		if !ok {
-			return m.result()
-		}
-		m.merge(a, b)
-	}
+	return newMerger(boxes).run()
 }
+
+// indexedMergeThreshold is the cover size at which indexing the cover for
+// candidate pairs, subsumers and the merge order stops costing more than it
+// saves. Measured against the two implementations on partitioned grids: below
+// it the scans win, above it the indexes pull away — at 8k cells by a factor of
+// seven, and the gap widens.
+const indexedMergeThreshold = 2048
 
 // mergePair merges two boxes that differ in exactly one dimension where they
 // touch edge-to-edge, reporting whether such a merge is possible. It assumes
