@@ -625,11 +625,18 @@ function reserveKey() {
   return session ? `eventfulranges:web:${session}` : null;
 }
 
+// isBoxOp reports whether an operation describes a box. The reserve keeps only
+// these: a dims operation is a session setting that the page re-sends on every
+// load (?dims=), so storing it too would add a line to the log per reload.
+function isBoxOp(op) {
+  return op.kind === 'add' || op.kind === 'remove';
+}
+
 function saveReserve(log) {
   const key = reserveKey();
   if (!key) return;
   try {
-    localStorage.setItem(key, JSON.stringify(log));
+    localStorage.setItem(key, JSON.stringify(log.filter(isBoxOp)));
   } catch {
     // Storage may be unavailable (private mode) or full: the in-memory log
     // still keeps the session alive for as long as the page does.
@@ -641,7 +648,9 @@ function loadReserve() {
   if (!key) return [];
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const stored = JSON.parse(raw);
+    return Array.isArray(stored) ? stored.filter(isBoxOp) : [];
   } catch {
     return [];
   }

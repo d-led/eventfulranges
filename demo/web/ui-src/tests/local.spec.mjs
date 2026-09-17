@@ -53,6 +53,32 @@ test('keeps the model across reloads from the local reserve', async ({ page }) =
   }).toPass({ timeout: 10_000 });
 });
 
+// A reload is healed from the reserve, so the session that comes back has to be
+// the one that was there — same ranges, and a log of the same length. The
+// dimension preference is the trap: the page re-sends it on every load, so
+// keeping it in the reserve as well would add a line per reload.
+test('a reload rebuilds the session without growing its log', async ({ page }) => {
+  await page.goto('/?dims=2&compact=partition-merge');
+  await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
+  await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
+  await page.locator('#send').click();
+  await expect(page.locator('#stats')).toHaveText('2 ops → 5 partition cells → 3 ranges', { timeout: 20_000 });
+
+  const ranges = await page.locator('#result').inputValue();
+  const logged = await page.locator('#log li').count();
+
+  for (const reload of [1, 2]) {
+    await page.reload();
+    await expect(page.locator('#stats'), `the ranges after reload ${reload}`)
+      .toHaveText('2 ops → 5 partition cells → 3 ranges', { timeout: 30_000 });
+    await expect(page.locator('#status'), `the engine after reload ${reload}`)
+      .toContainText('running in this page');
+    expect(await page.locator('#result').inputValue(), `the ranges after reload ${reload}`).toBe(ranges);
+    await expect.poll(() => page.locator('#log li').count(), { message: `the log after reload ${reload}` })
+      .toBe(logged);
+  }
+});
+
 test('canonical compaction keeps every tile', async ({ page }) => {
   // The default mode is the reference the others are compared against: it
   // neither joins touching boxes nor splits overlaps, so two boxes stay two.
