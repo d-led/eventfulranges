@@ -283,6 +283,34 @@ test('partition + merge combines after splitting', async ({ page }) => {
   }).toPass({ timeout: 10_000 });
 });
 
+// The view reports how many ranges it holds and, when a partition ran, how many
+// cells they were consolidated from — the number the merge is judged by.
+test('reports the ranges it consolidated, and what from', async ({ page }) => {
+  await page.goto('/ui/?dims=3&compact=partition-merge');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+  await page.locator('#example').click();
+
+  await expect(async () => {
+    const stats = await page.locator('#stats').textContent();
+    const ranges = (await page.locator('#result').inputValue()).trim().split('\n').filter(Boolean).length;
+    const shown = stats.match(/^(\d+) ranges from (\d+) cells$/);
+    expect(shown, `readout was ${JSON.stringify(stats)}`).not.toBeNull();
+    expect(Number(shown[1]), 'the readout agrees with the model on screen').toBe(ranges);
+    expect(Number(shown[2]), 'the cells were consolidated into fewer ranges').toBeGreaterThan(ranges);
+  }).toPass({ timeout: 20_000 });
+});
+
+test('a session with no partition reports only its ranges', async ({ page }) => {
+  await page.goto('/ui/?dims=2&compact=canonical');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+  await page.locator('#ops').fill('add,(0,0),(2,4)\nadd,(2,0),(4,4)');
+  await page.locator('#send').click();
+
+  await expect(page.locator('#stats')).toHaveText('2 ranges', { timeout: 10_000 });
+});
+
 test('remembers the new-session selections across reloads', async ({ page }) => {
   await page.goto('/ui/');
   await page.waitForURL(/[?&]s=/);

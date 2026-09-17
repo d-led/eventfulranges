@@ -33,6 +33,7 @@ const compactionEl = $('compaction');
 const reconnectBanner = $('reconnectBanner');
 const reconnectBtn = $('reconnectBtn');
 const busyEl = $('busy');
+const statsEl = $('stats');
 
 // ---------- three.js scene ----------
 const canvasHost = $('canvas');
@@ -514,8 +515,18 @@ function applyState(state) {
     setViewMode(dims);
   }
   resultEl.value = boxesToCSV(currentBoxes);
+  setStats(state.cells);
   rebuild();
   if (!hadBoxes && currentBoxes.length > 0) needsFit = true;
+}
+
+// setStats reports what is on screen: how many ranges, and — when the engine
+// consolidated any — how many partition cells they were consolidated from.
+function setStats(cells) {
+  const ranges = currentBoxes.length;
+  statsEl.textContent = cells > ranges
+    ? `${ranges} ranges from ${cells} cells`
+    : `${ranges} ranges`;
 }
 
 // The two engine implementations live next to this file; each takes the page

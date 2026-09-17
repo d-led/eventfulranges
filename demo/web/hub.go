@@ -38,6 +38,11 @@ type view struct {
 	Removes int         `json:"removes"`
 	Dims    int         `json:"dims"`
 	Compact string      `json:"compact"`
+	// Cells is how many boxes the partition produced before they were
+	// consolidated, for the partition modes only. It is what makes the
+	// consolidation visible: a few dozen operations become thousands of cells
+	// and usually a handful of ranges.
+	Cells int `json:"cells,omitempty"`
 }
 
 // opRecord is one entry in the session's shared activity log.
@@ -59,9 +64,10 @@ type hub struct {
 	events   *pubsub.PubSub[string, serverMsg]
 	onEvent  func(serverMsg) // direct delivery for a single watcher (wasm); nil fans out via events
 	set      *eventfulranges.BoxSet
-	idx      *rtree.Tree // ephemeral spatial index over the boxes; nil until first search
-	compact  string      // compaction mode: canonical, merge, or partition
-	dims     int         // session dimension: -1 until fixed by a dims op or the first box
+	idx      *rtree.Tree  // ephemeral spatial index over the boxes; nil until first search
+	compact  string       // compaction mode: canonical, merge, or partition
+	cells    atomic.Int64 // boxes the last partition produced, before merging
+	dims     int          // session dimension: -1 until fixed by a dims op or the first box
 	clients  int
 	total    *atomic.Int64                     // connected clients across all sessions; nil standalone
 	presence *pubsub.PubSub[string, serverMsg] // global presence topic; nil standalone
@@ -82,6 +88,11 @@ func newHub(compact bool) *hub {
 // modes: canonical keeps the engine's cover as-is, merge joins touching boxes,
 // and partition splits every overlap so no two boxes share a point.
 func newHubMode(mode string) *hub {
+	h := &hub{
+		events:  pubsub.New[string, serverMsg](1024),
+		compact: mode,
+		dims:    -1,
+	}
 	// The session is in-memory and expires after a day without use, so the
 	// engine never reloads from a snapshot; disable the automatic snapshots.
 	opts := []eventfulranges.BoxOption{eventfulranges.WithBoxSnapshotEvery(0)}
@@ -89,21 +100,30 @@ func newHubMode(mode string) *hub {
 	case compactMerge:
 		opts = append(opts, eventfulranges.WithBoxCanonicalizer(space.MergeAdjacent))
 	case compactPartition:
-		opts = append(opts, eventfulranges.WithBoxCanonicalizer(Partition))
+		opts = append(opts, eventfulranges.WithBoxCanonicalizer(h.recordingPartition()))
 	case compactPartitionMerge:
-		opts = append(opts, eventfulranges.WithBoxCanonicalizer(space.Chain(Partition, space.MergeAdjacent)))
+		opts = append(opts, eventfulranges.WithBoxCanonicalizer(
+			space.Chain(h.recordingPartition(), space.MergeAdjacent)))
 	default:
-		mode = compactCanonical
+		h.compact = compactCanonical
 	}
 	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWins, opts...)
 	if err != nil {
 		panic(err) // a fresh in-memory store cannot fail to open
 	}
-	return &hub{
-		events:  pubsub.New[string, serverMsg](1024),
-		set:     set,
-		compact: mode,
-		dims:    -1,
+	h.set = set
+	return h
+}
+
+// recordingPartition partitions a cover and remembers how many cells that
+// produced, so the view can report the consolidation rather than only its
+// result. It is stored atomically because the engine may canonicalize while a
+// reader holds the hub's read lock.
+func (h *hub) recordingPartition() space.Canonicalizer {
+	return func(boxes []space.Box) []space.Box {
+		cells := Partition(boxes)
+		h.cells.Store(int64(len(cells)))
+		return cells
 	}
 }
 
@@ -369,6 +389,7 @@ func (h *hub) materializeLocked() view {
 		Removes: removes,
 		Dims:    h.dims,
 		Compact: mode,
+		Cells:   int(h.cells.Load()),
 	}
 }
 

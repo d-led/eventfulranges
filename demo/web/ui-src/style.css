@@ -43,6 +43,23 @@ main {
 
 #canvas canvas { display: block; }
 
+/* How much is being drawn, and how much it was reduced from: the consolidation
+   is the point of the view, so it is reported in the view rather than in a
+   panel the eye has to leave the picture to read. */
+#stats {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 4;
+  pointer-events: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgb(17 19 24 / 70%);
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+}
+
 /* The engine works in a worker, so the page can say so while it does. The
    overlay sits over the canvas rather than in the sidebar, because that is
    where the eye is while a 3D session recomputes. */

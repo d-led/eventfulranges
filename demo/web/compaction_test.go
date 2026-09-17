@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/d-led/eventfulranges/space"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,10 +135,64 @@ func TestReplayingTheExampleIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestEveryCompactionModeReportsItself keeps the panel honest: the view says
+// TestConsolidationLeavesNothingMergeable is the promise the merge modes make:
+// consolidate everything that can be consolidated. Feeding the result back
+// through the merger must therefore change nothing — what is left is genuinely
+// unmergeable, and only then is a large count acceptable.
+func TestConsolidationLeavesNothingMergeable(t *testing.T) {
+	t.Parallel()
+	ops := mixedOps()
+	for _, mode := range []string{compactMerge, compactPartitionMerge} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			got := foldOps(t, mode, ops)
+			require.Len(t, space.MergeAdjacent(got.Boxes), len(got.Boxes),
+				"every mergeable pair must already have been merged")
+		})
+	}
+}
+
+// TestPartitionModesReportTheCellsTheyConsolidated covers the number the view
+// shows: a partition counts its own cells, and the merge that follows reports
+// the same cells it started from and fewer ranges.
+func TestPartitionModesReportTheCellsTheyConsolidated(t *testing.T) {
+	t.Parallel()
+	t.Run("overlaps are split, then consolidated", func(t *testing.T) {
+		t.Parallel()
+		ops := mixedOps()
+		partition := foldOps(t, compactPartition, ops)
+		merged := foldOps(t, compactPartitionMerge, ops)
+
+		require.Equal(t, len(partition.Boxes), partition.Cells,
+			"a partition consolidates nothing, so it reports its own size")
+		require.Greater(t, partition.Cells, len(foldOps(t, compactCanonical, ops).Boxes),
+			"the edits overlap, so a partition holds more boxes than the cover")
+		require.Equal(t, partition.Cells, merged.Cells,
+			"the merge starts from the cells the partition produced")
+		require.Less(t, len(merged.Boxes), partition.Cells,
+			"the merge consolidates, so its ranges are fewer than the cells")
+	})
+	t.Run("a disjoint cover partitions into itself", func(t *testing.T) {
+		t.Parallel()
+		// The built-in example is disjoint tiles with the middle carved out, so
+		// there is nothing to split: the cells are the tiles.
+		require.Equal(t, 26, foldOps(t, compactPartition, exampleOps(3)).Cells)
+	})
+}
+
+// TestModesWithoutPartitionReportNoCellCount keeps the readout honest: a
+// canonical or merge cover never went through a partition, so it reports no
+// cell count rather than a misleading zero.
+func TestModesWithoutPartitionReportNoCellCount(t *testing.T) {
+	t.Parallel()
+	require.Zero(t, foldOps(t, compactCanonical, exampleOps(3)).Cells)
+	require.Zero(t, foldOps(t, compactMerge, exampleOps(3)).Cells)
+}
+
+// TestCompactionModesReportThemselves keeps the panel honest: the view says
 // which mode produced it, so the label the viewer reads matches the boxes they
 // see.
-func TestEveryCompactionModeReportsItself(t *testing.T) {
+func TestCompactionModesReportThemselves(t *testing.T) {
 	t.Parallel()
 	for _, mode := range compactionModes {
 		t.Run(mode, func(t *testing.T) {
