@@ -63,7 +63,9 @@ carving each box by the region still undecided. Because the n-D cover is not
 uniquely decomposable (partially overlapping boxes are kept, not subdivided),
 the engine materializes `LWW`/`FWW` from the full operation list — never
 incrementally — so two replicas that have seen the same operations always
-yield the identical cover.
+yield the identical cover. The canvas demos take `LWW` for the reason a
+painter would: the newest stroke at a point wins, so erasing is just another
+stroke that can itself be painted over.
 
 For rendering, `space/strategy.Layers` (exposed as `BoxSet.Layers`) is the
 painter's-algorithm counterpart of the cover:

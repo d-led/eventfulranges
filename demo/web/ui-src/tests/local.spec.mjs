@@ -62,7 +62,7 @@ test('a reload rebuilds the session without growing its log', async ({ page }) =
   await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
   await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
   await page.locator('#send').click();
-  await expect(page.locator('#stats')).toHaveText('2 ops → 5 partition cells → 3 ranges', { timeout: 20_000 });
+  await expect(page.locator('#stats')).toHaveText('2 ops → 4 partition cells → 3 ranges', { timeout: 20_000 });
 
   const ranges = await page.locator('#result').inputValue();
   const logged = await page.locator('#log li').count();
@@ -70,7 +70,7 @@ test('a reload rebuilds the session without growing its log', async ({ page }) =
   for (const reload of [1, 2]) {
     await page.reload();
     await expect(page.locator('#stats'), `the ranges after reload ${reload}`)
-      .toHaveText('2 ops → 5 partition cells → 3 ranges', { timeout: 30_000 });
+      .toHaveText('2 ops → 4 partition cells → 3 ranges', { timeout: 30_000 });
     await expect(page.locator('#status'), `the engine after reload ${reload}`)
       .toContainText('running in this page');
     expect(await page.locator('#result').inputValue(), `the ranges after reload ${reload}`).toBe(ranges);
@@ -115,18 +115,38 @@ test('partition compaction splits overlaps into disjoint boxes', async ({ page }
   await page.goto('/?dims=2&compact=partition');
   await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
 
-  // Two corner-overlapping boxes split into five non-overlapping rectangles.
+  // Two corner-overlapping boxes: the later one wins where they overlap, and
+  // the partition splits what is left into four disjoint rectangles.
   await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
   await page.locator('#send').click();
 
   await expect(async () => {
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
-    expect(lines.filter(Boolean)).toHaveLength(5);
+    expect(lines.filter(Boolean)).toHaveLength(4);
   }).toPass({ timeout: 10_000 });
 
   // The cells are the result here, so the readout names the two ends: two
-  // operations in, five boxes out.
-  await expect(page.locator('#stats')).toHaveText('2 ops → 5 ranges');
+  // operations in, four boxes out.
+  await expect(page.locator('#stats')).toHaveText('2 ops → 4 ranges');
+});
+
+// The newest operation at a point decides it, so a hole is only a hole until
+// something is added over it: cutting a band out of a square and adding it back
+// leaves one range, not two. A strategy where removals win would ignore the
+// second add, and the square would never come back whole.
+test('an add paints over a removed hole', async ({ page }) => {
+  await page.goto('/?dims=2&compact=merge');
+  await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
+
+  await page.locator('#ops').fill('add,(0,0),(4,4)\nremove,(1,0),(3,4)');
+  await page.locator('#send').click();
+  await expect(page.locator('#stats'), 'the cut leaves the two sides')
+    .toHaveText('2 ops → 2 ranges', { timeout: 10_000 });
+
+  await page.locator('#ops').fill('add,(1,0),(3,4)');
+  await page.locator('#send').click();
+  await expect(page.locator('#stats'), 'the square is whole again')
+    .toHaveText('3 ops → 1 range', { timeout: 10_000 });
 });
 
 test('partition + merge combines after splitting', async ({ page }) => {
@@ -142,9 +162,9 @@ test('partition + merge combines after splitting', async ({ page }) => {
     expect(lines.filter(Boolean)).toHaveLength(3);
   }).toPass({ timeout: 10_000 });
 
-  // The only mode that shows all three counts: two operations cut into five
+  // The only mode that shows all three counts: two operations cut into four
   // cells, joined back into three ranges.
-  await expect(page.locator('#stats')).toHaveText('2 ops → 5 partition cells → 3 ranges');
+  await expect(page.locator('#stats')).toHaveText('2 ops → 4 partition cells → 3 ranges');
 });
 
 // The consolidation a session runs is chosen when it starts, and the boxes

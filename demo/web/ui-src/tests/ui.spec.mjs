@@ -261,18 +261,38 @@ test('partition compaction splits overlaps into disjoint boxes', async ({ page }
   await page.waitForURL(/[?&]s=/);
   await expect(page.locator('#status')).toContainText('connected');
 
-  // Two corner-overlapping boxes split into five non-overlapping rectangles.
+  // Two corner-overlapping boxes: the later one wins where they overlap, and
+  // the partition splits what is left into four disjoint rectangles.
   await page.locator('#ops').fill('add,(0,0),(2,2)\nadd,(1,1),(3,3)');
   await page.locator('#send').click();
 
   await expect(async () => {
     const lines = (await page.locator('#result').inputValue()).trim().split('\n');
-    expect(lines.filter(Boolean)).toHaveLength(5);
+    expect(lines.filter(Boolean)).toHaveLength(4);
   }).toPass({ timeout: 10_000 });
 
   // The cells are the result here, so the readout names the two ends: two
-  // operations in, five boxes out.
-  await expect(page.locator('#stats')).toHaveText('2 ops → 5 ranges');
+  // operations in, four boxes out.
+  await expect(page.locator('#stats')).toHaveText('2 ops → 4 ranges');
+});
+
+// The newest operation at a point decides it, so a hole is only a hole until
+// something is added over it: cutting a band out of a square and adding it back
+// leaves one range, not two.
+test('an add paints over a removed hole', async ({ page }) => {
+  await page.goto('/ui/?dims=2&compact=merge');
+  await page.waitForURL(/[?&]s=/);
+  await expect(page.locator('#status')).toContainText('connected');
+
+  await page.locator('#ops').fill('add,(0,0),(4,4)\nremove,(1,0),(3,4)');
+  await page.locator('#send').click();
+  await expect(page.locator('#stats'), 'the cut leaves the two sides')
+    .toHaveText('2 ops → 2 ranges', { timeout: 10_000 });
+
+  await page.locator('#ops').fill('add,(1,0),(3,4)');
+  await page.locator('#send').click();
+  await expect(page.locator('#stats'), 'the square is whole again')
+    .toHaveText('3 ops → 1 range', { timeout: 10_000 });
 });
 
 test('partition + merge combines after splitting', async ({ page }) => {
@@ -289,9 +309,9 @@ test('partition + merge combines after splitting', async ({ page }) => {
     expect(lines.filter(Boolean)).toHaveLength(3);
   }).toPass({ timeout: 10_000 });
 
-  // The only mode that shows all three counts: two operations cut into five
+  // The only mode that shows all three counts: two operations cut into four
   // cells, joined back into three ranges.
-  await expect(page.locator('#stats')).toHaveText('2 ops → 5 partition cells → 3 ranges');
+  await expect(page.locator('#stats')).toHaveText('2 ops → 4 partition cells → 3 ranges');
 });
 
 // The consolidation a session runs is chosen when it starts, and the boxes

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/d-led/eventfulranges/meta"
 	"github.com/d-led/eventfulranges/space"
 
 	"github.com/stretchr/testify/require"
@@ -63,27 +64,42 @@ func TestEveryCompactionModeCoversTheSamePoints(t *testing.T) {
 	}
 }
 
-// TestEveryCompactionModeConvergesRegardlessOfArrivalOrder replays the same
-// operations backwards. A replica must reach the same view whichever order the
-// operations arrive in — the compaction included, which is why a canonicalizer
-// has to be deterministic.
-func TestEveryCompactionModeConvergesRegardlessOfArrivalOrder(t *testing.T) {
+// latestWinsCover is the cover the log describes when the latest operation wins
+// at every point: fold the operations in order, adding and cutting as they
+// come. It is deliberately independent of the hub's strategy, so a switch back
+// to a union-minus-union rule — where a removal is forever — shows up here.
+func latestWinsCover(t *testing.T, ops []clientOp) []space.Box {
+	t.Helper()
+	var cover []space.Box
+	for _, op := range ops {
+		box := space.NewBox(op.Min, op.Max)
+		if op.Kind == string(opRemove) {
+			cover = space.DifferenceSortedMerged(cover, []space.Box{box}, meta.Union)
+			continue
+		}
+		cover = space.UnionMerged(cover, []space.Box{box}, meta.Union)
+	}
+	return cover
+}
+
+// TestEveryCompactionModeMaterializesWhatTheLogSays pins two things at once:
+// folding the same log twice gives the same view, because a canonicalizer must
+// not depend on map or heap iteration order, and that view covers exactly the
+// points the latest operation left in. The mode decides how the cover is cut,
+// never which points are in it — mixedOps paints over a hole, so a strategy
+// where removals win would fail this.
+func TestEveryCompactionModeMaterializesWhatTheLogSays(t *testing.T) {
 	t.Parallel()
 	ops := mixedOps()
+	want := latestWinsCover(t, ops)
 	for _, mode := range compactionModes {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
-			forward := foldOps(t, mode, ops)
+			first := foldOps(t, mode, ops)
+			second := foldOps(t, mode, ops)
 
-			reversed := make([]clientOp, len(ops))
-			for i, op := range ops {
-				reversed[len(ops)-1-i] = op
-			}
-			backward := foldOps(t, mode, reversed)
-
-			require.Equal(t, forward.Boxes, backward.Boxes, "arrival order must not change the view")
-			require.Equal(t, forward.Adds, backward.Adds)
-			require.Equal(t, forward.Removes, backward.Removes)
+			require.Equal(t, first.Boxes, second.Boxes, "the same log twice is the same view")
+			requireSameCoverage(t, want, first.Boxes)
 		})
 	}
 }

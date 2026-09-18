@@ -48,11 +48,15 @@ flowchart TD
 
 Rules of thumb:
 
-1. **Bookings, boards, painted regions** — `AdditiveWins`. Additions accumulate,
-   cancellations subtract, order never matters.
-2. **Last value of a field or a sensor reading** — `LWW`.
-3. **First-write-wins ledgers** — `FWW`.
-4. **Append-only where deletion is not a concept** — `GrowOnly`.
+1. **Bookings, ledgers where a cancellation is final** — `AdditiveWins`.
+   Additions accumulate, cancellations subtract, order never matters: a
+   cancelled booking cannot uncancel itself.
+2. **Painted regions, boards, canvases** — `LWW`. The newest edit at a point
+   decides it, so an eraser stroke can be painted over again; `AdditiveWins`
+   would make every erasure permanent. Both canvas demos use this.
+3. **Last value of a field or a sensor reading** — `LWW` as well.
+4. **First-write-wins ledgers** — `FWW`.
+5. **Append-only where deletion is not a concept** — `GrowOnly`.
 
 ## The four strategies, 1-D
 

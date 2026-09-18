@@ -29,9 +29,14 @@ const (
 )
 
 // view is the materialized result of the shared, append-only operation log.
-// It is the n-dimensional generalization of the library's AdditiveWins
-// strategy: the union of every addition minus the union of every removal, so
-// the result is independent of the order in which concurrent edits arrive.
+//
+// The strategy is LWW: at every point, the latest operation that covers it
+// decides whether the point is in the set. The hub folds operations in the
+// order they arrive, and every watcher folds the same order, so all screens
+// converge — and because the latest operation wins, a region removed earlier
+// can be painted again. The union-minus-union of AdditiveWins, which this demo
+// used before, makes a hole permanent: fine for a booking calendar, wrong for a
+// drawing.
 type view struct {
 	Boxes   []space.Box `json:"boxes"`
 	Adds    int         `json:"adds"`
@@ -107,7 +112,7 @@ func newHubMode(mode string) *hub {
 	default:
 		h.compact = compactCanonical
 	}
-	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.AdditiveWins, opts...)
+	set, err := eventfulranges.OpenBoxStore(context.Background(), memory.New(), sstrategy.LWW, opts...)
 	if err != nil {
 		panic(err) // a fresh in-memory store cannot fail to open
 	}

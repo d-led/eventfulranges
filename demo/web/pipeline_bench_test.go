@@ -88,20 +88,21 @@ func BenchmarkHubApply3DMerge(b *testing.B)          { benchHubApply(b, compactM
 func BenchmarkHubApply3DPartition(b *testing.B)      { benchHubApply(b, compactPartition, 3, 8) }
 func BenchmarkHubApply3DPartitionMerge(b *testing.B) { benchHubApply(b, compactPartitionMerge, 3, 8) }
 
-// workloadCover is the cover the AdditiveWins engine holds at the end of the
-// workload: the union of the additions minus the union of the removals. It is
-// what a canonicalizer is handed after every operation.
+// workloadCover is the cover the engine holds at the end of the workload, with
+// the latest operation winning at every point: fold the operations in order,
+// adding and cutting as they come. It is what a canonicalizer is handed after
+// every operation.
 func workloadCover(dims, randomOps int, seed int64) []space.Box {
-	var adds, removes []space.Box
+	var cover []space.Box
 	for _, o := range deployedWorkload(dims, randomOps, seed) {
 		box := space.NewBox(o.lo, o.hi)
 		if o.remove {
-			removes = space.UnionMerged(removes, []space.Box{box}, meta.Union)
+			cover = space.DifferenceSortedMerged(cover, []space.Box{box}, meta.Union)
 			continue
 		}
-		adds = space.UnionMerged(adds, []space.Box{box}, meta.Union)
+		cover = space.UnionMerged(cover, []space.Box{box}, meta.Union)
 	}
-	return space.DifferenceSortedMerged(adds, removes, meta.Union)
+	return cover
 }
 
 // benchCanonicalizer measures one canonicalizer over that cover, so the cost of

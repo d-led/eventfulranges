@@ -38,23 +38,28 @@ func TestViewAddThenRemoveYieldsHollowShell(t *testing.T) {
 	require.True(t, space.Contains(v.Boxes, []float64{0.5, 2, 2}))
 }
 
-func TestViewConvergesRegardlessOfOrder(t *testing.T) {
+// The demo folds operations in the order they arrive and lets the latest one
+// win, so a hole is a hole only until something paints over it: the same two
+// operations in the other order leave the region filled. That is the whole
+// difference from the booking calendar, where a removal is permanent.
+func TestViewLetsTheLatestOperationWin(t *testing.T) {
 	t.Parallel()
-	first := newHub(false)
-	second := newHub(false)
-
-	// Replica A: add then remove. Replica B: remove then add.
-	_, err := first.apply(opAdd, []float64{0, 0}, []float64{4, 4})
+	hole := newHub(false)
+	_, err := hole.apply(opAdd, []float64{0, 0}, []float64{4, 4})
 	require.NoError(t, err)
-	_, err = first.apply(opRemove, []float64{1, 1}, []float64{3, 3})
+	_, err = hole.apply(opRemove, []float64{1, 1}, []float64{3, 3})
 	require.NoError(t, err)
 
-	_, err = second.apply(opRemove, []float64{1, 1}, []float64{3, 3})
+	painted := newHub(false)
+	_, err = painted.apply(opRemove, []float64{1, 1}, []float64{3, 3})
 	require.NoError(t, err)
-	_, err = second.apply(opAdd, []float64{0, 0}, []float64{4, 4})
+	_, err = painted.apply(opAdd, []float64{0, 0}, []float64{4, 4})
 	require.NoError(t, err)
 
-	require.True(t, space.Equal(first.snapshot().Boxes, second.snapshot().Boxes))
+	require.False(t, space.Contains(hole.snapshot().Boxes, []float64{2, 2}),
+		"a remove after an add leaves a hole")
+	require.True(t, space.Contains(painted.snapshot().Boxes, []float64{2, 2}),
+		"an add after a remove paints the hole over")
 }
 
 func TestViewRejectsBadInput(t *testing.T) {

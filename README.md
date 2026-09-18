@@ -243,9 +243,10 @@ remove (1,1)→(2,2)
 
 `demo/web` serves an n-dimensional range-set visualizer (1–4 dimensions, with a
 rotatable translucent-box 3D view and copy/pasteable CSV). Everyone connected
-to the same instance shares one view: each `add`/`remove` is folded with
-additive-wins semantics and broadcast over a WebSocket, so concurrent edits
-converge regardless of order. Open `http://localhost:8080/ui/`.
+to the same instance shares one view: each `add`/`remove` is folded in arrival
+order and broadcast over a WebSocket, so every screen converges on the same
+model. The newest operation at a point decides it — and that is what lets you
+paint over a hole you just cut. Open `http://localhost:8080/ui/`.
 
 A hub also answers read-only region queries: a client sends
 `{"kind":"search","min":[…],"max":[…]}` and gets back the boxes overlapping
