@@ -4,6 +4,7 @@ import { fadeOpacity } from './slice.js';
 import { orthoHalf, orthoFrustum, perspDistance } from './camera.js';
 import { compactionFor } from './compaction.js';
 import { readout } from './readout.js';
+import { presenceLine, sessionNote } from './session-note.js';
 import { createServerEngine } from './server-engine.js';
 import { createLocalEngine } from './local-engine.js';
 import { startTour } from './tour.js';
@@ -29,6 +30,7 @@ const resultEl = $('result');
 const copyBtn = $('copy');
 const copyLinkBtn = $('copyLink');
 const presenceEl = $('presence');
+const noteEl = $('sessionNote');
 const logEl = $('log');
 const fitViewBtn = $('fitView');
 const compactionEl = $('compaction');
@@ -478,12 +480,12 @@ function setCompaction(mode) {
   modeEl.dataset.mode = running.mode;
 }
 
-// updatePresence renders the connected-client count and this client's own id.
+// updatePresence renders who is in the session and this client's own id. The
+// two builds answer that differently, so the line comes from session-note.js.
 function updatePresence(n, t) {
   if (n !== undefined) clients = n;
   if (t !== undefined) total = t;
-  const me = clientID ? ` · you are ${clientID}` : '';
-  presenceEl.textContent = `${clients} here · ${total} connected${me}`;
+  presenceEl.textContent = presenceLine(ENGINE_IS_LOCAL, { clients, total, clientID });
 }
 
 // appendLog renders one activity entry, newest last, highlighting this client.
@@ -776,6 +778,7 @@ wVal.textContent = sliceW.toFixed(2);
 opsEl.value = exampleFor(3);
 setViewMode(currentDims);
 setCompaction('canonical');
+noteEl.textContent = sessionNote(ENGINE_IS_LOCAL);
 connect();
 tick();
 

@@ -15,13 +15,15 @@
     <aside id="panel">
       <h1>eventfulranges</h1>
       <p id="presence" class="presence">connecting…</p>
+      <!-- The lede is engine-neutral: it describes the model, not who can see
+           it. Where the session lives is named in #sessionNote, which app.js
+           fills in for the build that is actually running. -->
       <p class="lede">
-        A live n-dimensional range set. Everyone who opens the same link shares
-        one view: add and remove boxes and watch every browser converge. The
-        newest operation at a point wins, so an add paints over a hole you just
-        cut. Each share link is its own private model that expires after a day
-        of silence.
+        An n-dimensional range set: add and remove boxes and watch the model
+        converge. The newest operation at a point wins, so an add paints over a
+        hole you just cut.
       </p>
+      <p id="sessionNote" class="hint"></p>
 
       <div class="field">
         <div class="session-actions">

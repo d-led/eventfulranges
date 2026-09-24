@@ -17,7 +17,10 @@ test.beforeEach(async ({ page }) => {
 async function connect(page) {
   await page.goto('/');
   await expect(page.locator('#status')).toContainText('running in this page', { timeout: 20_000 });
-  await expect(page.locator('#presence')).toContainText('1 here');
+  // The browser-only build says where the session lives, so nobody shares a
+  // link expecting another browser to see the same model.
+  await expect(page.locator('#presence')).toContainText('this page only');
+  await expect(page.locator('#sessionNote')).toContainText('No server');
 }
 
 test('runs entirely in the page and renders the canvas', async ({ page }) => {
@@ -25,6 +28,17 @@ test('runs entirely in the page and renders the canvas', async ({ page }) => {
   await expect(page.locator('#canvas canvas')).toBeAttached();
   // The page mints its own shareable session id, like the server would.
   await expect(page).toHaveURL(/[?&]s=/);
+});
+
+// A share link here is a bookmark, not an invitation: the model never leaves
+// this browser, so the page must not promise a shared session.
+test('does not promise a session shared with anyone else', async ({ page }) => {
+  await connect(page);
+
+  const note = await page.locator('#sessionNote').textContent();
+  expect(note).toContain('nothing syncs to another browser');
+  expect(note).not.toMatch(/everyone|share link|converge|expires/i);
+  await expect(page.locator('#presence')).toContainText('server-free build');
 });
 
 test('folds add/remove into the hollow cube inside the page', async ({ page }) => {

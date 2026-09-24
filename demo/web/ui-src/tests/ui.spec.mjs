@@ -202,6 +202,17 @@ test('send clears the ops window', async ({ page }) => {
   await expect(page.locator('#ops')).toHaveValue('');
 });
 
+// The served build promises the opposite of the browser-only one: here the link
+// is what puts several people on one model.
+test('says the link is shared through the hub', async ({ page }) => {
+  await page.goto('/ui/');
+  await page.waitForURL(/[?&]s=/);
+
+  const note = await page.locator('#sessionNote').textContent();
+  expect(note).toContain('Go hub');
+  expect(note).toContain('everyone who opens this link');
+});
+
 test('presence separates this session from all connected', async ({ browser }) => {
   const alice = await browser.newPage();
   await alice.goto('/ui/');

@@ -248,6 +248,9 @@ order and broadcast over a WebSocket, so every screen converges on the same
 model. The newest operation at a point decides it — and that is what lets you
 paint over a hole you just cut. Open `http://localhost:8080/ui/`.
 
+The panel says which build you are looking at: the served one names the hub it
+is connected to, and the browser-only one says plainly that nothing syncs.
+
 A hub also answers read-only region queries: a client sends
 `{"kind":"search","min":[…],"max":[…]}` and gets back the boxes overlapping
 that region. The index behind it is an ephemeral R-tree (`rtree`), dropped on
@@ -291,7 +294,11 @@ The seam is two switches in the code:
 ./scripts/e2e-local.sh    # Playwright tests against the in-page wasm engine
 ```
 
-Each demo has a smoke test; run them with `go test ./demo/...`.
+Each demo has a smoke test; run them with `go test ./demo/...`. UI unit tests
+sit next to the modules they cover and are named `*.unit.test.mjs`, so the
+runner discovers them by convention — `npm run test:unit` in `demo/web` is
+plain `node --test`, and `demo/paint` gives vitest the same glob. Playwright
+specs live under `tests/`.
 
 ![web demo 2d](./docs/img/eventfulranges-2d-demo.gif)
 
