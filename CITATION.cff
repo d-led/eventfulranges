@@ -8,6 +8,9 @@ authors:
     website: "https://github.com/d-led"
 repository-code: "https://github.com/d-led/eventfulranges"
 license: MPL-2.0
+version: "0.0.9"
+date-released: "2026-11-17"
+doi: 10.5281/zenodo.24313877
 abstract: >-
   A CRDT for real-valued ranges: any number of replicas add and remove ranges on
   their own, and every replica that has seen the same operations converges on
@@ -17,5 +20,4 @@ keywords:
   - eventual consistency
   - ranges
   - Go
-# Zenodo mints a DOI for each GitHub release; add it as `doi:` once the first
-# release has been archived.
+# `doi` is the concept DOI: it always resolves to the latest archived release.
