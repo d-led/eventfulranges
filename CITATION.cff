@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "eventfulranges"
+type: software
+authors:
+  - family-names: Ledentsov
+    given-names: Dmitry
+    website: "https://github.com/d-led"
+repository-code: "https://github.com/d-led/eventfulranges"
+license: MPL-2.0
+abstract: >-
+  A CRDT for real-valued ranges: any number of replicas add and remove ranges on
+  their own, and every replica that has seen the same operations converges on
+  the same set, in any arrival order.
+keywords:
+  - CRDT
+  - eventual consistency
+  - ranges
+  - Go
+# Zenodo mints a DOI for each GitHub release; add it as `doi:` once the first
+# release has been archived.

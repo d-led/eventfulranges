@@ -496,6 +496,11 @@ cd demo/kurrent && go run -tags kurrent .
 | [Extensions](docs/EXTENSIONS.md) | canonicalizers, metadata, merge verification, region queries |
 | [WebAssembly build](docs/WASM.md) | the browser-only build and its GitHub Pages deploy |
 
+## Citation
+
+The code is citable: [`CITATION.cff`](CITATION.cff) is what GitHub's *Cite this
+repository* button reads, and Zenodo mints a DOI for each release.
+
 ## License
 
 [MPL-2.0](LICENSE)
