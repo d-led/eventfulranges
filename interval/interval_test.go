@@ -124,6 +124,9 @@ func TestOverlaps(t *testing.T) {
 		{"disjoint", gridInterval(0, 1, interval.Closed, interval.Closed), gridInterval(5, 6, interval.Closed, interval.Closed), false},
 		{"point at start", interval.Interval{}, gridInterval(0, 1, interval.Closed, interval.Closed), true},
 		{"open containing closed", gridInterval(0, 2, interval.Open, interval.Open), gridInterval(0, 3, interval.Closed, interval.Closed), true},
+		{"point inside a closed interval", gridInterval(0, 0, interval.Closed, interval.Closed), gridInterval(0, 1, interval.Closed, interval.Closed), true},
+		{"point excluded by an open start", gridInterval(0, 0, interval.Closed, interval.Closed), gridInterval(0, 1, interval.Open, interval.Closed), false},
+		{"point excluded by an open end", gridInterval(1, 1, interval.Closed, interval.Closed), gridInterval(0, 1, interval.Closed, interval.Open), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -146,6 +149,8 @@ func TestTouches(t *testing.T) {
 		{"both open", gridInterval(0, 2, interval.Closed, interval.Open), gridInterval(2, 3, interval.Open, interval.Closed), false},
 		{"reversed order", gridInterval(2, 3, interval.Closed, interval.Closed), gridInterval(0, 2, interval.Closed, interval.Open), true},
 		{"far apart", gridInterval(0, 1, interval.Closed, interval.Closed), gridInterval(2, 3, interval.Closed, interval.Closed), false},
+		{"point the interval holds is shared, not touched", gridInterval(0, 0, interval.Closed, interval.Closed), gridInterval(0, 1, interval.Closed, interval.Closed), false},
+		{"point meeting an interval that excludes it", gridInterval(0, 0, interval.Closed, interval.Closed), gridInterval(0, 1, interval.Open, interval.Closed), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -325,6 +330,8 @@ func TestIntersection(t *testing.T) {
 		{"contained", gridInterval(1, 7, interval.Closed, interval.Closed), gridInterval(2, 3, interval.Closed, interval.Closed), gridInterval(2, 3, interval.Closed, interval.Closed)},
 		{"shared point", gridInterval(0, 2, interval.Closed, interval.Closed), gridInterval(2, 3, interval.Closed, interval.Closed), gridInterval(2, 2, interval.Closed, interval.Closed)},
 		{"mixed bounds", gridInterval(0, 2, interval.Open, interval.Closed), gridInterval(1, 3, interval.Open, interval.Closed), gridInterval(1, 2, interval.Open, interval.Closed)},
+		{"shared closed start stays open when one side excludes it", gridInterval(0, 5, interval.Closed, interval.Open), gridInterval(0, 5, interval.Closed, interval.Closed), gridInterval(0, 5, interval.Closed, interval.Open)},
+		{"shared open start stays open when both exclude it", gridInterval(0, 5, interval.Open, interval.Closed), gridInterval(0, 5, interval.Open, interval.Closed), gridInterval(0, 5, interval.Open, interval.Closed)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

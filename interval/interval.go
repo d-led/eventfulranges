@@ -224,7 +224,9 @@ func Intersection(a, b Interval) Interval {
 	return Interval{Start: s, End: e, StartBound: sb, EndBound: eb}
 }
 
-// maxStart returns the larger start and the bound of the shared start.
+// maxStart returns the larger start and whether both intervals include it: a
+// shared start belongs to their intersection only when both sides include it,
+// so one open side excludes the point.
 func maxStart(a, b Interval) (float64, Bound) {
 	switch {
 	case a.Start > b.Start:
@@ -232,14 +234,16 @@ func maxStart(a, b Interval) (float64, Bound) {
 	case a.Start < b.Start:
 		return b.Start, b.StartBound
 	default:
-		if a.StartBound == Closed || b.StartBound == Closed {
+		if a.StartBound == Closed && b.StartBound == Closed {
 			return a.Start, Closed
 		}
 		return a.Start, Open
 	}
 }
 
-// minEnd returns the smaller end and the bound of the shared end.
+// minEnd returns the smaller end and whether both intervals include it: a
+// shared end belongs to their intersection only when both sides include it,
+// so one open side excludes the point.
 func minEnd(a, b Interval) (float64, Bound) {
 	switch {
 	case a.End < b.End:
@@ -247,7 +251,7 @@ func minEnd(a, b Interval) (float64, Bound) {
 	case a.End > b.End:
 		return b.End, b.EndBound
 	default:
-		if a.EndBound == Closed || b.EndBound == Closed {
+		if a.EndBound == Closed && b.EndBound == Closed {
 			return a.End, Closed
 		}
 		return a.End, Open
