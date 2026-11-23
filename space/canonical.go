@@ -1,5 +1,7 @@
 package space
 
+import "github.com/d-led/eventfulranges/meta"
+
 // Canonicalizer canonicalizes a cover of boxes into a deterministic
 // representation that preserves the covered point set exactly. It is the
 // compaction seam for the n-dimensional engine: the library's default keeps
@@ -85,6 +87,8 @@ func mergePair(a, b Box) (Box, bool) {
 		Max:      append([]float64(nil), hi.Max...),
 		MinBound: append([]Bound(nil), lo.MinBound...),
 		MaxBound: append([]Bound(nil), hi.MaxBound...),
+		// Merging combines the two boxes, so neither may lose what it carried.
+		Meta: meta.Union(a.Meta, b.Meta),
 	}, true
 }
 

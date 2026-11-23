@@ -226,3 +226,15 @@ func TestMergePairSameSpanDifferentBounds(t *testing.T) {
 	_, ok := mergePair(a, b)
 	require.False(t, ok, "same span with different faces cannot merge")
 }
+
+func TestMergeAdjacentJoinsMetadata(t *testing.T) {
+	t.Parallel()
+	a := NewBoxWithBounds([]float64{0}, []float64{1}, []Bound{Closed}, []Bound{Closed}).
+		WithMeta(json.RawMessage(`{"color":"red"}`))
+	b := NewBoxWithBounds([]float64{1}, []float64{2}, []Bound{Closed}, []Bound{Closed}).
+		WithMeta(json.RawMessage(`{"author":"alice"}`))
+	merged := MergeAdjacent([]Box{a, b})
+	require.Len(t, merged, 1)
+	require.JSONEq(t, `{"author":"alice","color":"red"}`, string(merged[0].Meta),
+		"merging two boxes must not drop what they carried")
+}
