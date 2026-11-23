@@ -484,6 +484,8 @@ cd demo/kurrent && go run -tags kurrent .
 | [n-D ranges](docs/N-DIM.md) | boxes, the n-D engine, paint layers |
 | [Extensions](docs/EXTENSIONS.md) | canonicalizers, metadata, merge verification, region queries |
 | [WebAssembly build](docs/WASM.md) | the browser-only build and its GitHub Pages deploy |
+| [llms.txt](llms.txt) | the same map in the form an agent routes from |
+| [AGENTS.md](AGENTS.md) | build commands, layout and invariants for contributors |
 
 ## Citation
 

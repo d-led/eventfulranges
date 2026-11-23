@@ -1,0 +1,30 @@
+# eventfulranges
+
+> A CRDT over real-valued ranges and n-dimensional boxes in Go: replicas add and remove ranges locally, exchange operations, and converge in any arrival order.
+
+Module `github.com/d-led/eventfulranges` · Go 1.27, pinned in `go.work` · license MPL-2.0.
+
+## Reference (exact behavior)
+
+- [CRDT map](docs/CRDT.md): the four strategies for 1-D and n-D, which package holds each, the bounds asymmetry, the facades.
+- [Extensions](docs/EXTENSIONS.md): what ships and what is proposed, the canonicalizer seam, metadata merge, region queries.
+
+## Tutorials (getting started)
+
+- [Quick start](README.md#quick-start): open a replica, add and remove ranges, converge two replicas.
+- [Calendar example](examples/calendar): a standalone module that books and cancels vacations.
+
+## How-to guides (specific tasks)
+
+- [Demos](README.md#demos): run hello, local, pubsub, network, web, paint, KurrentDB, Automerge.
+- [Browser-only WebAssembly build](docs/WASM.md#deploying-to-github-pages): build and deploy the static visualizer.
+
+## Explanation (architecture and concepts)
+
+- [Design](docs/DESIGN.md): the operation-based model, engine, stores, clocks, testing.
+- [n-D ranges](docs/N-DIM.md): boxes, covers, paint layers.
+- [WebAssembly build](docs/WASM.md): how the session hub runs in a page with no server.
+
+## For repository work
+
+- [AGENTS.md](AGENTS.md): build commands, layout, invariants.
