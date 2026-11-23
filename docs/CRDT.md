@@ -1,18 +1,16 @@
 # The CRDT map
 
-**How to read this page.** Every strategy and every dimension gets one table and
-one link to the code. If you only read one section, read
-[Pick a strategy](#pick-a-strategy).
+Every strategy and every dimension gets one table and one link to the code. If
+you read only one section, read [Pick a strategy](#pick-a-strategy).
 
-**Where things live.** One-dimensional ranges live in the root package and its
-subpackages. Boxes in any dimension live in `space` and its subpackages. The
-same design runs in both.
+One-dimensional ranges live in the root package and its subpackages; boxes in
+any dimension live in `space` and its subpackages. The same design runs in both.
 
 ## The whole library in one picture
 
-**What to look for:** the right-hand column is the n-D stack. It repeats the
-left one layer for layer, then adds three things 1-D does not have — metadata,
-retraction, and query helpers.
+The right-hand column is the n-D stack. It repeats the left one layer for layer,
+then adds three things 1-D does not have: metadata, retraction and query
+helpers.
 
 ```mermaid
 flowchart LR
@@ -32,8 +30,7 @@ flowchart LR
 
 ## Pick a strategy
 
-**What to look for:** three questions, and you are done. Every answer is one of
-the four policies in the tables below.
+Three questions lead to one of the four policies in the tables below.
 
 ```mermaid
 flowchart TD
@@ -50,13 +47,13 @@ Rules of thumb:
 
 1. **Bookings, ledgers where a cancellation is final** — `AdditiveWins`.
    Additions accumulate, cancellations subtract, order never matters: a
-   cancelled booking cannot uncancel itself.
+   canceled booking cannot come back.
 2. **Painted regions, boards, canvases** — `LWW`. The newest edit at a point
    decides it, so an eraser stroke can be painted over again; `AdditiveWins`
    would make every erasure permanent. Both canvas demos use this.
-3. **Last value of a field or a sensor reading** — `LWW` as well.
+3. **The last value of a field or a sensor reading** — `LWW` as well.
 4. **First-write-wins ledgers** — `FWW`.
-5. **Append-only where deletion is not a concept** — `GrowOnly`.
+5. **Append-only data where deletion is not a concept** — `GrowOnly`.
 
 ## The four strategies, 1-D
 
@@ -105,9 +102,9 @@ Two n-D differences worth knowing before you port code:
 | Per-side type | `interval.Bound`, one per side | `space.Bound`, one per face |
 | Why the default | closed is the `interval` convention | half-open keeps subtraction exact at shared edges |
 
-`space.Box` is half-open by definition (`Min[i] <= p[i] < Max[i]`), and a nil
-bounds slice means the half-open default. If you move calendar-style code from
-1-D to n-D, add the bounds you meant — see
+`space.Box` is half-open by definition (`Min[i] <= p[i] < Max[i]`), and an empty
+bounds slice means the half-open default. Moving calendar-style code from 1-D to
+n-D means adding the bounds you meant; see
 [docs/EXTENSIONS.md](EXTENSIONS.md) for the open/closed face extension.
 
 ## What sits on top of the strategies

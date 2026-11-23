@@ -1,46 +1,46 @@
 # n-dimensional ranges
 
-**One line.** `space` generalizes the 1-D `interval` set to **n dimensions**.
-It is the geometry layer under the n-dimensional CRDT engine.
+`space` generalizes the 1-D `interval` set to n dimensions. It is the geometry
+layer under the n-dimensional CRDT engine.
 
-Three things to know before reading on:
+Three things matter here:
 
-1. A box is **half-open** in every dimension.
-2. The cover is **not unique**: equivalent point sets can be written as
-   different boxes.
-3. Rendering uses **paint layers**, not the set cover.
+1. A box is half-open in every dimension.
+2. The cover is not unique: equivalent point sets can be written as different
+   boxes.
+3. Rendering uses paint layers, not the set cover.
 
 ## Boxes
 
-A `space.Box` is an axis-aligned, **half-open** rectangle:
+A `space.Box` is an axis-aligned, half-open rectangle:
 
 ```
 Box = { Min []float64, Max []float64 }
 point p is inside Box b iff  ∀i:  Min[i] <= p[i] < Max[i]
 ```
 
-Half-open bounds were chosen deliberately: subtracting one box from another
-always yields a small, exact set of boxes, with no special cases around
-shared edges. With closed bounds, subtraction is only clean on interiors and
-degenerates at boundaries.
+Half-open bounds are deliberate: subtracting one box from another always yields
+a small, exact set of boxes, with no special cases around shared edges. With
+closed bounds, subtraction stays clean only on interiors and degenerates at
+boundaries.
 
 ## Set operations
 
 - `Normalize` removes empty boxes and any box subsumed by another, then sorts
-  the survivors — a canonical cover that preserves the covered point set
-  exactly. Partially overlapping boxes are kept (subdividing them into
-  disjoint pieces is not needed for correctness).
+  the survivors into a canonical cover that preserves the covered point set
+  exactly. Partially overlapping boxes stay: correctness does not need them
+  split into disjoint pieces.
 - `Union(a, b)` is the normalized concatenation.
 - `Difference(a, b)` is **exact**: it subtracts each `b` box from each `a`
   box by splitting along the first dimension where the boxes clip, recursing
   on the middle slab for the remaining dimensions.
 - `Contains` and `OverlapsSet` are point and box queries over a cover.
 
-The property tests verify every operation against a **point-membership
-oracle**: for dense sample grids, a point is in `Normalize(x)` /
-`Union(a,b)` / `Difference(a,b)` exactly when the defining predicate says so.
-Because the oracle is membership, not the implementation, a geometry bug
-cannot slip through.
+The property tests check every operation against a **point-membership oracle**:
+for dense sample grids, a point is in `Normalize(x)`, `Union(a,b)` or
+`Difference(a,b)` exactly when the defining predicate says so. Because the
+oracle checks membership rather than implementation, a geometry bug cannot slip
+through.
 
 ## The n-D CRDT engine
 

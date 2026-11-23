@@ -1,23 +1,19 @@
 # The browser-only (WebAssembly) build
 
-**What it is.** The web visualizer with the Go session hub compiled to
-WebAssembly and running inside the page. No Go server, no process to host.
-
-**Where it runs.** Any static host. The deployed one is
-<https://d-led.github.io/eventfulranges/>, published by
+The web visualizer with the Go session hub compiled to WebAssembly and running
+inside the page: no Go server, no process to host. It runs on any static host;
+the deployed one is <https://d-led.github.io/eventfulranges/>, published by
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml).
 
-**Why it exists.** It proves the library has no server-side secrets: the same
-Go engine that runs in a process runs in a browser tab, with the same JSON
-on the wire.
+The build shows that the library keeps no server-side secret: the same Go engine
+that runs in a process runs in a browser tab, with the same JSON on the wire.
 
-**Scope.** This page covers the demo in `demo/web`, not the library API. For
-the library itself, start at the [CRDT map](CRDT.md).
+This page covers the demo in `demo/web`, not the library API. For the library,
+start at the [CRDT map](CRDT.md).
 
 ## The shape of it
 
-**What to look for:** there is no server in the picture. Everything below loads
-from static files and runs in the tab.
+No server: everything below loads from static files and runs in the tab.
 
 ```mermaid
 flowchart LR
@@ -64,8 +60,8 @@ Three lines decide it, all in `demo/web/ui-src/app.js`:
 1. `?engine=local` in the URL → the in-page wasm engine.
 2. `window.__EVENTFULRANGES_STATIC__ === true` → the in-page engine. The local
    bundle's generated `index.html` sets this.
-3. Otherwise → the WebSocket engine, which is the default when a Go server is
-   serving the UI.
+3. Anything else → the WebSocket engine, the default when a Go server serves
+   the UI.
 
 ```mermaid
 flowchart TD
@@ -106,11 +102,11 @@ viewer per tab. A new session or a reload replaces the hub with a fresh one.
 ## Why the engine has its own thread
 
 A fold is unbounded work: every operation re-materializes the whole log, and
-under `partition-merge` that means re-partitioning and re-merging the entire
-cover. On a 3D session with a few dozen operations that is fast, but it grows
-steeply with the operation count, and Go's wasm runtime cannot yield in the
-middle of one — no goroutine preemption, no `await`. On the main thread it would
-freeze the canvas, the buttons and any progress feedback along with it.
+under `partition-merge` that means partitioning and merging the entire cover
+again. On a 3D session with a few dozen operations that is fast, but it grows
+steeply with the operation count, and Go's wasm runtime cannot yield mid-fold:
+no goroutine preemption, no `await`. On the main thread the fold would freeze
+the canvas, the buttons and any progress feedback with it.
 
 So `engine-worker.js` owns the wasm instance, and the page talks to it with the
 same JSON envelopes it would send down a socket. Two things fall out of that:
@@ -129,9 +125,8 @@ what the engine broadcasts, in both engines.
 
 ## How a page comes to life
 
-**What to look for:** JavaScript asks the Go module for exactly one catch-up
-envelope, then listens. The Go side never reaches back except through the
-`dispatch` callback that `join` was handed.
+JavaScript asks the Go module for one catch-up envelope, then listens. The Go
+side reaches back only through the `dispatch` callback that `join` received.
 
 ```mermaid
 sequenceDiagram
@@ -155,8 +150,8 @@ sequenceDiagram
 
 ## Sending an operation
 
-**What to look for:** the two builds differ in one hop only. Everything from the
-hub outward — folding, the reply envelope, the rendering — is the same code.
+The two builds differ in one hop. From the hub outward (folding, the reply
+envelope, the rendering) the code is the same.
 
 ```mermaid
 sequenceDiagram
@@ -291,8 +286,8 @@ flowchart LR
 ```
 
 `e2e-local.sh` builds, installs Chromium, and runs
-`npm run test:local` (`playwright.local.config.mjs`) against the static build —
-the same browser-visible behaviour the server suite checks, with the engine
+`npm run test:local` (`playwright.local.config.mjs`) against the static build:
+the same browser-visible behavior the server suite checks, with the engine
 inside the page.
 
 ## File map

@@ -1,12 +1,10 @@
 # Extensions: canonicalization, metadata, and merge verification
 
-This document records additive extensions to `eventfulranges`. Every
-extension is opt-in: the existing 1-D and n-D interfaces, their
-materialization, and their convergence guarantees are unchanged unless a new
-option is explicitly enabled. Defaults reproduce today's behavior exactly.
+These extensions are additive and opt-in. The 1-D and n-D interfaces, their
+materialization and their convergence guarantees stay unchanged unless you
+enable an option, and the defaults reproduce today's behavior.
 
-**Status at a glance.** Read the section for the seams; read this table to know
-what you can use today.
+The table says what you can use today; each section gives the seam.
 
 | # | Extension | Status |
 | --- | --- | --- |
@@ -18,11 +16,11 @@ what you can use today.
 ## 1. Canonicalization (compaction) seam — *implemented*
 
 **Why.** The n-D `space` canonical cover keeps partially-overlapping boxes; it
-drops only empty and subsumed boxes and never subdivides. The materialized
-view is therefore not a unique *decomposition* of the point set: equivalent
-sets can be represented by different covers, so `space.Equal` is only
-meaningful between covers produced by the same deterministic pipeline. There
-is no way to request a minimal disjoint cover, or to plug in a spatial index.
+drops only empty and subsumed boxes and never subdivides. The materialized view
+is therefore not a unique *decomposition* of the point set: equivalent sets can
+be represented by different covers, so `space.Equal` is only meaningful between
+covers produced by the same deterministic pipeline. Nothing lets a caller ask
+for a minimal disjoint cover, or plug in a spatial index.
 
 **Seam.** A `Canonicalizer` is a pure function applied as the final step of
 materialization:
@@ -45,14 +43,15 @@ A `Canonicalizer` must be:
 
 Because both hold, a canonicalizer cannot break convergence or membership.
 
-**Where simulation of simplicity belongs.** This seam is the place for SoS.
-The default pipeline never needs it — endpoints are compared, never combined,
-and half-open bounds resolve boundary ownership by convention. A custom
-`Canonicalizer` that *subdivides* into a disjoint cover reintroduces the
-degenerate cases SoS exists for (coincident or adjacent endpoints deciding a
-split). SoS is therefore an optional ingredient of an optional
-`Canonicalizer`, not a change to the core: it supplies the deterministic
-tie-break that keeps the canonicalizer deterministic and canonical.
+**Where simulation of simplicity belongs.** Simulation of simplicity (SoS)
+belongs at this seam. The default pipeline never needs it: endpoints are
+compared, never combined, and half-open bounds resolve boundary ownership by
+convention. A custom `Canonicalizer` that *subdivides* into a disjoint cover
+reintroduces the degenerate cases SoS exists for (coincident or adjacent
+endpoints deciding a split). SoS is therefore an optional ingredient of an
+optional `Canonicalizer`, not a change to the core: it supplies the
+deterministic tie-break that keeps the canonicalizer deterministic and
+canonical.
 
 **Built-ins.** Two canonicalizers ship with the library:
 
@@ -77,10 +76,10 @@ The strategy produces `[]AnnotatedBox{Box, Meta}` instead of `[]Box`, where
 The merge **must be a semilattice join** — commutative, associative,
 idempotent — or convergence is lost. Valid: LWW-register, G-Set, G-Counter,
 OR-Set, LWW-map. Invalid: last-arrival-wins, subtraction, anything
-order-sensitive. The existing `Origin` string is effectively a LWW-register on
+order-sensitive. The existing `Origin` string is effectively an LWW-register on
 the op timestamp.
 
-**Open type-shape decision:**
+**Open decision on the type shape:**
 
 - **Generic** `Op[M]` — type-safe, but ripples through `op`, `strategy`,
   `engine`, `store`, and the facades.
@@ -129,10 +128,10 @@ calendar.
    tagged covered/gap with the covering boxes listed. Both queries are exposed
    on the `BoxSet` facade as `Crossed`/`Traverse`.
 
-The path/box intersection is the slab method under the same half-open
-convention as `Box`, so a path grazing a corner or running along an edge is
-resolved deterministically *without* point-in-polygon or simulation of
-simplicity: the boundary point belongs to the box on the "closed" side, and a
+The path/box intersection uses the slab method under the same half-open
+convention as `Box`, so a path grazing a corner or running along an edge
+resolves deterministically, with no point-in-polygon test and no simulation of
+simplicity. The boundary point belongs to the box on the "closed" side, and a
 zero-length touch is not a crossing. SoS would only be needed for a future
 general polygonal region whose canonicalizer subdivides into a disjoint cover
 (see §1).

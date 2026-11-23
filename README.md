@@ -313,7 +313,7 @@ order. The built-in 3D example shows `28 ops → 26 partition cells → 8 ranges
 - **ranges**: the cells joined back into as few boxes as the merge can make.
   This is what the view draws and the range CSV lists.
 
-A count is omitted when it would repeat its neighbour: without a partition there
+A count is omitted when it would repeat its neighbor: without a partition there
 are no cells, and in partition mode the cells are the ranges. For the same two
 operations that make an L:
 
@@ -376,9 +376,9 @@ go run ./demo/paint
 
 A whiteboard with no edges: one stroke is one half-open `add`/`remove` box, so a
 filled rectangle of cells costs one operation. Browsers receive the operation
-log and materialize the view themselves, which is plain event sourcing, so
-concurrent strokes converge in any order. The share link is the session URL, and
-the raw log downloads as JSONL. Open `http://localhost:8081/ui/`.
+log and build the view themselves, which is plain event sourcing, so concurrent
+strokes converge in any order. The share link is the session URL, and the raw
+log downloads as JSONL. Open `http://localhost:8081/ui/`.
 
 ```bash
 ./scripts/demo-paint.sh     # start the whiteboard (open the printed URL)

@@ -1,15 +1,14 @@
 # Design
 
-`eventfulranges` is an **operation-based CRDT** over real-valued ranges. This
-document explains the model, the conflict-resolution rules, and the design
-decisions behind each package.
+`eventfulranges` is an operation-based CRDT over real-valued ranges. This page
+explains the model, the conflict-resolution rules, and the decisions behind each
+package.
 
-**One line.** History is the truth; the materialized view is a cache. Replicas
-ship operations, never state.
+History is the truth; the materialized view is a cache. Replicas ship
+operations, never state.
 
-**Jump to:** [Model](#model) · [Interval geometry](#interval-geometry) ·
-[Conflict resolution](#conflict-resolution) · [Engine](#engine)
-
+[Model](#model) · [Interval geometry](#interval-geometry) ·
+[Conflict resolution](#conflict-resolution) · [Engine](#engine) ·
 [Stores](#stores) · [Clocks](#clocks) · [Testing](#testing) ·
 [Notable decisions](#notable-decisions)
 
@@ -51,9 +50,8 @@ project the ops into winner-annotated *segments* (in priority order, later
 ops fill the gaps left by earlier ones), then extract the add-decided
 segments. AdditiveWins and GrowOnly keep running unions.
 
-The reference implementation of these semantics is an independent **oracle**
-built on `github.com/biogo/store` interval trees, used by the property tests
-and nothing else.
+The property tests compare against an independent **oracle** built on
+`github.com/biogo/store` interval trees; production code never uses it.
 
 ## Engine
 
@@ -62,9 +60,9 @@ and nothing else.
 - `Apply` / `ApplyAll` validate ops, stamp any missing timestamp, append to
   the store with an **expected version**, and fold the new ops into the
   cached view.
-- On a version conflict (another writer appended first) it reads the missing
-  suffix (`catchUp`) and retries, so multiple writers sharing one store do
-  not lose updates.
+- On a version conflict (another writer appended first) the engine reads the
+  missing suffix (`catchUp`) and retries, so multiple writers sharing one
+  store do not lose updates.
 - The view is cached and rebuilt incrementally; `Materialize`, `Contains`,
   `Overlaps` and `Ops` take read locks, writes take the write lock.
 - Periodic snapshots persist the materialized view; `reload` restores from the
@@ -83,8 +81,8 @@ cover. `AdditiveWins` and `GrowOnly` fold incrementally exactly as in 1-D.
 
 ## Stores
 
-Persistence is split into two contracts so stream-only backends (for example
-Kafka) need implement no snapshot logic:
+Persistence is split into two contracts, so a stream-only backend such as Kafka
+implements no snapshot logic:
 
 ```go
 // store.Log is the minimum: an append-only, ordered operation stream.
