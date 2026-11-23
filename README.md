@@ -76,7 +76,7 @@ book("2026-07-06", "2026-07-15")   // Bob's vacation (overlaps)
 cancel("2026-07-08", "2026-07-10") // Alice cuts the trip short
 
 cal.Contains(days("2026-07-01")) // true  — booked
-cal.Contains(days("2026-07-08")) // false — cancelled
+cal.Contains(days("2026-07-08")) // false — canceled
 cal.Contains(days("2026-07-12")) // true  — Bob's still away
 ```
 
