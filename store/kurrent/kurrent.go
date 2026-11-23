@@ -138,7 +138,43 @@ func (s *Store) Read(ctx context.Context, fromVersion int64) ([]op.Op, int64, er
 		ops = append(ops, o)
 		version = int64(rec.EventNumber) + 1
 	}
+	// Reading past the end returns nothing, and the caller still needs the log's
+	// real length rather than the version it asked for.
+	if len(ops) == 0 && fromVersion > 0 {
+		version, err = s.currentVersion(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
 	return ops, version, nil
+}
+
+// currentVersion reads the log's length from its last event, and reports zero
+// for a stream that does not exist.
+func (s *Store) currentVersion(ctx context.Context) (int64, error) {
+	stream, err := s.client.ReadStream(ctx, opsStream, esdb.ReadStreamOptions{
+		Direction: esdb.Backwards,
+		From:      esdb.End{},
+	}, 1)
+	if err != nil {
+		if streamNotFound(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer stream.Close()
+
+	ev, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return 0, nil
+	}
+	if err != nil {
+		if streamNotFound(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return int64(ev.OriginalEvent().EventNumber) + 1, nil
 }
 
 // snapshotMeta is stored as the event metadata of a snapshot event.

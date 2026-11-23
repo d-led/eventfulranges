@@ -78,6 +78,31 @@ func TestIntegrationRoundTrip(t *testing.T) {
 	require.Equal(t, version, snapVersion)
 }
 
+// TestIntegrationReadPastEnd asks for a version beyond the log and expects the
+// log's real length rather than the version it asked for.
+func TestIntegrationReadPastEnd(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	ops := []op.Op{
+		{ID: "a", Kind: op.KindAdd, TS: 1, Interval: interval.Interval{Start: 1, End: 5}},
+		{ID: "b", Kind: op.KindAdd, TS: 2, Interval: interval.Interval{Start: 6, End: 8}},
+	}
+	require.NoError(t, s.Append(ctx, 0, ops))
+
+	got, version, err := s.Read(ctx, 9)
+	require.NoError(t, err)
+	require.Empty(t, got)
+	require.Equal(t, int64(2), version, "the length of the log, not the requested version")
+
+	// The same question against a stream that does not exist is an empty log.
+	fresh := openTestStore(t)
+	got, version, err = fresh.Read(ctx, 9)
+	require.NoError(t, err)
+	require.Empty(t, got)
+	require.Zero(t, version)
+}
+
 // TestIntegrationCorruptData breaks the payloads so the decode error paths
 // are met against a real server.
 func TestIntegrationCorruptData(t *testing.T) {
