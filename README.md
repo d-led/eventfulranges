@@ -9,6 +9,8 @@ A CRDT for real-valued ranges. Any number of replicas add and remove ranges on
 their own, and every replica that has seen the same operations ends up with the
 same set, whatever order they arrive in. No coordinator, no consensus.
 
+What it gives you:
+
 | You want | Mechanism |
 | --- | --- |
 | Several writers, no lock | `Add`/`Remove` locally, then exchange `Ops()` and call `ApplyAll` |
