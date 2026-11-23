@@ -338,19 +338,18 @@ const maxBinsPerAxis = 4
 // wide to list is kept aside and returned by every query, so an answer is
 // always a superset of the real overlaps however the cover is shaped.
 type coverGrid struct {
-	cell     []float64
-	origin   []float64
-	bins     map[uint64][]int
-	binOf    [][]uint64 // box id -> the bins it was registered in
-	big      []int      // boxes too wide to register
-	bigAt    map[int]int
-	disjoint bool
+	cell   []float64
+	origin []float64
+	bins   map[uint64][]int
+	binOf  [][]uint64 // box id -> the bins it was registered in
+	big    []int      // boxes too wide to register
+	bigAt  map[int]int
 }
 
-// newCoverGrid sizes a grid over the cover's bounding box, registers every box
-// in it, and only then records whether the cover is disjoint — the answer is a
-// property of the registered grid, and it is what lets the merger skip looking
-// for boxes a union swallows.
+// newCoverGrid sizes a grid over the cover's bounding box and registers every
+// box in it. Whether the cover is disjoint is the merger's question, and it asks
+// it once through the grid's candidates rather than having the grid answer its
+// own; the merger is what skips looking for boxes a union swallows.
 func newCoverGrid(boxes []Box, dims int) *coverGrid {
 	origin, extent := coverBounds(boxes, dims)
 	g := &coverGrid{
@@ -370,7 +369,6 @@ func newCoverGrid(boxes []Box, dims int) *coverGrid {
 	for id := range boxes {
 		g.add(id, boxes[id])
 	}
-	g.disjoint = g.isDisjoint(boxes)
 	return g
 }
 
@@ -408,24 +406,6 @@ func coverBounds(boxes []Box, dims int) (origin, extent []float64) {
 		extent[d] = upper[d] - origin[d]
 	}
 	return origin, extent
-}
-
-// isDisjoint reports whether no two boxes in the cover share a point. Merging
-// preserves that — a union of two boxes only covers points its halves already
-// covered — so it has to be established just once.
-func (g *coverGrid) isDisjoint(boxes []Box) bool {
-	for id := range boxes {
-		candidates, exhaustive := g.overlapping(boxes[id])
-		if exhaustive {
-			candidates = allIDs(len(boxes))
-		}
-		for _, c := range candidates {
-			if c != id && c < len(boxes) && Overlaps(boxes[id], boxes[c]) {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // allIDs returns the ids 0..n-1.
